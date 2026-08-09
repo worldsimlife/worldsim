@@ -484,6 +484,10 @@ def parse_batch_entries(lines):
                     ops.append(("delete", dots[0], dots[1], "", False))
                 else:
                     errors.append("###DELETE 格式: ###DELETE: <文件key> <YAML键路径>（或 <文件key>.<YAML键路径>）")
+        elif line.startswith("###META:"):
+            # 静默自查锚点（2026-08-09）：批次内元数据行——解析忽略，不落盘、不产生 ops（如「###META: 压力扫描 人际✓/…」）
+            flush()
+            continue
         elif current_file and current_key:
             # 内容行内嵌标记检测（防拼接 bug）：行内出现 ###FILE:/###KEY:/###APPEND: 但不在行首 = 上一字段内容被拼接
             for marker in ("###FILE:", "###KEY:", "###APPEND:", "###DELETE:"):

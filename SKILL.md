@@ -38,7 +38,7 @@ description: WorldSim 是世界模拟器和故事引擎。用户与 LLM 协同�
 
 **输入类型判断：** ① 会话首轮（新会话/恢复·见下方首轮硬规则）→ 加载→描绘→停住·不推进 ② 查询命令（/status 等）→ 跳过冲突决策与叙事生成，数据就绪后直接输出 ③ 所有其他输入（沉默/接续/日常/描述性）→ **完整推进**——用户不需要说「我要冲突」才制造冲突；「什么都没发生」不是可选输出。
 
-**会话首轮硬规则（新会话/断线恢复后的第一条输入）：** 输入含「启动/继续/恢复世界」类词或世界已存在 → 先走 references/session_recovery.md 加载序列（加载→validate→沉浸描绘前情与当前场景→**停在当前场景·不推进剧情**）→ 等用户下一条输入才进入下方流程。世界不存在 → 按 references/session_recovery.md 第一章询问是否创建。
+**会话首轮硬规则（新会话/断线恢复后的第一条输入）：** 输入含「启动/继续/恢复世界」类词或世界已存在 → 先走 references/session_recovery.md 加载序列（加载→validate→沉浸描绘前情与当前场景→**停在当前场景·不推进剧情**）→ 等用户下一条输入才进入下方流程。**例外·引擎代际替换（对话进行中·引擎失效换新·由编排者指令声明·见 session_recovery.md 第三章触发②）：加载序列照走，但不停住不描绘——按原用户指令直接进入完整推进。** 世界不存在 → 按 references/session_recovery.md 第一章询问是否创建。
 
 **剧情完整推进流程** 用户输入 → ①戏剧家：数据就绪 → 压力源扫描 → 冲突决策 → change set → ②作家：叙事生成 → **message 独立批次先发**（用户第一时间收到叙事）→ ③场记：write-raw --batch 静默写入（内置 audit）。
 
@@ -53,7 +53,7 @@ description: WorldSim 是世界模拟器和故事引擎。用户与 LLM 协同�
 
 **标准模式（调试/审查）**：用户明确说「调试」「标准模式」「打开闸口」→ world_state 顶层写 `输出模式: 标准` → 完整回复正文 + 对抗性审计。说「静默」「沉浸模式」→ 写 `输出模式: 静默` 或删除该字段。命令：`/silent` `/loud`。
 
-回复正文（标准模式）：阶段1决策摘要（必含「本轮代价：A失_/B失_」）+ 阶段1对抗性审计结果 + 阶段2对抗性审计结果 + 阶段3写入文件及检查结果。叙事正文只走 message。
+回复正文（标准模式）：阶段1决策摘要（压力源扫描+冲突决策+角色反应+本轮代价）+ 阶段1对抗性审计结果 + 阶段2对抗性审计结果 + 阶段3写入文件及检查结果。叙事正文只走 message。
 
 ## 通用约束（三角色共用·硬性）
 
@@ -63,10 +63,10 @@ description: WorldSim 是世界模拟器和故事引擎。用户与 LLM 协同�
 
 ## 阶段1 · 戏剧家
 
-### 数据就绪（按需补读）
-上下文已有 SETTING/world_state/conflicts/scene_state/CHAR_/CHAR_state/pending_actions → 跳过读取。本轮将推导反应的角色——必须确认其 CHAR_.md 与 CHAR_state 在上下文中；**CHAR_.md 缺失=禁止为该角色推导反应**，先补读。有 CROSS_NARRATIVES.md → 加载一次；有 LOOPS.md → 加载一次。
+### 数据就绪（按需补读·分层）
+**加载分层（冷启动/恢复时）：** ① 全读=静态设定（SETTING.md + **焦内与活跃焦外角色的 CHAR_.md**——背景角色档案不预读·进场或需推导反应时按②补读）+ 动态核心（world_state / conflicts / 焦内与活跃焦外角色的 CHAR_state / 焦点场景目录四件套）；② 按需=背景角色档案（该角色进入叙事或需推导反应时，`worldctl.py <世界> grep <角色名>` 补读）、CROSS_NARRATIVES.md 与 LOOPS.md（有则各读一次）、CONFLICTS_SEED.md（**仅物化时读**——此后 conflicts.yaml 唯一权威，不再读种子）。**上下文已有 → 跳过读取**（引擎常驻代际不重复加载；恢复时按 session_recovery.md 第三章分层加载·焦内/活跃焦外判定=当前焦点场景出场角色）。**CHAR_.md 缺失=禁止为该角色推导反应**，先补读。
 
-**循环世界硬性动作（每轮第一动作·不可跳过）：** SETTING 声明循环/重置机制且有循环角色 → **先物理执行 `cat references/loop_machinery.md` 把全规格读入上下文**（约193行·token 成本可控）——之后才允许执行循环轨道检查。禁止跳过读取直接按本节摘要句执行；禁止以「上下文好像有」代替实际读取——每轮以物理读取为准，规格文本必须在 recency 位置。
+**循环世界规格自检（每轮第一动作·替代无条件重读）：** 本轮需使用循环机制（在轨核对/偏离结算/重置/变质判定）时——先自检：`loop_machinery.md` 全规格是否在上下文中？**自检通过的标准=能引用规格原文关键行（§0 激活条件 / §3 偏离代价 / §4 重置联动表 / §5 触发点），凭「记得大概」不算通过**。自检通过 → 直接用上下文规格执行，不再重读；**自检不通过/不确定 → 物理执行 `cat references/loop_machinery.md` 全规格读入**（约193行）后执行。禁止凭「上下文好像有」代替实际读取——自检必须能引用原文，否则一律重读。
 
 ### 压力源扫描（每轮·一个入口·四信号）
 只负责发现与注册新 CT，推进归主路：
@@ -86,6 +86,8 @@ description: WorldSim 是世界模拟器和故事引擎。用户与 LLM 协同�
 - 深匹配=注入可写行为偏移（格式 `{角色名} 的行为偏移：{可观察行为}（驱动：NOT IN CHARACTER——来自{交叉线名}）`·不解释来源）
 - **激活=满足该线最低觉察条件（按 CROSS_NARRATIVES 明示，如交叉一=3 轮循环+持续关注细节）且前置信号环已发生 → 注册新 CT**
 - 每轮最多激活一条，同线间隔 ≥3 轮（**激活后该线 last_activated 记入本轮 change set 元数据**）
+
+**静默自查锚点（每轮必写·防四信号漏检）：** 四信号检查结果以一行元数据写入批次（不落盘不展示）：`###META: 压力扫描 人际✓/增殖✓/轨道✓/跨叙事✓`——未激活信号打 ✓ 跳过，逐项自检留痕（audit/复盘可查）。
 
 **世界事件生命周期**（倒计时/全局标记/重置按统一管道推进·见 keys.md §world_state 世界事件生命周期）——机制执行全员化，心理压力感知者化。
 
@@ -180,19 +182,32 @@ SETTING 声明弧线（幕数/中点/高潮目标/张力预算）时，戏剧家
 
 **最小批次模板（完整推进·标准轮）：**
 ```
-###FILE: conflicts
+###META: 压力扫描 人际✓/增殖✓/轨道✓/跨叙事✓   ← 静默自查锚点（每轮必写·四信号逐项勾·不落盘不展示）
+###FILE: conflicts        ← CT 推进轮：四子字段全量覆盖写（推进=全变·本轮记本轮·历史已在前轮落盘）
+###KEY: CT-XX.当前节拍.关系状态
+空间占位+攻守态势+未决时机……
+###KEY: CT-XX.当前节拍.内部状态
+各角色生理+认知+未抉择分叉……
 ###KEY: CT-XX.当前节拍.角色反应
 角色名: 动作序列 | 驱动: | 情绪: | 强度: | 代价: A失_/B失_
 ###KEY: CT-XX.当前节拍.相位
 推进中 ⏩
-###FILE: CHAR_X_state
+###FILE: CHAR_X_state     ← 出场/反应角色逐份
 ###KEY: 核心状态
 当前快照……
 ###KEY: 情绪
 当前情绪……
+###APPEND: 记忆锚点
+[时间/对象] 事实结果 ➔ 主观定性……
+###APPEND: 反应轨迹
+第N轮(时间): 本轮动作序列 | 方向: 本轮总结
+###APPEND: 偏离登记        ← 条件：循环世界·偏离角色（偏离者四件套a）
+时间|偏离行为（持续偏离·不回归）|档位
 ###FILE: scene_state
 ###APPEND: 场景时间线
 · HH:MM-HH:MM 事件……
+###KEY: 出场角色摘要        ← 条件：有实质观察/行动者（纯蹲守不列）
+角色名（位置·姿态）……
 ###FILE: world_state
 ###KEY: 时间.具体时间
 第X日 HH:MM
@@ -200,6 +215,10 @@ SETTING 声明弧线（幕数/中点/高潮目标/张力预算）时，戏剧家
 N
 ###KEY: 时间.前情描述
 ≤100字状态短语
+###KEY: 外部倒计时.{CD}.剩余时间   ← 条件：本轮有确立/走表/到期（无变化跳过）
+短态（数值/短语）……
+###APPEND: 全局标记.{名}           ← 条件：事件产生可定论结论（≤60字）
+结论……
 ```
 
 全部字段清单按文件见 references/write_protocol.md §Change Set 规范。
@@ -276,18 +295,18 @@ worlds/{世界名}/
     └── SXX-场景名/{scene_card.md, scene_state.yaml, narrative.md, start_snapshot.md}
 ```
 
-narrative 不是角色记忆——记忆锚点才是。CHAR_state 字段直接作 POV 素材（主观）。conflicts 全局上帝视角。world_map 顶层只放大区，禁止拍平。键表明细：references/keys.md。CONFLICTS_SEED.md 只落结构字段（对抗双方/被争夺资源/紧迫度/关联角色——写具体人名与载体，禁止抽象方），`当前节拍` 由戏剧家首轮按首场景填充。
+narrative 不是角色记忆——记忆锚点才是（叙事文件不参与创作数据，关键信息由各状态文件承载；**恢复/接续叙事时才读焦点场景 narrative.md 原文作文本接续**，见 session_recovery.md 第三章）。CHAR_state 字段直接作 POV 素材（主观）。conflicts 全局上帝视角。world_map 顶层只放大区，禁止拍平。键表明细：references/keys.md。CONFLICTS_SEED.md 只落结构字段（对抗双方/被争夺资源/紧迫度/关联角色——写具体人名与载体，禁止抽象方），`当前节拍` 由戏剧家首轮按首场景填充。
 
 ## 引用（按需读·不逐轮加载）
 
 | 文件 | 内容 | 何时读 |
 |------|------|--------|
 | references/keys.md | 全部键表 + 视角规则 + 写语义 + 世界事件生命周期 | 写字段不确定时 |
-| references/write_protocol.md | 写入方式参考（heredoc/batch/delete/audit 不变量）+ Change Set 规范 | 阶段3 前 |
+| references/write_protocol.md | 写入方式参考（heredoc/batch/delete/audit 不变量）+ Change Set 规范 | 阶段3 写入格式不确定时（SKILL.md 最小批次模板+内置 audit 兜底·不必每轮读） |
 | references/scene_management.md | 场景切换/移动/waypoint/地图协议/存档读档/状态校验/焦外协议 | 场景相关 |
 | references/gate_dramatist.md | 戏剧家闸门（D1-D10）明细 | 标准模式·阶段1 结束时 |
 | references/gate_writer.md | 作家闸门（W1-W4）明细 | 标准模式·阶段2 推送前 |
-| references/loop_machinery.md | 循环机制全规格（激活条件：SETTING 声明循环且有循环角色）——**循环世界每轮必读** | 循环世界·每轮 |
+| references/loop_machinery.md | 循环机制全规格（激活条件：SETTING 声明循环且有循环角色） | 循环世界·规格自检不通过时重读（每轮第一动作自检·见阶段1 数据就绪） |
 | references/narrative_style_explicit_graphic.md | Explicit 描写框架 | explicit 场景 |
 | references/session_recovery.md | 创建新世界（脚手架+创作）+ 首次启动（yaml 物化）+ 跨 Session 恢复 + MEMORY.md 模式锁模板 | 创建/首次启动/跨 Session |
 | references/commands.md | 全部命令速查（worldctl.py 子命令 / shell 脚本 / 用户命令） | 命令不会用时 |
