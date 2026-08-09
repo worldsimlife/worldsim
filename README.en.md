@@ -67,7 +67,7 @@ Place the `worldsim` directory (or a symlink to it) in your client's skills dire
 
 ### Getting Started in Three Steps
 
-1. **Create a world** — tell it 「create a world <name>」 and what kind of world you want to see. It scaffolds the lore, the character files, and the conflict seeds — give it a single sentence if you're lazy, or polish it together if you want. **You can also say 「import the character card <file>」 at this step** to drop ready-made characters straight into your new world.
+1. **Create a world** — tell it 「create a world <name>」 and what kind of world you want to see. It scaffolds the lore, the character files, and the conflict seeds — give it a single sentence if you're lazy, or polish it together if you want. **You can also say 「import the character card <file>」 at this step** and create a new world.
 2. **Start the world** — say 「start the <name> world.」 The engine materializes everything, paints the world's entrance, then **waits at the starting line for you.**
 3. **Speak** — say the first thing you want to do in that world. The story begins with that line — and never fully returns to how it was.
 
