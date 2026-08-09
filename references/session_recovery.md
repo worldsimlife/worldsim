@@ -16,8 +16,9 @@
 - 创建角色时从 `templates/CHAR_.md` 复制改名 `CHAR_{名字}.md` 填写
 
 **创作填充顺序：**
+0. **可选·从角色卡导入角色** —— 用户提供 SillyTavern 角色卡（PNG/JSON）时：① `python scripts/import_card.py <世界名> <角色卡.png...>` 脚本提取全部字段留存 `import/{名}.card.json` ② **LLM 读取素材综合生成**正式 `CHAR_{名}.md`（格式与字段映射见 references/import_cards.md）。**导入产出即最终档案**——LLM 按模板理解分发（description 拆性格/外貌/经历/气质、alternate_greetings→备用开场白、character_book→背景知识、八变量综合提炼），无依据留空，无「待戏剧家精炼」占位（CHAR.md 生成后运行中不修改）；如需补全由用户手工调整
 1. **SETTING.md** —— 世界名称/背景/地理/势力/规则/基调/核心高压法则/故事弧线（可选）
-2. **CHAR_*.md** —— 每角色一个档案：六变量内核（Desire/Fear/Belief/Defense/Value Boundary/Reaction Style）+ 外在特征 + 表演叙事线
+2. **CHAR_*.md** —— 每角色一个档案：基本信息（姓名/性别/生日/一句话简介）+ 人格内核（性格 + 八变量：Desire/Fear/Belief/Defense/Value Boundary/Reaction Style/崩溃模式/关系锚点）+ 关系网络 + 外在特征 + 叙事描写视角与重点 + 背景（生平概要/关键转折事件/未愈合的旧伤/现状处境）（角色卡导入的草稿在此精炼）；可选：情景与叙事（scenario/first_mes/mes_example/叙事线）· 世界法则·循环注册（仅循环世界）
 3. **CONFLICTS_SEED.md** —— 2-5 条冲突种子（每条核心高压法则至少覆盖一条；只写结构字段：描述/对抗双方/被争夺资源/紧迫度/关联角色；对抗双方禁抽象·抽象方须附显现机制）
 4. **LOOPS.md / CROSS_NARRATIVES.md** —— 可选（循环世界必填 LOOPS：声明循环机制+各角色默认循环；隐藏交叉线可选）
 

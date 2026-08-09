@@ -40,6 +40,7 @@
 | index.sh remove | `sh {skill_dir}/scripts/index.sh <世界> remove <场景ID>`（动作在前同样支持） |
 | list_worlds.sh | `sh {skill_dir}/scripts/list_worlds.sh` |
 | create_world.sh | `sh {skill_dir}/scripts/create_world.sh <世界名>` | 创建新世界脚手架——只生成 .md 静态骨架（SETTING/CONFLICTS_SEED·零 yaml）；动态文件由首次启动物化（见 session_recovery.md 第一章） |
+| import_card.py | `python {skill_dir}/scripts/import_card.py <世界名> <角色卡.png...>`（支持 .json 卡；`--dry-run` 预览不落盘） | 提取 SillyTavern 角色卡全部字段 → 留存 import/{名}.card.json；正式 CHAR_{名}.md 由 LLM 综合生成（详情见 references/import_cards.md） |
 | reset_world.sh | `sh {skill_dir}/scripts/reset_world.sh <世界名>` | 重置世界到创建完成态（纯 .md·零 yaml）——删 scenes/CHAR_state/全部动态 yaml·重置前自动存档可回滚·重置后走首次启动 |
 
 ## 用户命令（对话内）

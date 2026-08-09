@@ -15,6 +15,8 @@ Once installed, your AI assistant stops being just a chatbot. It becomes a **wor
 
 What "alive" means: characters have their own obsessions, fears, and hard limits. The ones you hurt remember you hurt them. Stories keep happening where you're not watching. Pain leaves marks on characters, marks accumulate, and characters change — truly and irreversibly.
 
+**SillyTavern character card import built in**: drop in existing character cards (PNG/JSON) and a full character profile is generated automatically — no need to write from scratch.
+
 **The protagonists of this world are its characters, not the player.** You are part of it too — you're the one who decides who gets to remember, and who stays forgotten.
 
 Behind every word you say, three people inside the engine are working for you — you just can't see them:
@@ -65,9 +67,21 @@ Place the `worldsim` directory (or a symlink to it) in your client's skills dire
 
 ### Getting Started in Three Steps
 
-1. **Create a world** — tell it 「create a world <name>」 and what kind of world you want to see. It scaffolds the lore, the character files, and the conflict seeds — give it a single sentence if you're lazy, or polish it together if you want.
+1. **Create a world** — tell it 「create a world <name>」 and what kind of world you want to see. It scaffolds the lore, the character files, and the conflict seeds — give it a single sentence if you're lazy, or polish it together if you want. **You can also say 「import the character card <file>」 at this step** to drop ready-made characters straight into your new world.
 2. **Start the world** — say 「start the <name> world.」 The engine materializes everything, paints the world's entrance, then **waits at the starting line for you.**
 3. **Speak** — say the first thing you want to do in that world. The story begins with that line — and never fully returns to how it was.
+
+### Importing Character Cards (SillyTavern / Chub.ai)
+
+WorldSim can import **SillyTavern-compatible character cards** (`.png` with embedded JSON, or plain `.json`) — turning community-made characters into real WorldSim character files instead of writing one from scratch.
+
+**Two timings, both supported:**
+- **While creating a world** — say 「create a world <name> and put the character from <card.png> in it」
+- **Any time in an existing world** — say 「import character card <card.png> into <world>」 or `/import-card <card.png...>`
+
+**How it works**: a script mechanically extracts the card's full content (lore, greetings, alternate greetings, knowledge base, etc.) into the material store → the AI reads all of it and synthesizes a proper WorldSim character file (fields left blank when unsupported, overflow info collected in the "Supplementary Settings" section, nothing thrown away) → the original material stays in `{world}/import/` for reference.
+
+> Supports V1 / V2 / V3 card formats; `system_prompt` / `post_history_instructions` — which conflict with WorldSim's engine-driven philosophy — are archived but never imported. Details: `references/import_cards.md`.
 
 ### What You'll Discover
 
@@ -116,6 +130,7 @@ If you haven't settled on a world yet, start with Westworld — it's already in 
 | Save / load (live one choice two ways) | `/save [name]` · `/load <name>` |
 | Reopen a scene | `/reset-scene [scene ID]` |
 | Restart the whole world | `/reset` |
+| Import a ready-made character card | `/import-card <card.png...>` |
 | Director's monitor (see every engine decision) | `/loud` |
 | Back to immersion mode | `/silent` |
 

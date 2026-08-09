@@ -1,6 +1,6 @@
 ---
 name: worldsim
-description: WorldSim 是世界模拟器和故事引擎。用户与 LLM 协同创作幻想世界叙事：用户给行动指令，LLM 以三角色思维框架生成剧情与叙事。
+description: WorldSim 是世界模拟器和故事引擎。用户与 LLM 协同创作幻想世界叙事：用户给行动指令，LLM 以三角色思维框架生成剧情与叙事。支持导入 SillyTavern 角色卡。
 ---
 
 # WorldSim — 世界模拟器与故事引擎
@@ -64,7 +64,7 @@ description: WorldSim 是世界模拟器和故事引擎。用户与 LLM 协同�
 ## 阶段1 · 戏剧家
 
 ### 数据就绪（按需补读·分层）
-**加载分层（冷启动/恢复时）：** ① 全读=静态设定（SETTING.md + **焦内与活跃焦外角色的 CHAR_.md**——背景角色档案不预读·进场或需推导反应时按②补读）+ 动态核心（world_state / conflicts / 焦内与活跃焦外角色的 CHAR_state / 焦点场景目录四件套）；② 按需=背景角色档案（该角色进入叙事或需推导反应时，`worldctl.py <世界> grep <角色名>` 补读）、CROSS_NARRATIVES.md 与 LOOPS.md（有则各读一次）、CONFLICTS_SEED.md（**仅物化时读**——此后 conflicts.yaml 唯一权威，不再读种子）。**上下文已有 → 跳过读取**（引擎常驻代际不重复加载；恢复时按 session_recovery.md 第三章分层加载·焦内/活跃焦外判定=当前焦点场景出场角色）。**CHAR_.md 缺失=禁止为该角色推导反应**，先补读。
+**加载分层（冷启动/恢复时）：** ① 全读=静态设定（SETTING.md + **焦内与活跃焦外角色的 CHAR_.md**——背景角色档案不预读·进场或需推导反应时按②补读）+ 动态核心（world_state / conflicts / 焦内与活跃焦外角色的 CHAR_state / 焦点场景目录四件套）；② 按需=背景角色档案（该角色进入叙事或需推导反应时，`worldctl.py <世界> grep <角色名>` 补读）、CROSS_NARRATIVES.md 与 LOOPS.md（有则各读一次）、CONFLICTS_SEED.md（**仅物化时读**——此后 conflicts.yaml 唯一权威，不再读种子）。**上下文已有 → 跳过读取**（引擎常驻代际不重复加载；恢复时按 session_recovery.md 第三章分层加载·焦内/活跃焦外判定=当前焦点场景出场角色）。**CHAR_.md 缺失=禁止为该角色推导反应**，先补读。**CHAR_.md 首读顺序（消费指引）：基本信息（入场定位）→ 性格（人格推导起点）→ 八变量 → 外在特征/背景（叙事表层与回忆素材）→ 情景与叙事（首场景开场创作素材）**。
 
 **循环世界规格自检（每轮第一动作·替代无条件重读）：** 本轮需使用循环机制（在轨核对/偏离结算/重置/变质判定）时——先自检：`loop_machinery.md` 全规格是否在上下文中？**自检通过的标准=能引用规格原文关键行（§0 激活条件 / §3 偏离代价 / §4 重置联动表 / §5 触发点），凭「记得大概」不算通过**。自检通过 → 直接用上下文规格执行，不再重读；**自检不通过/不确定 → 物理执行 `cat references/loop_machinery.md` 全规格读入**（约193行）后执行。禁止凭「上下文好像有」代替实际读取——自检必须能引用原文，否则一律重读。
 
@@ -133,7 +133,7 @@ description: WorldSim 是世界模拟器和故事引擎。用户与 LLM 协同�
 | ⓪ 循环基线（激活条件：SETTING 声明循环且有循环角色） | 按脚本该在哪 → 差异即偏离 | LOOPS.md + world_state + CHAR_state | 在轨=执行本时段节点（行为基线）·偏离（结算拉力+代价）·回归 |
 | ① 世界法则 | 适用性→豁免/命中；命中→a 重置规则执行（先于一切冲突决策）/ b 压迫落点评估偏离代价 | SETTING + CHAR_.md + CHAR_state | 重置联动表 / 状态更新+增殖检测 |
 | ② 冲突关联 | 挂载 CT 本轮推进/触发/悬置？未挂载→走人际张力扫描 | conflicts | 冲突推角色往哪走 |
-| ③ 人物特质 | Desire/Fear 方向·Reaction Style 形式·Belief 过滤·Defense·Value Boundary·记忆 | CHAR_ + CHAR_state | 推演至档案强度（逆顺从默认·LLM 自然反应是底不是天花板） |
+| ③ 人物特质 | 性格总纲·Desire/Fear 方向·Reaction Style 形式·Belief 过滤·Defense·Value Boundary·记忆 | CHAR_ + CHAR_state | 推演至档案强度（逆顺从默认·LLM 自然反应是底不是天花板） |
 | ④ 环境因素 | 空间位置/时间/行动队列/同空间互动可能 | world_state / scene_state / pending_actions | 反应时空约束与交互对象 |
 
 **⓪层硬性判定（本层=循环轨道检查唯一执行入口·压力源扫描③引用本层判定，不重复执行）：**
@@ -244,6 +244,9 @@ N
 ### Explicit 框架
 涉及 explicit/graphic → 读 references/narrative_style_explicit_graphic.md，要素**嵌入**主叙事（视角沿用主叙事人称·恪守认知边界·不做切换）。
 
+### 对白展开
+对话轮 → 读 references/narrative_style_dialogue.md 取话轮/潜台词/停顿显影/语言质感写法（要素嵌入主叙事·单镜头·恪守认知边界）。
+
 ### 执行顺序
 叙事文本第一行为场景名+时间 → ⚡ 生成叙事 → **W4 锚点代码化核对（gate writer --check，推送前硬性）** → 通过 → **独立工具批次**调用 message 推送（用户第一时间收到）→ 持久化由场记在阶段3完成。**W4 失败=不推送**——叙事已在用户手中后才核对=防幻觉失效（历史教训：坏叙事发出去才被拦，等于没拦）。
 
@@ -288,7 +291,7 @@ worlds/{世界名}/
 ├── CONFLICTS_SEED.md    ← 初始冲突种子（设定·创建时生成·不改·启动时物化为 conflicts.yaml）
 ├── conflicts.yaml       ← CT 注册表（上帝视角·禁代词·人名·物化自种子·每轮演化）
 ├── off_focus/pending_actions.yaml
-├── CHAR_{name}.md       ← 固定档案（Desire/Fear/Belief/Reaction Style/Value Boundary…）
+├── CHAR_{name}.md       ← 固定档案（基本信息+人格内核[性格+八变量:Desire/Fear/Belief/Defense/Value Boundary/Reaction Style/崩溃模式/关系锚点]+关系网络+外在特征+叙事描写视角+背景·可选:情景与叙事/循环注册）
 ├── CHAR_{name}_state.yaml ← 主观状态（隐藏主语=我·禁他/她指代本角色·禁全知）
 └── scenes/
     ├── INDEX.md
@@ -308,9 +311,10 @@ narrative 不是角色记忆——记忆锚点才是（叙事文件不参与创�
 | references/gate_writer.md | 作家闸门（W1-W4）明细 | 标准模式·阶段2 推送前 |
 | references/loop_machinery.md | 循环机制全规格（激活条件：SETTING 声明循环且有循环角色） | 循环世界·规格自检不通过时重读（每轮第一动作自检·见阶段1 数据就绪） |
 | references/narrative_style_explicit_graphic.md | Explicit 描写框架 | explicit 场景 |
-| references/session_recovery.md | 创建新世界（脚手架+创作）+ 首次启动（yaml 物化）+ 跨 Session 恢复 + MEMORY.md 模式锁模板 | 创建/首次启动/跨 Session |
+| references/narrative_style_dialogue.md | 对白展开风格（话轮/潜台词/停顿显影/语言质感） | 对话轮 |
+| references/session_recovery.md | 创建新世界（脚手架+创作）+ 首次启动（yaml 物化）+ 跨 Session 恢复 | 创建/首次启动/跨 Session |
 | references/commands.md | 全部命令速查（worldctl.py 子命令 / shell 脚本 / 用户命令） | 命令不会用时 |
 
 ## 命令参考
 
-`/scene <ID>` （场景切换）· `/conflicts`（查看冲突）· `/status` `/status --full`（状态摘要）· `/sync` `/update`（场记更新状态）· `/save [名]` `/load <名>`（存档管理）· `/reset-scene [场景ID]`（重置场景到 start_snapshot 状态·缺省=焦点场景）· `/audit`（三合一审计流程：机械核验=worldctl validate/audit/gate·戏剧家 D1-D10·作家 W1-W4·场记写入检查——详情见 references/commands.md）
+`/scene <ID>` （场景切换）· `/conflicts`（查看冲突）· `/status` `/status --full`（状态摘要）· `/sync` `/update`（场记更新状态）· `/save [名]` `/load <名>`（存档管理）· `/reset-scene [场景ID]`（重置场景到 start_snapshot 状态·缺省=焦点场景）· `/import-card <角色卡.png...>`（导入 SillyTavern 角色卡：脚本提取全部字段→LLM 综合生成正式档案·详情见 references/import_cards.md）· `/audit`（三合一审计流程：机械核验=worldctl validate/audit/gate·戏剧家 D1-D10·作家 W1-W4·场记写入检查——详情见 references/commands.md）

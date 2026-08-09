@@ -12,6 +12,7 @@ worlds/*/scenes/
 worlds/*/off_focus/
 worlds/*/snaps/
 worlds/*/archive/
+worlds/*/import/
 worlds/*/*_state.yaml
 worlds/*/world_state.yaml
 worlds/*/world_map.yaml
