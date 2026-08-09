@@ -1,0 +1,130 @@
+# WorldSim — Where Worlds Come to Life
+
+> World Simulator · Story Engine
+> You speak, and a world comes alive. Characters live, and the world remembers.
+
+**中文版: [README.md](README.md)**
+
+---
+
+## What Is This
+
+WorldSim is an **Agent Skill** — not a standalone app, but a capability pack you install into your AI client, teaching it to run a world that is genuinely alive.
+
+Once installed, your AI assistant stops being just a chatbot. It becomes a **world simulator**: you give it a sentence, and it sets a world in motion and tells living stories.
+
+What "alive" means: characters have their own obsessions, fears, and hard limits. The ones you hurt remember you hurt them. Stories keep happening where you're not watching. Pain leaves marks on characters, marks accumulate, and characters change — truly and irreversibly.
+
+**The protagonists of this world are its characters, not the player.** You are part of it too — you're the one who decides who gets to remember, and who stays forgotten.
+
+Behind every word you say, three people inside the engine are working for you — you just can't see them:
+
+- **The Dramatist** — manufactures conflict and cost, pushing characters to the edge
+- **The Writer** — narrates only in details you can see, putting the tension on the page
+- **The Continuity Keeper** — files every decision, every line, every trace, across scenes, sessions, forever
+
+Your only job: **speak.** The world does the rest.
+
+### Your Story Stays Written
+
+Every turn, the engine files the narrative into the current scene's `narrative.md` — Sweetwater's story lands in Sweetwater's narrative, the next scene in the next. Read them in time order and you have a complete novel: the chronicle of that world, from the first line of dialogue to the last full stop.
+
+Want to look back? Open the scene directory under `worlds/{world}/scenes/` — the `narrative.md` files together with their rotated archives hold every word. Read it from chapter one to the end.
+
+---
+
+## Installation
+
+WorldSim is distributed through two channels: **Clawhub** (recommended) and **GitHub**. Same skill either way — pick one.
+
+### Option 1: Install from Clawhub (recommended)
+
+[Clawhub page](https://clawhub.ai/zhaowh/skills/worldsim) · Requires the OpenClaw CLI:
+
+```sh
+openclaw skills install @zhaowh/worldsim
+```
+
+### Option 2: Install from GitHub
+
+```sh
+git clone https://github.com/zhaowh/worldsim.git
+```
+
+Place the `worldsim` directory (or a symlink to it) in your client's skills directory — e.g. `.codex/skills/` or `.claude/skills/` for Codex / Claude Code–style clients — so the final path is `…/skills/worldsim/`.
+
+### Requirements
+
+- **Python 3.10+** and **PyYAML** (runtime dependency of the state engine `worldctl.py`)
+- **sh** (POSIX shell, used by the script toolchain)
+- A client that supports Agent Skills (OpenClaw / Codex / Claude Code, etc.)
+
+---
+
+## How to Play
+
+### Getting Started in Three Steps
+
+1. **Create a world** — tell it 「create a world <name>」 and what kind of world you want to see. It scaffolds the lore, the character files, and the conflict seeds — give it a single sentence if you're lazy, or polish it together if you want.
+2. **Start the world** — say 「start the <name> world.」 The engine materializes everything, paints the world's entrance, then **waits at the starting line for you.**
+3. **Speak** — say the first thing you want to do in that world. The story begins with that line — and never fully returns to how it was.
+
+### What You'll Discover
+
+- **Characters are not NPCs.** They have obsessions. The reconciliation you want may cost something real; the ones you betrayed will remember.
+- **Cost is irreversible.** Resources change hands, relationships break, control shifts — what's lost does not come back.
+- **The world runs where you're not looking.** Characters in the corner make their own choices — until fate brings you together, and by then, everything has a trail.
+- **You can be anyone.** 「switch to Dolores」— wake up inside her eyes; 「switch to the guest」— be yourself again, watching the world turn on the choice you just made.
+- **Time is yours.** Save and load anytime — live the same choice two ways; reopen a scene, reset the whole world, or start a different timeline.
+- **Loop worlds work too.** You can even build a world that resets every day — and then watch someone begin to *remember*.
+
+---
+
+## Try It Now: The Westworld Demo
+
+This is hard to explain in words — so the repo ships with a complete, ready-to-start **example world**: **Westworld**.
+
+It's not just a western skin. It actually *runs* the rules from the show:
+
+- **The loops are real** — Dolores wakes at 06:00 at the ranch gate, walks to the general store at 08:30, and in 90% of loops Rebus harasses her there; Hector robs the Mariposa at 13:00 sharp, every day.
+- **Resets differ by tier** — script-tier Hosts are wiped clean; drifting Hosts keep time-blind shadow fragments — a strange melody, a hand that once held theirs; awakened Hosts keep the key anchors — names, promises, turning points. Stand at the reset point at dawn and watch who remembers, who doesn't, and how much.
+- **Pain is the key to awakening** — script → drift → awakened → transcendent, each step traceable. No sudden betrayal.
+- **Cracks spread** — Maeve's memory fragments from previous loops seep into the current one; her daughter is erased every reset, but the pain of loss stays at the neural level.
+- **The hidden threads actually run** — Peter Abernathy drops a photograph that doesn't belong to the West; the line he speaks in his breakdown freezes every Host present for 0.5 seconds; beneath the church lies the entrance to a maze that exists on no map.
+
+**How to verify it?** Say 「start Westworld」 and go test it yourself: whisper her daughter's name to Maeve, watch this loop's reaction, then watch her reaction at dawn; speak that line out loud and watch the Hosts freeze; pry open the cellar hatch behind the Mariposa bar — then check whether it's still open the next morning.
+
+Or 「switch to Maeve」 and live a full loop inside her body — counting the clock chimes as the last table leaves, then deciding whether to open that hatch.
+
+---
+
+## It's Just an Example
+
+WorldSim builds any world you want: a medieval castle, a cyberpunk rain-soaked night, a one-sentence world of your own invention — the same engine, the same "making characters come alive."
+
+If you haven't settled on a world yet, start with Westworld — it's already in the repo, and saying 「start Westworld」 puts you on the train.
+
+---
+
+## Useful Phrases
+
+| What you want | What to say |
+|---------------|-------------|
+| See where the world is | `/status` |
+| See the conflicts brewing in the dark | `/conflicts` |
+| Become a character, live through their eyes | 「switch to Dolores」 |
+| Save / load (live one choice two ways) | `/save [name]` · `/load <name>` |
+| Reopen a scene | `/reset-scene [scene ID]` |
+| Restart the whole world | `/reset` |
+| Director's monitor (see every engine decision) | `/loud` |
+| Back to immersion mode | `/silent` |
+
+---
+
+## License
+
+MIT License (Copyright © 2026 zhaowh). Free to use, modify, and distribute, including commercially, provided the copyright notice is retained. See [`LICENSE`](LICENSE).
+
+---
+
+*Where Worlds Come to Life.*

@@ -1,0 +1,36 @@
+__pycache__/
+*.pyc
+archive/
+
+# worlds 目录默认忽略，仅保留 westworld 与 malena 两个世界
+worlds/*
+!worlds/westworld/
+!worlds/malena/
+
+# 保留的世界目录内，仍只跟踪静态 .md，运行时数据一律忽略
+worlds/*/scenes/
+worlds/*/off_focus/
+worlds/*/snaps/
+worlds/*/archive/
+worlds/*/*_state.yaml
+worlds/*/world_state.yaml
+worlds/*/world_map.yaml
+worlds/*/conflicts.yaml
+
+# 备份/临时文件（sim-up/down.sh 的 rsync 排除项，git 应保持一致）
+*.bak*
+*.tmp
+*.swp
+*~
+
+# 露骨叙事风格参考，不进版本库
+references/narrative_style_explicit_graphic.md
+
+# 会话模式锁（运行时状态·跨会话恢复用·不进版本库）
+MEMORY.md
+
+# 系统/编辑器文件
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

@@ -1,0 +1,6 @@
+# pending_actions.yaml — 焦外事件记录层（触发式·初始模板）
+# 与 conflicts 互补：CT=冲突视角·此处=事件视角
+# 首次启动物化时从本模板复制为 worlds/{世界名}/off_focus/pending_actions.yaml
+# 焦外角色行动/状态/时段/结果/预计影响/揭示场景——有变化才写，禁止逐字复制 conflicts
+已完成: {}
+活跃中: {}
