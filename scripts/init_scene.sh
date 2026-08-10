@@ -64,6 +64,7 @@ fi
 
 mkdir -p "$SCENE_DIR"
 
+
 # scene_card.md（字段名与 templates/scene_card.md 对齐：类型(INT/EXT)/基准时间；非替换字段用 <!-- --> 注释占位，不生成"空提示文本"）
 cat > "$SCENE_DIR/scene_card.md" << 'CARD'
 # 场景卡片
@@ -128,12 +129,15 @@ PYEOF
     fi
 fi
 
-# start_snapshot.md（角色姿态/道具位置用 <!-- --> 注释占位，与 templates/start_snapshot.md 对齐——不生成空列表）
+# start_snapshot.md（角色姿态/道具位置用 <!-- --> 注释占位，与 templates/start_snapshot.md 对齐——不生成空列表；开场轮次由下方自动填当前轮次）
 cat > "$SCENE_DIR/start_snapshot.md" << 'SNAP'
 # 场景起点快照 — __SCENE_NAME__
 
 ## 冻结时间
 第X日 HH:MM
+
+## 开场轮次
+<!-- 待填：场景开场时世界所在轮次 -->
 
 ## 角色姿态（此场景开场时的位置/姿势/状态）
 - <!-- 角色名：站立/坐/靠位置+正在做什么 -->
@@ -164,6 +168,13 @@ sed -i "s/__SCENE_TYPE__/$SCENE_TYPE_E/g" "$SCENE_DIR/scene_card.md"
 sed -i "s/__SCENE_TIME__/$SCENE_TIME_E/g" "$SCENE_DIR/scene_card.md"
 sed -i "s/__SCENE_CAST__/$SCENE_CAST_E/g" "$SCENE_DIR/scene_card.md"
 sed -i "s/第X日 HH:MM/$SCENE_TIME_E/g" "$SCENE_DIR/start_snapshot.md"
+# 开场轮次自动填当前轮次（场景开场=切换发生时=当前轮次·重置场景时回退依据）
+if [ -f "$WORLD_DIR/world_state.yaml" ]; then
+  CUR_ROUND=$(grep -m1 "^轮次:" "$WORLD_DIR/world_state.yaml" 2>/dev/null | sed 's/^轮次:[[:space:]]*//' | tr -d "[:space:]'\"")
+  if [ -n "$CUR_ROUND" ]; then
+    sed -i "s|<!-- 待填：场景开场时世界所在轮次 -->|$CUR_ROUND|" "$SCENE_DIR/start_snapshot.md"
+  fi
+fi
 
 # ── CHAR_state 骨架补建（防线：write-raw 要求状态文件已存在——出场角色缺状态文件则当场建骨架）──
 if [ -n "$SCENE_CAST" ]; then
@@ -216,3 +227,12 @@ if [ -f "$WS_FILE" ]; then
   fi
   echo "[OK] world_state.焦点场景 已更新为 $SCENE_ID"
 fi
+
+# ── 待填清单输出（对齐 create_world.sh 模式：脚本只生成骨架——填充由 LLM 创建后立即完成·禁止带占位运行）──
+echo ""
+echo "【场景待填清单·创建后立即填充·禁止带占位运行】:"
+echo "  1. scene_card.md      焦外/在场 · 场景目标 · 前情钩子（当前为 <!-- --> 占位注释）"
+echo "  2. scene_state.yaml   物理锚点≥5 / 道具 / 核心状态快照 / 出场角色摘要（当前为 '<!-- 待填充 -->'）"
+echo "  3. start_snapshot.md  角色姿态 / 道具位置（当前为 <!-- --> 占位注释·开场轮次已自动填）"
+echo "  4. CHAR_state         出场角色状态文件已建骨架——核心状态/情绪/压力水平/防御有效性按当前剧情填充（勿留模板默认值）"
+exit 0

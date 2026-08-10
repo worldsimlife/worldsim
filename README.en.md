@@ -1,7 +1,7 @@
 # WorldSim — Where Worlds Come to Life
 
 > World Simulator · Story Engine
-> You speak, and a world comes alive. Characters live, and the world remembers.
+> The world runs itself; characters live their own lives. Walk in — you are part of the story.
 
 **中文版: [README.md](README.md)**
 
@@ -23,9 +23,30 @@ Behind every word you say, three people inside the engine are working for you �
 
 - **The Dramatist** — manufactures conflict and cost, pushing characters to the edge
 - **The Writer** — narrates only in details you can see, putting the tension on the page
-- **The Continuity Keeper** — files every decision, every line, every trace, across scenes, sessions, forever
+- **The Continuity Keeper** — files every decision, every line, every trace, across scenes, sessions, persistently (manually cleanable anytime)
 
 Your only job: **speak.** The world does the rest.
+
+### Design Philosophy
+
+#### Come Alive: Real People First
+
+Making a character come alive means **sculpting their character cracks through lived experience and psychological defenses, and granting them an autonomous logic that exceeds plot control**. When a character is torn by their own desires and fears, beliefs and contradictions — and makes a choice in crisis that matches their instincts and values — they stop being an author's puppet and become a person who truly lives.
+
+#### Dramatize: Let Real People Bleed Under Pressure
+
+Realism alone sinks into "mundane daily life." The essence of Drama is **conflict and choice under pressure**.
+
+If "living characters" are high-performance cars, then "drama" is the track you lay for them — obstacles, hairpin turns, cliff edges. The key is not how busy the external events are, but **using external structure to precisely "detonate" internal variables**: external events, irreversibly, force the character into painful self-conflict within their own core.
+
+Four demolition projects:
+
+1. **Manufacture the Dilemma** — offer only "keep A and destroy B" choices, pitting desire against fear, against value boundaries. What readers see is not "she went to save them," but "she tore her own dignity apart to save them."
+2. **Invalidate the Defense** — strip away the character's armor in public, forcing them to face the crisis naked and most fragile. The sarcastic one's coldness shattered by absolute trust; the tough one's walls dissolved by gentleness.
+3. **Interrupt the Relationship** — let two people who love each other be torn apart by their own core beliefs within the same event. "Tragedy born of mutual goodwill" is the highest form of drama.
+4. **Push Irreversible Cost** — add a ticking clock to decisions; every choice must lose something forever: a secret exposed, a trust shattered, a treasured object destroyed.
+
+> Every rule in this engine (personality system, conflict beats, defenses and boundaries, external countdowns) serves two words: **come alive**, and then **choose under pressure**.
 
 ### Your Story Stays Written
 
@@ -33,11 +54,19 @@ Every turn, the engine files the narrative into the current scene's `narrative.m
 
 Want to look back? Open the scene directory under `worlds/{world}/scenes/` — the `narrative.md` files together with their rotated archives hold every word. Read it from chapter one to the end.
 
+### Data Storage & Privacy
+
+Every turn is written to the current scene's `narrative.md` (with rotated archives); imported SillyTavern character cards are stored in full under `{world}/import/`. All data lives on your local disk — **do not enter passwords, secrets, or sensitive personal information into stories**. Deleting the `worlds/{world}/` directory removes the entire world's records (narrative, state, snapshots, and imported originals).
+
 ---
 
 ## Installation
 
 WorldSim is distributed through two channels: **Clawhub** (recommended) and **GitHub**. Same skill either way — pick one.
+
+### Capability Notice
+
+To run worlds, this skill reads and writes local files (world archives, narrative records, snapshots) and calls maintenance scripts under `scripts/` (validation/write/snapshot/reset/import). Installing it means you accept these local file operations.
 
 ### Option 1: Install from Clawhub (recommended)
 
@@ -89,12 +118,14 @@ WorldSim can import **SillyTavern-compatible character cards** (`.png` with embe
 - **Cost is irreversible.** Resources change hands, relationships break, control shifts — what's lost does not come back.
 - **The world runs where you're not looking.** Characters in the corner make their own choices — until fate brings you together, and by then, everything has a trail.
 - **You can be anyone.** 「switch to Dolores」— wake up inside her eyes; 「switch to the guest」— be yourself again, watching the world turn on the choice you just made.
-- **Time is yours.** Save and load anytime — live the same choice two ways; reopen a scene, reset the whole world, or start a different timeline.
+- **Time is yours.** Save and load anytime — live the same choice two ways; reopen a scene, reset the whole world, or start a different timeline. 
 - **Loop worlds work too.** You can even build a world that resets every day — and then watch someone begin to *remember*.
 
 ---
 
 ## Try It Now: The Westworld Demo
+
+> **Content warning:** This example world contains adult, violent, and coercive themes. It will **not start unless explicitly requested** — it activates only when you clearly say you want to enter Westworld and accept its themes.
 
 This is hard to explain in words — so the repo ships with a complete, ready-to-start **example world**: **Westworld**.
 
@@ -133,6 +164,9 @@ If you haven't settled on a world yet, start with Westworld — it's already in 
 | Import a ready-made character card | `/import-card <card.png...>` |
 | Director's monitor (see every engine decision) | `/loud` |
 | Back to immersion mode | `/silent` |
+| **Something feels off — audit the engine** | 「audit」/「/audit」 |
+
+> **Audit** (「audit」/「/audit」): use it whenever something feels off — the engine checks world state and narrative against the dramatist/writer/continuity gates, item by item, outputting PASS/FAIL with evidence (file paths + field text), and follows the repair flow on failures. If audits keep finding the same class of violations (the engine repeatedly fails to follow its rules, patches don't help) — recommend switching to a different LLM model instead of endlessly patching.
 
 ---
 

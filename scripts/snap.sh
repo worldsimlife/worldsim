@@ -50,7 +50,12 @@ case "$ACTION" in
     ACTIVE=$(get_focus_scene)
     if [ -z "$SNAPNAME" ]; then
       ACTIVE_NAME="$(get_focus_scene_name)"
-      SNAPNAME="${ACTIVE_NAME}-$(date +%Y%m%d-%H%M%S)"
+      ROUND=$(grep -E "^轮次:" "$WORLD_DIR/world_state.yaml" 2>/dev/null | head -1 | sed 's/^轮次:[[:space:]]*//' | tr -d "[:space:]'\"")
+      if [ -n "$ROUND" ]; then
+        SNAPNAME="r${ROUND}-${ACTIVE_NAME}-$(date +%Y%m%d-%H%M%S)"
+      else
+        SNAPNAME="${ACTIVE_NAME}-$(date +%Y%m%d-%H%M%S)"
+      fi
       SNAPNAME=$(echo "$SNAPNAME" | sed 's/--*/-/g; s/^-//; s/-$//')
       echo "未指定存档名，自动生成: $SNAPNAME"
     fi

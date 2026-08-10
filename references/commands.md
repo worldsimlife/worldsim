@@ -9,8 +9,9 @@
 
 | 子命令 | 用法 |
 |--------|------|
-| read（全部） | `python3 {skill_dir}/scripts/worldctl.py <世界> read` |
-| read（限文件） | `python3 {skill_dir}/scripts/worldctl.py <世界> read --files scene_state,conflicts` |
+| read（默认·核心集） | `python3 {skill_dir}/scripts/worldctl.py <世界> read` | 加载世界必读：world_state/conflicts/焦点场景 scene_state/焦内 CHAR_state（CHAR 按需补读） |
+| read（指定文件） | `python3 {skill_dir}/scripts/worldctl.py <世界> read world_state conflicts` | 位置参数=文件 key 过滤（或 `--files a,b,c`） |
+| read（全量） | `python3 {skill_dir}/scripts/worldctl.py <世界> read --all` | 调试用全量（23 文件） |
 | write（增量合并） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write` |
 | write（全量覆写） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write --full` |
 | write-raw（单字段） | `python3 {skill_dir}/scripts/worldctl.py <世界> write-raw <文件key> <YAML键> "内容"` |
@@ -19,7 +20,7 @@
 | append-raw（单字段追加） | `python3 {skill_dir}/scripts/worldctl.py <世界> append-raw <文件key> <YAML键> "内容"` |
 | audit（预检） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> audit` | 只校验不落盘；通过 → `AUDIT OK`；硬性违规 → 列出全部 exit 1；仅软性警告 → 打印警告 exit 0 |
 | validate | `python3 {skill_dir}/scripts/worldctl.py <世界> validate` | YAML 格式报错 + 内容级警告（load 后/跨 Session 恢复后必跑；含同物理地点场景元素继承检查） |
-| grep | `python3 {skill_dir}/scripts/worldctl.py <世界> grep <关键词>` | 全仓（含所有场景 scene_state）搜索元素注册原文——**使用已有元素前核对形态/位置/状态的标准工具（D11/W4 前置·防凭印象改写元素）**；无匹配=未注册=使用即幻觉 |
+| grep | `python3 {skill_dir}/scripts/worldctl.py <世界> grep <关键词>` | 全仓（含所有场景 scene_state）搜索元素注册原文——**使用已有元素前核对形态/位置/状态/性质的标准工具（D11/W4 前置·防凭印象改写元素）**；无匹配=未注册=使用即幻觉 |
 | delete | `python3 {skill_dir}/scripts/worldctl.py <世界> delete <文件key> <键路径>` | 删整条 CT / pending 条目；批量流支持 `###DELETE:` |
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |
 
@@ -58,7 +59,7 @@
 | `/save [名]` / `/load <名>` | 存档管理 |
 | `/silent` | 切回静默模式（全局默认·沉浸·只推叙事正文）——world_state 写 `输出模式: 静默` |
 | `/loud` / 说「调试」「标准模式」 | 切到标准模式（完整回复正文 + D1-D10/W1-W4 闸口）——world_state 写 `输出模式: 标准` |
-| 「审计」/「戏剧家审计」/「/audit」 | **三合一审计流程**（LLM 按 gate 规格执行·机械项调用现成工具，不重写脚本）：① 机械核验=worldctl.py `validate` + `audit` + `gate`（现成）② 戏剧家审计=加载 references/gate_dramatist.md → D1-D10 逐项（使命三问/实质推进/抽象方/强度/字段质量/循环轨道）③ 作家审计=加载 references/gate_writer.md → W1-W4 逐项（POV 可见/身体显影/代价在纸上/锚点核对）④ 场记写入检查=时间/轮次单调/倒计时演化/反应轨迹同步/叙事落盘。输出=逐项 PASS/FAIL + 证据（文件路径+字段原文）；FAIL→按 gate 修复流程（≤2 轮），超限终止报告 |
+| 「审计」/「戏剧家审计」/「/audit」 | **用户觉察不对劲时使用**——三合一审计流程（LLM 按 gate 规格执行·机械项调用现成工具，不重写脚本）：① 机械核验=worldctl.py `validate` + `audit` + `gate`（现成）② 戏剧家审计=加载 references/gate_dramatist.md → D1-D10 逐项（使命三问/实质推进/抽象方/强度/字段质量/循环轨道）③ 作家审计=加载 references/gate_writer.md → W1-W4 逐项（POV 可见/身体显影/代价在纸上/锚点核对）④ 场记写入检查=时间/轮次单调/倒计时演化/反应轨迹同步/叙事落盘。输出=逐项 PASS/FAIL + 证据（文件路径+字段原文）；FAIL→按 gate 修复流程（≤2 轮），超限终止报告。**若审计反复发现同类违规（LLM 老是不按 skill 执行·补丁无效）→ 主动建议用户更换 LLM model——不无限打补丁·诚实承认模型能力/注意力上限** |
 
 ---
 

@@ -30,7 +30,6 @@ from pathlib import Path
 SKILL_DIR = Path(os.environ.get("WORLDSIM_DIR", Path(__file__).resolve().parent.parent))
 CHAR_STATE_PREFIX = "CHAR_"
 CHAR_STATE_SUFFIX = "_state.yaml"
-REACTION_TRAJECTORY_WINDOW = 5  # 反应轨迹保留最近 N 轮——APPEND 后超窗自动裁剪最旧块（脚本执行·LLM 每轮只需 APPEND 本轮）
 
 # ── 文件发现 ──────────────────────────────────────────────────────
 def get_world_dir(world: str) -> Path:
@@ -93,12 +92,7 @@ def discover_files(world_dir: Path, scene_dir: Path | None) -> dict[str, Path]:
 # ── CHAR key 命名归一化 ──────────────────────────────────────────
 def resolve_char_file(existing: dict, key: str, world_dir: Path):
     """解析 CHAR_* 写入目标。已存在→直接映射；不存在→检查空格/下划线互换及缺失 _state 后缀的相似 key，
-    命中则映射到已有文件并警告（杜绝同一角色产生两份状态文件）；再试唯一包含匹配（写错全名如
-    CHAR_Maeve_state → CHAR_Maeve Millay_state 自动纠正）；否则→按 key 新建。
-    防御: key 若误带 .yaml 扩展名（如 CHAR_Guest_state.yaml）→ 剥离后归一化，禁止生成 .yaml.yaml 重复文件。"""
-    if key.endswith(".yaml"):
-        print(f"[WARN] key '{key}' 误带 .yaml 扩展名——已剥离为 '{key[:-5]}'（防止生成 {key}.yaml 重复文件）", file=sys.stderr)
-        key = key[:-5]
+    命中则映射到已有文件并警告（杜绝同一角色产生两份状态文件）；否则→按 key 新建。"""
     if key in existing:
         return existing[key], None
     if key.startswith(CHAR_STATE_PREFIX):
@@ -112,33 +106,8 @@ def resolve_char_file(existing: dict, key: str, world_dir: Path):
         for v in variants:
             if v in existing:
                 return existing[v], f"[WARN] key '{key}' 与已有文件 '{existing[v].name}' 命名不一致(空格/下划线/_state)，已映射到已有文件，避免产生重复"
-        # 唯一包含匹配：写错全名（缺字/多字/简写）时，扫描 CHAR_*.md 档案做包含判断——唯一命中=自动纠正
-        stem2 = key[len(CHAR_STATE_PREFIX):]
-        if stem2.endswith("_state"):
-            stem2 = stem2[:-len("_state")]
-        if stem2.strip():
-            md_hits = []
-            for fp in sorted(world_dir.glob("CHAR_*.md")):
-                full = fp.stem[len("CHAR_"):]
-                if stem2 in full or full in stem2:
-                    md_hits.append(full)
-            if len(md_hits) == 1:
-                target = CHAR_STATE_PREFIX + md_hits[0] + "_state"
-                if target in existing:
-                    return existing[target], f"[WARN] key '{key}' 与已有档案 '{md_hits[0]}' 唯一包含匹配——已自动映射到 {existing[target].name}（全名写错自动纠正）"
         return world_dir / f"{key}.yaml", None
     return None, None
-
-def resolve_file_key(existing: dict, file_key: str):
-    """FILE key 归一化（兼容性兜底）：直接命中注册表 → 剥离路径/扩展名后再命中 → 未命中返回 None。
-    允许 ###FILE: off_focus/pending_actions 这类直觉路径写法落盘，不必死记注册表 key。"""
-    if file_key in existing:
-        return file_key
-    if file_key:
-        stem = Path(file_key).stem  # off_focus/pending_actions.yaml → pending_actions
-        if stem in existing:
-            return stem
-    return None
 
 # ── 深层合并 ──────────────────────────────────────────────────────
 def deep_merge(base: dict, delta: dict) -> dict:
@@ -385,22 +354,7 @@ def cmd_write(world_dir: Path, full_replace: bool = False):
             continue
         filepath, note = resolve_char_file(existing, key, world_dir)
         if filepath is None:
-            # 兼容：顶层键=某文件内的顶层键（裸内容写法，如「已探索区域: …」）→ 自动定位文件
-            for fkey, fp in existing.items():
-                try:
-                    fdata = yaml.safe_load(fp.read_text()) or {}
-                except Exception:
-                    continue
-                if key in fdata:
-                    filepath = fp
-                    note = f"[兼容] 顶层键 '{key}' 自动定位到文件 {fkey}"
-                    break
-        if filepath is None:
-            print(
-                f"[WARN] 未知 key: {key}, 跳过（--full 顶层键应为文件 key，如 world_map / conflicts / CHAR_Guest_state / pending_actions；"
-                f"值=该文件完整内容。也可直接写文件顶层键自动定位）",
-                file=sys.stderr,
-            )
+            print(f"[WARN] 未知 key: {key}, 跳过", file=sys.stderr)
             continue
         if note:
             print(note, file=sys.stderr)
@@ -424,22 +378,16 @@ def cmd_write(world_dir: Path, full_replace: bool = False):
 # ── 语义不变量（audit）─────────────────────────────────────────
 # 脚本校验线（与 SKILL.md §记忆维护/§场记 一致）
 ANCHOR_LIMIT_TOTAL = 3000
-ANCHOR_LIMIT_ENTRY = 150
-
-def strip_wrapping_quotes(content: str) -> str:
-    """剥除 YAML 风格成对包裹引号（'...' / "..."）——change set 内容允许带引号书写。
-    只剥最外层一对；内部不处理转义；不带引号则原样返回；剥后为空返回空串（由调用方按空值处理）。"""
-    if len(content) >= 2 and content[0] in ("'", '"') and content[-1] == content[0]:
-        return content[1:-1]
-    return content
-
+ANCHOR_LIMIT_ENTRY = 100
 
 def parse_batch_entries(lines):
-    """解析 ###FILE/###KEY/###APPEND/###DELETE 行到操作列表。
-    返回 (ops, errors)。ops 元素: (kind, file_key, key_path, content, append)
-    kind ∈ {"write", "delete"}。空值 KEY 覆盖在此阶段即拒绝。"""
+    """解析 ###FILE/###KEY/###APPEND/###DELETE/###META 行到操作列表。
+    返回 (ops, errors, meta_lines)。ops 元素: (kind, file_key, key_path, content, append)
+    kind ∈ {"write", "delete"}。空值 KEY 覆盖在此阶段即拒绝。
+    ###META: 是批次级元数据（静默自查锚点）——不产生写入 ops，单独收集返回，不落盘。"""
     ops = []
     errors = []
+    meta_lines = []
     current_file = None
     current_key = None
     current_append = False
@@ -448,7 +396,7 @@ def parse_batch_entries(lines):
     def flush():
         nonlocal current_file, current_key, current_append, current_content
         if current_file and current_key:
-            content = strip_wrapping_quotes("\n".join(current_content).rstrip("\n"))
+            content = "\n".join(current_content).rstrip("\n")
             if not current_append and content == "":
                 errors.append(f"空值覆盖已拒绝: {current_file}.{current_key}（###KEY: 值不能为空；追加请用 ###APPEND:，覆盖需带完整值）")
             else:
@@ -458,7 +406,9 @@ def parse_batch_entries(lines):
         current_content = []
 
     for line in lines:
-        if line.startswith("###FILE:"):
+        if line.startswith("###META:"):
+            meta_lines.append(line[8:].strip())
+        elif line.startswith("###FILE:"):
             flush()
             current_file = line[8:].strip()
         elif line.startswith("###KEY:"):
@@ -474,20 +424,9 @@ def parse_batch_entries(lines):
             rest = line[10:].strip()
             parts = rest.split(None, 1)
             if len(parts) == 2:
-                # 空格分隔：###DELETE: <文件key> <YAML键路径>
                 ops.append(("delete", parts[0], parts[1], "", False))
             else:
-                # 点路径兼容（与 ###KEY: 风格统一）：###DELETE: <文件key>.<YAML键路径>
-                # 文件 key 均不含点（world_state/conflicts/CHAR_*_state/…），首段安全拆分
-                dots = rest.split(".", 1)
-                if len(dots) == 2 and dots[0] and dots[1]:
-                    ops.append(("delete", dots[0], dots[1], "", False))
-                else:
-                    errors.append("###DELETE 格式: ###DELETE: <文件key> <YAML键路径>（或 <文件key>.<YAML键路径>）")
-        elif line.startswith("###META:"):
-            # 静默自查锚点（2026-08-09）：批次内元数据行——解析忽略，不落盘、不产生 ops（如「###META: 压力扫描 人际✓/…」）
-            flush()
-            continue
+                errors.append("###DELETE 格式: ###DELETE: <文件key> <YAML键路径>")
         elif current_file and current_key:
             # 内容行内嵌标记检测（防拼接 bug）：行内出现 ###FILE:/###KEY:/###APPEND: 但不在行首 = 上一字段内容被拼接
             for marker in ("###FILE:", "###KEY:", "###APPEND:", "###DELETE:"):
@@ -499,7 +438,7 @@ def parse_batch_entries(lines):
                     break
             current_content.append(line)
     flush()
-    return ops, errors
+    return ops, errors, meta_lines
 
 
 def check_batch(ops, world_dir):
@@ -532,11 +471,7 @@ def check_batch(ops, world_dir):
             continue
         key_path = key_path_str.split(".")
 
-        # conflicts.yaml 路径归一化：去掉多余的 `conflicts.` 根前缀
-        if file_key == "conflicts" and key_path and key_path[0] == "conflicts":
-            key_path = key_path[1:]
-
-        # 批次整体必含项标记（在归一化之后判断——带 conflicts. 前缀的键路径也计入）
+        # 批次整体必含项标记
         if file_key == "conflicts" and key_path and key_path[0].startswith("CT-"):
             has_ct_op = True
         if file_key == "world_state" and key_path == ["时间", "具体时间"]:
@@ -547,6 +482,12 @@ def check_batch(ops, world_dir):
             has_ws_summary = True
         if file_key == "scene_state" and key_path == ["场景时间线"]:
             has_scene_timeline = True
+
+        # conflicts.yaml 路径归一化：去掉多余的 `conflicts.` 根前缀
+        if file_key == "conflicts" and key_path and key_path[0] == "conflicts":
+            key_path = key_path[1:]
+
+        # ① 角色反应四件套 + 代价非空（CT 推进的硬性格式）
         if (file_key == "conflicts" and len(key_path) >= 3
                 and key_path[0].startswith("CT-") and key_path[1] == "当前节拍" and key_path[2] == "角色反应"):
             for token in ("驱动:", "情绪:", "强度:", "代价:"):
@@ -571,11 +512,19 @@ def check_batch(ops, world_dir):
             if "当前载体=" not in content and "当前持有者=" not in content:
                 hard.append((idx, f"{file_key}.{key_path_str}: 被争夺资源缺「当前载体=/当前持有者=」（抽象写载体·实体写持有者·写不出=不合格）"))
 
-        # ③ 记忆锚点：单条 ≤150 / 写入后总量 ≤3000（软性警告·不拦截——内容质量类，validate 汇总）
+        # ③ 记忆锚点：单条 ≤100 / 写入后总量 ≤3000（软性警告·不拦截——内容质量类，validate 汇总）
         if file_key.startswith(CHAR_STATE_PREFIX) and key_path == ["记忆锚点"]:
             filepath, _ = resolve_char_file(existing, file_key, world_dir)
             if append:
-                entries = re.split(r"\n\s*(?:·\s*)?(?=\[)", content)
+                # 结构化列表：每条内容字段 ≤100；旧字符串：按 [ 切条
+                if bool(re.match(r"^\s*-\s*(?:轮次|时间)[:：]", content)):
+                    try:
+                        items = yaml.safe_load(content) or []
+                    except Exception:
+                        items = []
+                    entries = [str(it.get("内容", "")) for it in items if isinstance(it, dict) and it.get("内容")]
+                else:
+                    entries = re.split(r"\n\s*(?:·\s*)?(?=\[)", content)
                 for ent in entries:
                     ent = ent.strip()
                     if len(ent) > ANCHOR_LIMIT_ENTRY:
@@ -584,7 +533,9 @@ def check_batch(ops, world_dir):
                 if filepath and filepath.exists():
                     try:
                         old = (yaml.safe_load(filepath.read_text()) or {}).get("记忆锚点", "")
-                        if isinstance(old, str) and old:
+                        if isinstance(old, list):
+                            total += sum(len(str(it.get("内容", ""))) for it in old if isinstance(it, dict))
+                        elif isinstance(old, str) and old:
                             total += len(old)
                     except Exception:
                         pass
@@ -614,26 +565,13 @@ def check_batch(ops, world_dir):
                 and key_path[0] == "时间线" and key_path[-1] == "事件" and not append):
             soft.append((idx, f"{file_key}.{key_path_str}: 时间线事件默认 ###APPEND 追加；###KEY 覆盖仅在 validate 告警后的压缩维护时使用（读旧值+压缩合并+补新）"))
 
-        # ⑥b 时间线事件内部禁「·」（硬性顶回——2026-08-06 实测：validate 按「·」计数转折点，
-        #     事件内部用「·」=每个细节都被误计为转折点=必然超限告警；内部请用「，」/「→」分隔细节）
-        if (file_key == "world_state" and len(key_path) >= 3
-                and key_path[0] == "时间线" and key_path[-1] == "事件"):
-            for ln in content.splitlines():
-                line = ln.strip()
-                if not line:
-                    continue
-                inner = line[2:] if line.startswith("· ") else line
-                if "·" in inner:
-                    hard.append((idx, f"{file_key}.{key_path_str}: 时间线事件内部禁「·」（validate 按「·」计数转折点——仅行首「· 」算转折点，内部请用「，」/「→」分隔细节）"))
-                    break
-
         # ⑦ world_state 键表外字段（软性警告——无语义定义的漂移字段）
         if file_key == "world_state" and key_path:
-            WS_TOP_KEYS = {"焦点场景", "轮次", "时间", "地点", "外部倒计时", "全局标记", "时间线", "重置记录", "叙事约定", "输出模式"}
+            WS_TOP_KEYS = {"焦点场景", "轮次", "时间", "地点", "外部倒计时", "全局标记", "时间线", "重置记录", "叙事约定"}
             WS_TIME_KEYS = {"基准时间", "具体时间", "时间流速比", "前情描述"}
             WS_LOC_KEYS = {"当前区域", "已探索区域"}
             if key_path[0] not in WS_TOP_KEYS:
-                soft.append((idx, f"world_state.{key_path_str}: 未知顶层键（键表: 焦点场景/轮次/时间/地点/外部倒计时/全局标记/时间线/重置记录/叙事约定/输出模式）"))
+                soft.append((idx, f"world_state.{key_path_str}: 未知顶层键（键表: 焦点场景/轮次/时间/地点/外部倒计时/全局标记/时间线/重置记录/叙事约定）"))
             elif len(key_path) >= 2 and key_path[0] == "时间" and key_path[1] not in WS_TIME_KEYS:
                 soft.append((idx, f"world_state.{key_path_str}: 未知时间子键（键表: 基准时间/具体时间/时间流速比/前情描述）"))
             elif len(key_path) >= 2 and key_path[0] == "地点" and key_path[1] not in WS_LOC_KEYS:
@@ -691,44 +629,18 @@ def check_batch(ops, world_dir):
                 if key_path[0] not in SCENE_STATE_KEYS:
                     hard.append((idx, f"{file_key}.{key_path_str}: scene_state 顶层键必须在键表内（当前 '{key_path[0]}'）——疑似 FILE 标记错位/字段写入错误文件"))
 
-        # ⑬b 反应轨迹覆盖写保护（硬性——防 change set 漏写历史段把磁盘旧值覆盖成旧内容）
-        # 覆盖写必须保留磁盘旧值的首末轮次标记；丢失=顶回。推荐改用 ###APPEND: 反应轨迹 每轮只追加本轮。
-        if (file_key.startswith(CHAR_STATE_PREFIX) and key_path == ["反应轨迹"] and not append):
-            filepath_rt, _ = resolve_char_file(existing, file_key, world_dir)
-            if filepath_rt and filepath_rt.exists():
-                try:
-                    old_rt = (yaml.safe_load(filepath_rt.read_text()) or {}).get("反应轨迹", "")
-                except Exception:
-                    old_rt = ""
-                if isinstance(old_rt, str) and old_rt.strip():
-                    marks = re.findall(r"第(\d+)轮", old_rt)
-                    if marks:
-                        first_mark = f"第{marks[0]}轮"
-                        last_mark = f"第{marks[-1]}轮"
-                        missing = [m for m in (first_mark, last_mark) if m not in content]
-                        if missing:
-                            hard.append((idx, f"{file_key}.反应轨迹: 覆盖写新内容缺少磁盘旧值轮次标记 {'/'.join(missing)}——疑似漏写历史轨迹（覆盖写将丢失旧值）；应从磁盘读旧值+追加本轮后整体覆盖，或改用 ###APPEND: 反应轨迹 只追加本轮"))
-
-    # ⑩⑪⑫ 批次整体必含项（硬性·完整推进轮——含 world_state.轮次 即视为完整推进轮·查询轮豁免；批次为空不检查）
-    # ⑩⑪⑫ 批次整体必含项（硬性·完整推进轮——含 world_state.轮次 + 至少一个其他推进字段 即视为完整推进轮·查询轮/纯轮次维护豁免）
-    # 判定: 含轮次但批次只有轮次一条（无其他推进字段）= 纯轮次维护（数据修正），豁免
-    has_other = has_ct_op or has_ws_time or has_ws_summary or has_scene_timeline
-    if has_ws_round and has_other:
-        missing = []
+    # ⑩⑪⑫ 批次整体必含项（软性·完整推进轮——查询轮豁免；批次为空不检查）
+    if ops:
         if not has_ct_op:
-            missing.append("≥1 条 CT 推进/注册（conflicts.CT-XX）——本轮没做冲突决策=没推进")
+            soft.append((-1, "完整推进轮 change set 应含 ≥1 条 CT 推进/注册（conflicts.CT-XX）——查询轮豁免"))
         if not has_ws_time:
-            missing.append("world_state.时间.具体时间 推进")
+            soft.append((-1, "完整推进轮 change set 应含 world_state.时间.具体时间 推进（查询轮豁免）"))
+        if not has_ws_round:
+            soft.append((-1, "完整推进轮 change set 应含 world_state.轮次 +1（查询轮豁免）"))
         if not has_ws_summary:
-            missing.append("world_state.时间.前情描述（≤100字状态短语）")
+            soft.append((-1, "完整推进轮 change set 应含 world_state.前情描述（≤100字状态短语·查询轮豁免）"))
         if not has_scene_timeline:
-            missing.append("scene_state.场景时间线 追加")
-        if missing:
-            hard.append((-1, "完整推进轮（含轮次更新）缺少必含项: " + "；".join(missing) + "——先补全决策/状态字段再写入"))
-    elif ops:
-        # 查询轮（无轮次更新）仍提示软性：若含部分推进字段但漏了轮次，多半是漏写而非查询轮
-        if has_ct_op or has_ws_time or has_scene_timeline:
-            soft.append((-1, "批次含推进字段但缺 world_state.轮次——若为完整推进轮请补轮次；若确为查询轮（/status 等）可忽略"))
+            soft.append((-1, "完整推进轮 change set 应含 scene_state.场景时间线 追加（查询轮豁免）"))
 
     # ⑭ 跨叙事提醒（软性——CROSS_NARRATIVES.md 存在时，完整推进轮应核对深匹配）
     if (world_dir / "CROSS_NARRATIVES.md").exists() and has_ct_op:
@@ -744,8 +656,12 @@ def cmd_audit(world_dir):
     """audit: 校验 stdin 的 change set 草案（###FILE/###KEY/###APPEND 格式），不落盘。
     硬性违规 → 列出全部并 exit 1（草案不合格）；仅软性警告 → 打印警告，exit 0（可写入）。"""
     raw_stdin = sys.stdin.buffer.read().decode("utf-8")
-    ops, parse_errors = parse_batch_entries(raw_stdin.split("\n"))
+    ops, parse_errors, meta_lines = parse_batch_entries(raw_stdin.split("\n"))
     hard, soft = check_batch(ops, world_dir)
+    if meta_lines:
+        print(f"[AUDIT] ###META 回显: {meta_lines[0]}", file=sys.stderr)
+    else:
+        soft.append((0, "未检测到 ###META: 静默自查锚点——完整推进轮批次首行必写：###META: 压力扫描 人际✓/增殖✓/轨道✓/跨叙事✓（查询轮/维护轮豁免）"))
     if hard or parse_errors:
         print(f"[AUDIT] {len(hard) + len(parse_errors)} 个硬性违规——change set 不合格:", file=sys.stderr)
         for e in parse_errors:
@@ -773,7 +689,14 @@ def quick_validate_summary(world_dir):
             except Exception:
                 continue
             mem = cdata.get("记忆锚点", "")
-            if isinstance(mem, str) and mem.strip():
+            if isinstance(mem, list):
+                total = sum(len(str(it.get("内容", ""))) for it in mem if isinstance(it, dict))
+                if total > ANCHOR_LIMIT_TOTAL:
+                    warnings.append(f"{cfp.name}: 记忆锚点 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需按 §记忆淘汰 整理")
+                over = [it for it in mem if isinstance(it, dict) and len(str(it.get("内容", ""))) > ANCHOR_LIMIT_ENTRY]
+                if over:
+                    warnings.append(f"{cfp.name}: {len(over)} 条记忆锚点超单条 {ANCHOR_LIMIT_ENTRY} 字上限")
+            elif isinstance(mem, str) and mem.strip():
                 if len(mem) > ANCHOR_LIMIT_TOTAL:
                     warnings.append(f"{cfp.name}: 记忆锚点 {len(mem)} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需按 §记忆淘汰 整理")
                 entries = re.split(r"\n\s*(?:·\s*)?(?=\[)", mem)
@@ -839,24 +762,10 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
         if file_key == "conflicts" and key_path and key_path[0] == "conflicts":
             key_path = key_path[1:]
 
-        # FILE key 归一化（兼容性兜底）：off_focus/pending_actions → pending_actions
-        resolved_key = resolve_file_key(existing, file_key)
-        if resolved_key is not None:
-            file_key = resolved_key
-        elif file_key.startswith(CHAR_STATE_PREFIX):
-            # CHAR_* 容错：变体/唯一包含匹配（写错全名自动纠正·如 CHAR_Maeve_state → CHAR_Maeve Millay_state）
-            fp_try, note_try = resolve_char_file(existing, file_key, world_dir)
-            if note_try is not None and fp_try is not None and fp_try.stem in existing:
-                print(note_try, file=sys.stderr)
-                file_key = fp_try.stem
-            else:
-                print(f"[ERR] 未知文件 key: {file_key}（注册表内可用: {', '.join(sorted(existing))}）", file=sys.stderr)
-                return False
-        else:
-            print(f"[ERR] 未知文件 key: {file_key}（注册表内可用: {', '.join(sorted(existing))}）", file=sys.stderr)
-            return False
-
         filepath, note = resolve_char_file(existing, file_key, world_dir)
+        if filepath is None:
+            print(f"[ERR] 未知文件 key: {file_key}", file=sys.stderr)
+            return False
         if note:
             print(note, file=sys.stderr)
 
@@ -875,6 +784,46 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 target[k] = {}
             target = target[k]
         leaf = key_path[-1]
+        # 结构化累积字段（记忆锚点/信念演化/偏离登记）：append 时追加为 yaml 列表元素
+        # 判定：content 以「- 轮次:」或「- 轮次：」开头 → 按列表元素追加；否则走字符串追加（兼容旧格式）
+        STRUCTURED_APPEND_FIELDS = {"记忆锚点", "信念演化", "偏离登记"}
+        is_structured_field = (file_key.startswith(CHAR_STATE_PREFIX)
+                               and leaf in STRUCTURED_APPEND_FIELDS)
+        is_list_item_content = bool(re.match(r"^\s*-\s*(?:轮次|时间)[:：]", content))
+        if append and is_structured_field and is_list_item_content:
+            # 解析 change set 中给出的列表元素（可能多条）——直接用 yaml 解析（与 write_yaml 同款）
+            try:
+                new_items = yaml.safe_load(content)
+            except Exception:
+                print(f"[ERR] {file_key}.{'.'.join(key_path)} 结构化追加内容不是合法 YAML 列表，拒绝写入", file=sys.stderr)
+                return False
+            if not isinstance(new_items, list):
+                print(f"[ERR] {file_key}.{'.'.join(key_path)} 结构化追加内容必须是 YAML 列表（- 轮次: ...）", file=sys.stderr)
+                return False
+            new_items = [it for it in new_items if isinstance(it, dict)]
+
+            existing_val = target.get(leaf, [])
+            if not isinstance(existing_val, list):
+                # 旧字符串格式 → 转换为列表（每条旧锚点保留为「内容」元素）
+                existing_val = [{"轮次": "", "内容": ent.strip()}
+                                for ent in re.split(r"\n\s*(?:·\s*)?(?=\[)", str(existing_val))
+                                if ent.strip()]
+            # 重复追加检测：按 轮次+内容 判断
+            for item in new_items:
+                dup = False
+                for e in existing_val:
+                    if (str(e.get("轮次", "")) == str(item.get("轮次", ""))
+                            and str(e.get("内容", "")) == str(item.get("内容", ""))):
+                        dup = True
+                        break
+                if not dup:
+                    existing_val.append(item)
+                else:
+                    print(f"[SKIP] {file_key}.{'.'.join(key_path)} 重复追加已跳过（轮次+内容已存在）", file=sys.stderr)
+            target[leaf] = existing_val
+            write_yaml(filepath, data)
+            print(f"[OK] {file_key}.{'.'.join(key_path)} 已追加 {len(new_items)} 条结构化元素", file=sys.stderr)
+            return True
         if append and leaf in target and isinstance(target[leaf], str) and target[leaf]:
             existing_val = target[leaf]
             # 重复追加检测（硬防护·防同一批次重放/同一内容重复追加）：
@@ -885,22 +834,6 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
             target[leaf] = existing_val.rstrip("\n") + "\n" + content
         else:
             target[leaf] = content
-
-        # 反应轨迹窗口自动裁剪（脚本执行·LLM 零操作）：CHAR_*_state.反应轨迹 APPEND 后按 第N轮 切块，
-        # 块数 > REACTION_TRAJECTORY_WINDOW 时删除最旧块到窗口内（每轮只写本轮·窗口维护不再需要 LLM 读旧值+全量重写）
-        if (file_key.startswith(CHAR_STATE_PREFIX) and key_path == ["反应轨迹"]
-                and append and isinstance(target[leaf], str)):
-            blocks = re.split(r"(?=^第\d+轮)", target[leaf], flags=re.M)
-            blocks = [b for b in blocks if b.strip()]
-            if len(blocks) > REACTION_TRAJECTORY_WINDOW:
-                dropped = blocks[: len(blocks) - REACTION_TRAJECTORY_WINDOW]
-                kept = blocks[-REACTION_TRAJECTORY_WINDOW:]
-                drop_marks = []
-                for d in dropped:
-                    m = re.search(r"第(\d+)轮", d)
-                    drop_marks.append(f"第{m.group(1)}轮" if m else "非标条目")
-                target[leaf] = "".join(kept).rstrip("\n")
-                print(f"[TRIM] {file_key}.反应轨迹 窗口压缩: 删除 {' '.join(drop_marks)}（保留最近 {REACTION_TRAJECTORY_WINDOW} 轮·脚本自动维护·LLM 无需手动窗口重写）", file=sys.stderr)
 
         write_yaml(filepath, data)
         op = "已追加" if append else "已写入"
@@ -913,31 +846,25 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
         raw_stdin = sys.stdin.buffer.read().decode("utf-8")
         lines = raw_stdin.split("\n")
 
-        # 解析 + 语义不变量检查（audit）——字段级违规→单字段顶回；批次级违规（op_index=-1，如完整推进轮缺必含项）→整批拒绝
-        ops, parse_errors = parse_batch_entries(lines)
+        # 解析 + 语义不变量检查（audit）——硬性违规 → 单字段顶回（不整批拒绝）
+        ops, parse_errors, meta_lines = parse_batch_entries(lines)
         hard, soft = check_batch(ops, world_dir)
-        batch_level = [v for idx, v in hard if idx == -1]
-        field_level = [(idx, v) for idx, v in hard if idx != -1]
-        blocked = {idx for idx, _ in field_level}
+        blocked = {idx for idx, _ in hard}
+        if meta_lines:
+            print(f"[AUDIT] ###META 回显: {meta_lines[0]}", file=sys.stderr)
+        else:
+            print("[AUDIT] 软性警告: 未检测到 ###META: 静默自查锚点——完整推进轮批次首行必写（查询轮/维护轮豁免）", file=sys.stderr)
         for e in parse_errors:
             print(f"[AUDIT] 解析失败（该条未写入）: {e}", file=sys.stderr)
-        for idx, v in field_level:
+        for idx, v in hard:
             print(f"[AUDIT] 硬性违规——拒绝该字段写入: {v}", file=sys.stderr)
-        if batch_level:
-            # 批次级违规：整批拒绝，不写任何字段，exit 1（防「缺决策但轮次照写」）
-            print("[AUDIT] 批次级硬性违规——整批拒绝（不写任何字段）:", file=sys.stderr)
-            for v in batch_level:
-                print(f"  - {v}", file=sys.stderr)
-            print("[AUDIT] 请补全决策/状态字段后重提批次（查询轮豁免：不含轮次更新的批次不受此限制）", file=sys.stderr)
-            sys.exit(1)
         # 软性警告不在此逐条打印（避免噪音）——由 quick_validate_summary 汇总（validate 明细）
 
         # ── --dry-run 预演：对比磁盘差异，不落盘 ──
         if dry_run:
             scene_dir = get_scene_dir(world_dir)
             existing = discover_files(world_dir, scene_dir)
-            unknown_count = 0
-            unknown_items = []
+            unknown_keys = 0
             print(f"[DRY-RUN] 预演 {len(ops)} 条操作，{len(blocked)} 条被顶回（不落盘）")
             for idx, (kind, file_key, key_path_str, content, append) in enumerate(ops):
                 if idx in blocked:
@@ -946,45 +873,25 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 if kind == "delete":
                     print(f"  [删除] {file_key}.{key_path_str}")
                     continue
-                # FILE key 归一化 + CHAR_* 容错（与正式写入 write_one 对齐）
-                resolved_dr = resolve_file_key(existing, file_key)
-                if resolved_dr is None and file_key.startswith(CHAR_STATE_PREFIX):
-                    fp_try_dr, note_try_dr = resolve_char_file(existing, file_key, world_dir)
-                    if note_try_dr is not None and fp_try_dr is not None and fp_try_dr.stem in existing:
-                        resolved_dr = fp_try_dr.stem
-                        print(f"  [映射] {file_key} → {fp_try_dr.name}（唯一包含/变体匹配·正式写入将自动纠正）")
-                if resolved_dr is None:
-                    print(f"  [未知文件] {file_key}.{key_path_str}（FILE key 不在注册表——正式写入将被拒）")
-                    unknown_count += 1
-                    unknown_items.append(f"{file_key}.{key_path_str}")
+                fp, _ = resolve_char_file(existing, file_key, world_dir)
+                if fp is None:
+                    unknown_keys += 1
+                    print(f"  [ERR] 未知文件 key: {file_key}（dry-run 拦截·实写将拒绝该字段）")
                     continue
-                fp, _ = resolve_char_file(existing, resolved_dr, world_dir)
                 old_val = None
-                parse_failed = False
-                if fp and fp.exists():
+                if fp.exists():
                     try:
                         d = yaml.safe_load(fp.read_text()) or {}
                         tgt = d
-                        keys_dr = key_path_str.split(".")
-                        tgt_found = True
-                        for i_dr, k_dr in enumerate(keys_dr):
-                            if not isinstance(tgt, dict) or k_dr not in tgt:
-                                tgt_found = False
-                                break
-                            if i_dr == len(keys_dr) - 1:
-                                tgt = tgt[k_dr]
+                        for k in key_path_str.split("."):
+                            if k in tgt and isinstance(tgt[k], dict):
+                                tgt = tgt[k]
                             else:
-                                tgt = tgt[k_dr]
-                                if not isinstance(tgt, dict):
-                                    tgt_found = False
-                                    break
-                        old_val = tgt if tgt_found else None
-                    except Exception as e:
-                        # 与正式写入 write_one 行为对齐：文件解析失败 → 正式写入会被拒
-                        parse_failed = True
-                        print(f"  [ERR] {file_key} 解析失败，正式写入将被拒绝（防止静默清空）: {e}", file=sys.stderr)
-                if parse_failed:
-                    continue
+                                tgt = None
+                                break
+                        old_val = tgt if tgt is not None else None
+                    except Exception:
+                        pass
                 if old_val is None:
                     print(f"  [新增] {file_key}.{key_path_str}")
                 elif str(old_val) == content:
@@ -992,26 +899,13 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 else:
                     action = "追加" if append else "覆盖"
                     print(f"  [{action}] {file_key}.{key_path_str}（旧 {len(str(old_val))}b → 新 {len(content)}b）")
-                    if (append and resolved_dr.startswith(CHAR_STATE_PREFIX) and key_path_str == "反应轨迹"
-                            and isinstance(old_val, str)):
-                        old_blocks = [b for b in re.split(r"(?=^第\d+轮)", old_val, flags=re.M) if b.strip()]
-                        if len(old_blocks) >= REACTION_TRAJECTORY_WINDOW:
-                            print(f"  [TRIM预演] {resolved_dr}.反应轨迹 追加后超 {REACTION_TRAJECTORY_WINDOW} 轮窗口——正式写入将自动删除最旧 {len(old_blocks) + 1 - REACTION_TRAJECTORY_WINDOW} 块")
+            if unknown_keys:
+                print(f"[DRY-RUN] ⚠ {unknown_keys} 条未知文件 key——实写将被拒绝（请检查 ###FILE: 的 key 是否与 discover_files 注册一致）")
             print("[DRY-RUN] ⚠ 非幂等：同一批次只执行一次；执行后确认用 read/validate，禁止重放 write 命令验证")
-            if blocked or unknown_count:
-                parts = []
-                if blocked:
-                    parts.append(f"顶回 {len(blocked)} 条")
-                if unknown_count:
-                    parts.append(f"无法写入 {unknown_count} 条")
-                print(f"[DRY-RUN] ❌ " + " + ".join(parts) + ": " + ", ".join(f"{ops[i][1]}.{ops[i][2]}" for i in blocked) + (", " + ", ".join(unknown_items) if unknown_items else ""))
-            else:
-                print("[DRY-RUN] ✅ 顶回 0 条——批次可安全落盘")
             return
 
         # 逐条写入：顶回违规字段，其余照写
         written_count = 0
-        failed = []
         for idx, (kind, file_key, key_path_str, content, append) in enumerate(ops):
             if idx in blocked:
                 continue
@@ -1020,13 +914,7 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 continue
             if write_one(file_key, key_path_str, content, append=append):
                 written_count += 1
-            else:
-                failed.append(f"{file_key}.{key_path_str}")
         op = "批量追加" if append_mode else "批量写入"
-        if failed:
-            print(f"[FAIL] {len(failed)} 个字段未写入（预期 {len(ops) - len(blocked)} 条，实际写入 {written_count} 个）: {', '.join(failed)}")
-            print(f"[OK] {op}完成：{written_count} 个字段写入，{len(failed)} 个字段失败未落盘——请修复后重提批次")
-            sys.exit(1)
         if blocked:
             print(f"[OK] {op}完成：{written_count} 个字段写入，{len(blocked)} 个字段被顶回（硬性违规）")
         else:
@@ -1111,27 +999,6 @@ def cmd_delete(world_dir: Path, extra: list[str]):
     print(f"[OK] 已删除 {file_key}.{key_path_str}")
 
 # ── VALIDATE ──────────────────────────────────────────────────────
-def extract_anchor_names(text: str) -> list[str]:
-    """从 scene_state.物理锚点 文本提取元素名（每行冒号/破折号前的名称）。
-
-    兼容两种行格式：
-      - 旧格式（S04 等）： `1. 吧台: 描述` 或 `吧台: 描述`
-      - 新格式（S08/S09 等）： `· A01 大门——Mariposa正门...`（A 前缀 + 破折号）
-    均归一为「名称: 描述」冒号格式后提取。
-    """
-    names = []
-    for line in str(text).splitlines():
-        line = line.strip()
-        if not line or line.startswith(("|", "-", "#")):
-            continue
-        # 破折号格式归一：`· A01 大门——描述` / `A01 大门——描述` → `大门: 描述`
-        dash_m = re.match(r"^(?:[·\-\s]*)(?:[A-Z]+\d*\s+)?([^:：—]+?)\s*[—–]+\s*", line)
-        if dash_m and "——" in line:
-            line = re.sub(r"^(?:[·\-\s]*)(?:[A-Z]+\d*\s+)?([^:：—]+?)\s*[—–]+\s*", r"\1: ", line, count=1)
-        m = re.match(r"^(?:\d+\.\s*|[A-Z]+\d*\s+)?([^:：]+)[:：]", line)
-        if m:
-            names.append(m.group(1).strip())
-    return names
 
 
 def cmd_grep(world_dir: Path, keyword: str):
@@ -1165,6 +1032,7 @@ def cmd_grep(world_dir: Path, keyword: str):
         print("  → 使用已有元素前先核对注册原文（形态/位置/状态），禁止凭印象改写元素。")
     else:
         print(f"[GREP] '{keyword}' 无匹配——该元素未在任何 scene_state/状态文件注册，使用即幻觉。")
+
 
 
 def cmd_scan(world_dir: Path, extra: list[str], live_only: bool = False):
@@ -1209,6 +1077,202 @@ def cmd_scan(world_dir: Path, extra: list[str], live_only: bool = False):
         sys.exit(1)
     print(f"[SCAN] '{keyword}' 无匹配——干净 ✅")
     sys.exit(0)
+
+
+
+def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
+    """gate: 流程闸门工具化——强制在阶段1 结束（write-raw 前）与阶段2 推送前调用。
+    用法: worldctl.py <世界> gate dramatist|writer [--check]
+    - 无 --check: 输出该阶段闸门清单（D1-D10 / W1-W4），要求逐项作答（通过/不通过/跳过+证据）。
+    - 带 --check: 从 stdin 读取已生成的 change set 或叙事，运行可代码化检查（必含项/锚点），输出硬性违规——不合格 exit 1。
+    """
+    phase = extra[0] if extra else ""
+    scene_dir = get_scene_dir(world_dir)
+
+    if phase == "dramatist":
+        print("=" * 60, file=sys.stderr)
+        print("[GATE] 阶段1 出口闸门 · 戏剧家 D1-D10（独立审计·默认不通过·逐项找茬）", file=sys.stderr)
+        checklist = [
+            "D1  冲突推进: ≥1 条 CT 推进/注册",
+            "D2  代价前置: 双方可核验变化（资源易主/载体状态/伤害/控制权/被迫选择/关系档位）",
+            "D2① 资源载体: 被争夺资源含 当前载体=/当前持有者=",
+            "D3  档案强度: 反应强度 ≥ 档案基准",
+            "D4  认知边界: 行为/台词有叙事来源",
+            "D5  Value Boundary: 在场角色逐人查 CHAR_* X 条件",
+            "D6  抽象方出手: 显现机制+出手形态+抵抗痕迹",
+            "D7  焦外演化: pending_actions 滚动累积",
+            "D8  记忆维护: 判型/重置/入锚/淘汰 落 change set",
+            "D9  循环轨道: 循环角色在轨/偏离/回归",
+            "D10 世界收尾: 时间/轮次/前情/时间线 齐备",
+        ]
+        for line in checklist:
+            print("  " + line, file=sys.stderr)
+        print("  输出格式: D1 {通过|不通过|跳过}+证据 → 全部通过才进阶段2", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        if check_mode:
+            # 可代码化部分：stdin change set 必含项（与 write-raw audit 同一套）
+            raw = sys.stdin.buffer.read().decode("utf-8")
+            if not raw.strip():
+                print("[GATE] 未提供 change set（stdin 为空）——批次缺失，闸门拦截：不进阶段2", file=sys.stderr)
+                sys.exit(1)
+            ops, parse_errors, meta_lines = parse_batch_entries(raw.split("\n"))
+            hard, soft = check_batch(ops, world_dir)
+            # ###META 静默自查锚点：回显/缺失告警（软性·与 audit/write-raw 一致）
+            if meta_lines:
+                print(f"[GATE] ###META 回显: {meta_lines[0]}", file=sys.stderr)
+            else:
+                print("[GATE] 软性告警: 未检测到 ###META: 静默自查锚点——完整推进轮批次首行必写（查询轮/维护轮豁免）", file=sys.stderr)
+            # 批次必含项缺失（soft·op_index=-1 且消息为「完整推进轮 change set 应含」）→ 硬拦 exit 1
+            batch_required = [msg for idx, msg in soft if idx == -1 and msg.startswith("完整推进轮 change set 应含")]
+            field_violations = [msg for idx, msg in hard if idx != -1]
+            if parse_errors or field_violations or batch_required:
+                print("[GATE] D1/D10 代码化核验失败——change set 不合格:", file=sys.stderr)
+                for e in parse_errors:
+                    print(f"  - {e}", file=sys.stderr)
+                for msg in batch_required:
+                    print(f"  - {msg}", file=sys.stderr)
+                for msg in field_violations:
+                    print(f"  - {msg}", file=sys.stderr)
+                sys.exit(1)
+            # 其余软性提醒（跨叙事核对/行为偏移落地等）打印不拦截
+            for idx, msg in soft:
+                if idx == -1 and not msg.startswith("完整推进轮 change set 应含"):
+                    print(f"[GATE] 提醒: {msg}", file=sys.stderr)
+            print("[GATE] D1/D10 代码化核验通过（硬性必含项齐备）——其余 D2-D9 请人工逐项作答", file=sys.stderr)
+
+    elif phase == "writer":
+        print("=" * 60, file=sys.stderr)
+        print("[GATE] 阶段2 输出闸门 · 作家 W1-W4（独立审计·默认不通过·逐项找茬）", file=sys.stderr)
+        checklist = [
+            "W1  数据忠诚: 行为在 conflicts 有依据·物理元素在 scene_state 有来源",
+            "W2  认知边界: POV 能看见/听见/推理出吗·内部动机用可观察动作表达",
+            "W3  代价在纸上: 失去/转折出现在叙事里·不只存在于 YAML",
+            "W4  锚点约束: 空间元素→物理锚点·物品→道具·线索→关键场景信息",
+        ]
+        for line in checklist:
+            print("  " + line, file=sys.stderr)
+        print("  输出格式: W1-W4 逐项 {通过|不通过|跳过}+证据 → 全部通过才推送", file=sys.stderr)
+        print("=" * 60, file=sys.stderr)
+        if check_mode:
+            raw = sys.stdin.buffer.read().decode("utf-8")
+            if not raw.strip():
+                print("[GATE] 未提供叙事（stdin 为空）——W1/W3 无法代码化核验，请人工逐项作答", file=sys.stderr)
+                return
+            # W4 可代码化部分（与 write_narrative.sh 同一套逻辑）：叙事「」内专名若命中锚点词，
+            # 必须与注册名有完整包含关系；位置型锚点核对叙事同语境无矛盾位置词
+            registered = {}
+            scenes_dir = world_dir / "scenes"
+            if scenes_dir.is_dir():
+                for sdir in sorted(scenes_dir.iterdir()):
+                    ssp = sdir / "scene_state.yaml"
+                    if ssp.exists():
+                        try:
+                            sdata = yaml.safe_load(ssp.read_text())
+                        except Exception:
+                            continue
+                        if not isinstance(sdata, dict):
+                            continue
+                        for fld in ("物理锚点", "道具"):
+                            val = sdata.get(fld)
+                            if not val:
+                                continue
+                            for line in str(val).splitlines():
+                                line = line.strip()
+                                m = re.match(r"^(?:\d+\.\s*|[A-Z]+\d*\s+|[·\-]\s*)?([^:：—]+?)\s*[:：—]\s*(.*)$", line)
+                                if m:
+                                    registered.setdefault(m.group(1).strip(), m.group(2).strip())
+                                pm = re.match(r"^\|\s*P\d+\s*\|\s*([^|]+)\s*\|\s*([^|]*)\s*\|", line)
+                                if pm:
+                                    registered.setdefault(pm.group(1).strip(), pm.group(2).strip())
+            anchor_words = {"门", "窗", "床", "楼梯", "钢琴", "吧台", "暗门", "金库", "后厨", "油灯",
+                           "纸玫瑰", "大门", "正门", "散桌", "房间", "门帘", "教堂", "月台", "墙根",
+                           "柜台", "长椅", "地窖", "盖板", "楼梯口", "窗户", "酒杯", "筷子"}
+            LOC_PATTERNS = [
+                (r"二楼", ["楼下", "一楼", "下楼", "走上楼去弹"]),
+                (r"一楼", ["楼上", "二楼", "上楼"]),
+                (r"吧台后", ["门外", "街上"]),
+                (r"后厨", ["二楼"]),
+                (r"门口", ["楼上"]),
+            ]
+            quoted = set(re.findall(r"「([^」]{1,12})」", raw))
+            suspect = []
+            # 对话语境跳过：前 4 字含言语动词 或 「」内以句末标点结尾 → 是台词，不是空间元素引用
+            SPEECH_VERBS = r"说|问|答|叫|喊|骂|复述|念|低声道|开口|吼|嚷|应声"
+            for q in quoted:
+                pos = raw.find("「" + q + "」")
+                prev = raw[max(0, pos - 4):pos]
+                is_speech = bool(re.search(SPEECH_VERBS, prev)) or q.endswith(("。", "？", "！", "——"))
+                if is_speech:
+                    continue
+                hit_word = next((w for w in anchor_words if w in q), None)
+                if not hit_word:
+                    continue
+                matches = [(rname, rdesc) for rname, rdesc in registered.items()
+                           if q == rname or q in rname or rname in q]
+                if not matches:
+                    suspect.append(f"{q}（未注册——「{hit_word}」在注册表中无包含关系匹配）")
+                    continue
+                ctx = raw[max(0, raw.find(q) - 25): raw.find(q) + len(q) + 25]
+                for rname, rdesc in matches:
+                    for loc_re, conflict_words in LOC_PATTERNS:
+                        if re.search(loc_re, rdesc):
+                            for cw in conflict_words:
+                                if cw in ctx:
+                                    suspect.append(f"{q}（注册「{rname}」位置含「{loc_re}」但叙事同语境出现「{cw}」）")
+                                    break
+            # W4 人物存在性（可代码化项·与 gate_writer.md 一致）：叙事中具名角色 vs CHAR_*.md
+            # 规则：每个具名/有台词/有行动的人物必须有 CHAR_.md（新人物二选一：补注册/降级背景剪影）
+            # 代码化边界：只能可靠拦截「英文专名型」新人物；描述性称谓（骑马者/长外套）由写作时数据忠诚③人工拦截
+            char_md_names = set()
+            for fp in world_dir.glob("CHAR_*.md"):
+                stem = fp.stem[len("CHAR_"):].strip()
+                if stem:
+                    char_md_names.add(stem)
+            # 豁免：非角色专名（场景/组织/道具/系统）+ Guest/玩家 + 已知无档案的叙事称谓
+            KNOWN_NO_CHAR = {
+                "Guest", "Mesa", "QA", "游客", "便衣", "灰衣", "前门便衣",
+                "Westworld", "Sweetwater", "Mariposa", "Delos", "Welcome", "Center",
+                "Host", "Hosts", "Smart", "Ammo", "Mesa Hub", "The Maze", "Maze",
+            }
+            # 提取叙事中出现的英文专名（大写开头词/词组·排除句首·排除全大写缩写）
+            name_pat = re.compile(r"\b([A-Z][a-zA-Z]+(?:[\s][A-Z][a-zA-Z]+)*)\b")
+            text_no_speech = re.sub(r"「[^」]*」", "", raw)  # 去对话（台词内人名不算引用）
+            found_names = set()
+            for m in name_pat.finditer(text_no_speech):
+                name = m.group(1).strip()
+                # 排除句首（前一个非空白字符是句号/叹号/问号/破折号——换行不算句首）
+                prev_ch = text_no_speech[max(0, m.start() - 1):m.start()]
+                if prev_ch in "。！？—":
+                    continue
+                found_names.add(name)
+            # 从 found_names 中挑出「非豁免 且 非 CHAR 名单」的 → 缺失档案
+            char_suspect = []
+            for n in sorted(found_names):
+                if n in KNOWN_NO_CHAR:
+                    continue
+                if any(n == real or n in real or real in n for real in char_md_names):
+                    continue
+                # 可能误报（普通英文词/地名）——仅当该名在叙事中承担行动者角色才报：
+                # 后续出现「XX说/问/答/喊」或「XX 从/走/进/推」结构
+                action_ctx = re.search(rf"{re.escape(n)}\s*(说|问|答|喊|吼|嚷|开口|走进|走出|推门|站在|从门外|从街角|翻身下马)", raw)
+                if action_ctx:
+                    char_suspect.append(f"{n}（叙事中作为行动者出现但 CHAR_*.md 缺失——阶段1 补注册或降级背景剪影）")
+            if char_suspect:
+                print(f"[GATE] W4 人物存在性失败——叙事中具名行动人物无 CHAR_*.md: {char_suspect}（数据忠诚③人物项·新人物二选一：补注册/降级不具名不说话）", file=sys.stderr)
+                sys.exit(1)
+            if suspect:
+                print(f"[GATE] W4 锚点核验失败——叙事「」内元素疑似未注册或位置冲突: {suspect}（请用 worldctl.py <世界> grep <元素名> 核对注册原文）", file=sys.stderr)
+                sys.exit(1)
+            print("[GATE] W4 锚点核验通过（叙事「」内专名均已注册且位置一致）——W1/W2/W3 请人工逐项作答", file=sys.stderr)
+            print("[GATE] 回合收尾提醒（静默模式）：正文只含 message 叙事·回合结束零正文输出（状态摘要/执行汇报/叙事复述/下一步引导一律禁止）", file=sys.stderr)
+
+    else:
+        print("用法: worldctl.py <世界> gate dramatist|writer [--check]", file=sys.stderr)
+        print("  dramatist: 阶段1 出口闸门 D1-D10（write-raw 前调用）", file=sys.stderr)
+        print("  writer:    阶段2 输出闸门 W1-W4（message 推送前调用）", file=sys.stderr)
+        print("  --check: 从 stdin 读 change set/叙事，运行可代码化硬性核验，不合格 exit 1", file=sys.stderr)
+        sys.exit(1)
+
 
 
 def cmd_validate(world_dir: Path):
@@ -1292,40 +1356,6 @@ def cmd_validate(world_dir: Path):
         md_fp = world_dir / (sf.name[: -len(CHAR_STATE_SUFFIX)] + ".md")
         if not md_fp.exists():
             warnings.append(f"{sf.name}: 无对应 {md_fp.name}")
-    # 3b. 偏离登记 ≥2 次但未注册 Host vs 法则 CT（循环世界·偏离冲突化缺失——loop_machinery §5.1）
-    # 限制（O2）：只查「已登记的偏离」，不查「实际偏离但未登记」——本检查是登记后保险（防漏注册），不是偏离检测器（检测=戏剧家四件套职责）
-    _abstract_kw = ("园区", "法则", "系统", "世界", "循环", "脚本", "记忆", "程序", "编程")
-    for sf in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
-        try:
-            sdata = yaml.safe_load(sf.read_text())
-        except Exception:
-            continue
-        if not isinstance(sdata, dict):
-            continue
-        dev = sdata.get("偏离登记")
-        dev_count = 0
-        if isinstance(dev, str):
-            dev_count = len([ln for ln in dev.splitlines() if ln.strip()])
-        elif isinstance(dev, list):
-            dev_count = len(dev)
-        if dev_count < 2:
-            continue
-        role_name = sf.name[len(CHAR_STATE_PREFIX):-len(CHAR_STATE_SUFFIX)]
-        has_law_ct = False
-        try:
-            cdata = yaml.safe_load(conflicts_fp.read_text()) if conflicts_fp.exists() else None
-            if isinstance(cdata, dict):
-                for v in cdata.values():
-                    if not isinstance(v, dict):
-                        continue
-                    sides = str(v.get("对抗双方", ""))
-                    if role_name in sides and any(kw in sides for kw in _abstract_kw):
-                        has_law_ct = True
-                        break
-        except Exception:
-            pass
-        if not has_law_ct:
-            warnings.append(f"{sf.name}: 偏离登记 ≥{dev_count} 次但未注册「Host vs 法则」型 CT（对抗双方应含 {role_name} 与抽象方）——偏离冲突化缺失（loop_machinery §5.1）")
     # 4. world_state.yaml 必要键
     ws_fp = world_dir / "world_state.yaml"
     if ws_fp.exists():
@@ -1342,12 +1372,12 @@ def cmd_validate(world_dir: Path):
         try:
             ws = yaml.safe_load(ws_fp.read_text())
             if isinstance(ws, dict):
-                WS_TOP_KEYS = {"焦点场景", "轮次", "时间", "地点", "外部倒计时", "全局标记", "时间线", "重置记录", "叙事约定", "输出模式"}
+                WS_TOP_KEYS = {"焦点场景", "轮次", "时间", "地点", "外部倒计时", "全局标记", "时间线", "重置记录", "叙事约定"}
                 WS_TIME_KEYS = {"基准时间", "具体时间", "时间流速比", "前情描述"}
                 WS_LOC_KEYS = {"当前区域", "已探索区域"}
                 for k in ws:
                     if k not in WS_TOP_KEYS:
-                        warnings.append(f"world_state.yaml: 未知顶层键 '{k}'（键表: 焦点场景/轮次/时间/地点/外部倒计时/全局标记/时间线/重置记录/叙事约定/输出模式）")
+                        warnings.append(f"world_state.yaml: 未知顶层键 '{k}'（键表: 焦点场景/轮次/时间/地点/外部倒计时/全局标记/时间线/重置记录/叙事约定）")
                 t = ws.get("时间")
                 if isinstance(t, dict):
                     for k in t:
@@ -1360,53 +1390,22 @@ def cmd_validate(world_dir: Path):
                             warnings.append(f"world_state.yaml: 未知地点子键 '{k}'（键表: 当前区域/已探索区域）")
         except Exception:
             pass
-    # 4c. 同物理地点场景元素继承检查（防漏继承——同一建筑的空间元素不因时间区间变化而消失）
-    try:
-        scenes_dir = world_dir / "scenes"
-        if scenes_dir.is_dir():
-            TIME_WORDS = ["清晨", "午后", "上午", "下午", "黄昏", "黎明", "正午", "傍晚", "午夜", "深夜", "早晨", "中午", "晚上", "早上"]
-            ELEMENT_TAIL = ["暗门", "金库", "吧台", "钢琴", "楼梯", "大门", "前门", "正门", "门帘", "窗户", "窗", "床", "盖板", "地窖", "柜台", "长椅", "教堂", "月台", "墙根", "后厨", "房间", "门"]
-            ELEMENT_SYN = {"暗门": ["暗门", "盖板"], "门": ["门", "大门", "前门", "正门"]}
-            groups = {}
-            for d in sorted(scenes_dir.iterdir()):
-                if not d.is_dir():
-                    continue
-                m = re.match(r"^(S\d+)-(.*)$", d.name)
-                if not m:
-                    continue
-                sid, sname = m.group(1), m.group(2)
-                pk = sname
-                for tw in TIME_WORDS:
-                    pk = pk.replace(tw, "")
-                pk = pk.strip(" -")
-                if not pk:
-                    continue
-                ssp = d / "scene_state.yaml"
-                names = []
-                if ssp.exists():
-                    try:
-                        sdata = yaml.safe_load(ssp.read_text())
-                        if isinstance(sdata, dict) and sdata.get("物理锚点"):
-                            names = extract_anchor_names(str(sdata["物理锚点"]))
-                    except Exception:
-                        pass
-                groups.setdefault(pk, []).append((sid, sname, names))
-            for pk, scenes in groups.items():
-                if len(scenes) < 2:
-                    continue
-                scenes.sort(key=lambda x: x[0])
-                base_id, base_name, base_names = scenes[0]
-                for sid, sname, names in scenes[1:]:
-                    for b in base_names:
-                        btype = next((t for t in ELEMENT_TAIL if b.endswith(t)), None)
-                        if not btype:
-                            continue
-                        # 同义词组匹配（如 暗门/盖板）：新场景元素名命中任一成员即视为存在
-                        syn = ELEMENT_SYN.get(btype, [btype])
-                        if not any(any(s in c for s in syn) for c in names):
-                            warnings.append(f"场景继承: {sid}-{sname} 缺少同建筑元素「{btype}」（{base_id}-{base_name} 已注册: {b}）——疑似漏继承，用 init_scene.sh --from 继承或核对")
-    except Exception:
-        pass
+    # 4c. 场景骨架占位检查（scene_card 目标/钩子/焦外、start_snapshot 姿态/道具——创建后禁止带占位运行）
+    scenes_dir = world_dir / "scenes"
+    if scenes_dir.is_dir():
+        for d in sorted(scenes_dir.iterdir()):
+            if not d.is_dir():
+                continue
+            sc_fp = d / "scene_card.md"
+            if sc_fp.exists():
+                sc_text = sc_fp.read_text(encoding="utf-8", errors="ignore")
+                if re.search(r"<!--\s*待填充", sc_text):
+                    warnings.append(f"{d.name}/scene_card.md: 场景目标/前情钩子/焦外仍为占位（<!-- 待填充 -->）——创建后应已填充，禁止带占位运行")
+            ss_fp = d / "start_snapshot.md"
+            if ss_fp.exists():
+                ss_text = ss_fp.read_text(encoding="utf-8", errors="ignore")
+                if re.search(r"<!--\s*角色名", ss_text):
+                    warnings.append(f"{d.name}/start_snapshot.md: 角色姿态/道具位置仍为占位注释——创建后应已填充，禁止带占位运行")
     # 5. world_map.yaml（可选增强层·迷雾制·多层嵌套）——缺失时静默跳过，不影响运行
     wm_fp = world_dir / "world_map.yaml"
     if wm_fp.exists():
@@ -1442,7 +1441,8 @@ def cmd_validate(world_dir: Path):
             pass
     # 6. CHAR_state 字段级校验（键表/人际动态档位/废弃键/全知视角/反应轨迹方向）
     CHAR_ALLOWED_KEYS = {"位置", "名字", "核心状态", "情绪", "人际动态", "决策状态",
-                         "压力水平", "防御有效性", "偏离登记", "信念演化", "记忆锚点", "反应轨迹",
+                         "压力水平", "防御有效性", "信念演化", "记忆锚点", "反应轨迹",
+                         "偏离登记",
                          "自主性",
                          "服装", "健康", "随身"}
     RELATION_TIERS = {"稳固", "信任", "中立", "防备", "破裂", "待重建"}
@@ -1458,7 +1458,7 @@ def cmd_validate(world_dir: Path):
         # 6a. 未知顶层键（键表外字段=无语义定义的漂移字段）
         for k in cdata:
             if k not in CHAR_ALLOWED_KEYS:
-                warnings.append(f"{cname}: 未知键 '{k}'（键表: 自主性/位置/名字/核心状态/情绪/人际动态/决策状态/压力水平/防御有效性/偏离登记/信念演化/记忆锚点/反应轨迹；模板扩展: 服装/健康/随身）")
+                warnings.append(f"{cname}: 未知键 '{k}'（键表: 自主性/位置/名字/核心状态/情绪/人际动态/决策状态/压力水平/防御有效性/信念演化/记忆锚点/反应轨迹；模板扩展: 服装/健康/随身）")
         # 6b. 废弃键
         if "信任度" in cdata:
             warnings.append(f"{cname}: 顶层键 信任度 已废弃——唯一权威源=人际动态各对象行档位，应删除")
@@ -1516,9 +1516,9 @@ def cmd_validate(world_dir: Path):
         except Exception:
             pass
 
-    # 8. CHAR_state 记忆锚点校验（脚本校验线：单条≤150字 | 总字数≤3000——超限告警，提示戏剧家按 §记忆淘汰 整理）
+    # 8. CHAR_state 记忆锚点校验（脚本校验线：单条≤100字 | 总字数≤3000——超限告警，提示戏剧家按 §记忆淘汰 整理）
     ANCHOR_LIMIT_TOTAL = 3000
-    ANCHOR_LIMIT_ENTRY = 150
+    ANCHOR_LIMIT_ENTRY = 100
     for cfp in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
         try:
             cdata = yaml.safe_load(cfp.read_text())
@@ -1527,6 +1527,24 @@ def cmd_validate(world_dir: Path):
         if not isinstance(cdata, dict):
             continue
         mem = cdata.get("记忆锚点", "")
+        if isinstance(mem, list):
+            # 结构化列表：每条内容 ≤100 · 总内容字数 ≤3000
+            total = 0
+            long_entries = []
+            for it in mem:
+                if not isinstance(it, dict):
+                    continue
+                content = str(it.get("内容", ""))
+                total += len(content)
+                if len(content) > ANCHOR_LIMIT_ENTRY:
+                    long_entries.append((len(content), content[:45].replace("\n", " ")))
+            if total > ANCHOR_LIMIT_TOTAL:
+                warnings.append(f"{cfp.name}: 记忆锚点 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需按 §记忆淘汰 整理（同类融合+低刺激遗忘）")
+            if long_entries:
+                shown = "；".join(f"{n}字:{head}…" for n, head in long_entries[:3])
+                more = f" 等{len(long_entries)}条" if len(long_entries) > 3 else ""
+                warnings.append(f"{cfp.name}: 记忆锚点 {len(long_entries)} 条超单条 {ANCHOR_LIMIT_ENTRY} 字上限（应压为事实一句+定性一句）——{shown}{more}")
+            continue
         if not isinstance(mem, str) or not mem.strip():
             continue
         total = len(mem)
@@ -1577,11 +1595,16 @@ def cmd_validate(world_dir: Path):
             except Exception:
                 continue
             mem = cdata.get("记忆锚点", "")
-            if not isinstance(mem, str):
+            if isinstance(mem, list):
+                has_frag = any("碎片" in str(it.get("内容", "")) or "碎片" in str(it.get("时间", "")) for it in mem if isinstance(it, dict))
+                has_key = any("关键锚点" in str(it.get("内容", "")) for it in mem if isinstance(it, dict))
+                old_ts_left = len([it for it in mem if isinstance(it, dict) and re.search(r"第\d+日", str(it.get("时间", "")))])
+            elif isinstance(mem, str):
+                has_frag = "碎片" in mem
+                has_key = "关键锚点" in mem
+                old_ts_left = len(re.findall(r"\[第\d+日/", mem))
+            else:
                 continue
-            has_frag = "碎片" in mem
-            has_key = "关键锚点" in mem
-            old_ts_left = len(re.findall(r"\[第\d+日/", mem))
             if rlvl == "脚本" and old_ts_left:
                 warnings.append(f"重置落地校验: {cfp.name} 重置档位=脚本——应全清回基线·但记忆锚点仍有 {old_ts_left} 条带时间戳旧锚点残留")
             elif rlvl in ("漂移", "觉醒"):
@@ -1608,78 +1631,6 @@ def cmd_validate(world_dir: Path):
     except Exception:
         pass
 
-    # 8d. 轮次覆盖检查（场记收尾自查代码化——①焦点场景时间线②出场角色反应轨迹③world_state 齐备）
-    try:
-        ws3 = yaml.safe_load(world_dir.joinpath("world_state.yaml").read_text()) or {}
-        cur_round3 = str(ws3.get("轮次", "") or "").strip()
-        t3 = ws3.get("时间") or {}
-        if not isinstance(t3, dict):
-            t3 = {}
-        cur_time3 = str(t3.get("具体时间", "") or "").strip()
-        focus3 = str(ws3.get("焦点场景", "") or "").strip()
-        # ① 焦点场景 scene_state 场景时间线末条应含本轮时间/轮次
-        if focus3 and scene_dir and scene_dir.is_dir():
-            ssp3 = scene_dir / "scene_state.yaml"
-            if ssp3.exists():
-                try:
-                    sd3 = yaml.safe_load(ssp3.read_text()) or {}
-                    tl3 = sd3.get("场景时间线", "")
-                    if isinstance(tl3, str) and tl3.strip():
-                        last_line3 = [l for l in tl3.splitlines() if l.strip()][-1]
-                        hm3 = cur_time3.split(" ")[-1] if " " in cur_time3 else cur_time3
-                        if hm3 and hm3 not in last_line3 and cur_round3 not in last_line3:
-                            warnings.append(f"轮次覆盖: {scene_dir.name}/scene_state.yaml 场景时间线末条不含本轮时间 {cur_time3}——疑似漏写本轮场景时间线（收尾自查①）")
-                    else:
-                        warnings.append(f"轮次覆盖: {scene_dir.name}/scene_state.yaml 场景时间线为空——疑似漏写（收尾自查①）")
-                except Exception:
-                    pass
-        # ② 焦点场景出场角色（非焦外）CHAR_state 反应轨迹末项 ≥ 本轮
-        if focus3 and cur_round3 and scene_dir and scene_dir.is_dir():
-            try:
-                sdata3 = yaml.safe_load((scene_dir / "scene_state.yaml").read_text()) or {}
-                cast_txt3 = sdata3.get("出场角色摘要", "")
-                if isinstance(cast_txt3, str):
-                    for ln3 in cast_txt3.splitlines():
-                        if "(焦外)" in ln3 or "焦外" in ln3:
-                            continue
-                        m3 = re.match(r"^\s*-\s*([^:：\-—]+?)\s*(?:[—\-—]|:)", ln3)
-                        if not m3:
-                            continue
-                        cname3 = m3.group(1).strip()
-                        if not cname3:
-                            continue
-                        # 简称→全名：用包含匹配扫描角色档案（场景摘要常用简称如 Clementine/Maeve）
-                        hits3 = []
-                        for cand3 in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
-                            full3 = cand3.stem[len(CHAR_STATE_PREFIX):]
-                            if full3.endswith("_state"):
-                                full3 = full3[:-len("_state")]
-                            if cname3 in full3 or full3 in cname3:
-                                hits3.append(cand3)
-                        if len(hits3) != 1:
-                            continue
-                        cfp3 = hits3[0]
-                        if not cfp3.exists():
-                            continue
-                        cd3 = yaml.safe_load(cfp3.read_text()) or {}
-                        rt3 = cd3.get("反应轨迹", "")
-                        if isinstance(rt3, str) and rt3.strip():
-                            marks3 = [int(x) for x in re.findall(r"第(\d+)轮", rt3)]
-                            if marks3 and marks3[-1] < int(cur_round3):
-                                warnings.append(f"轮次覆盖: {cfp3.name} 反应轨迹末项第{marks3[-1]}轮 < 本轮{cur_round3}——疑似漏写本轮反应轨迹（收尾自查②）")
-            except Exception:
-                pass
-        # ③ world_state 轮次/时间/前情齐备
-        if cur_round3 and cur_time3:
-            if not str(t3.get("前情描述", "") or "").strip():
-                warnings.append("轮次覆盖: world_state 缺 时间.前情描述（收尾自查③）")
-        elif not cur_round3:
-            warnings.append("轮次覆盖: world_state 缺 轮次（收尾自查③）")
-        elif not cur_time3:
-            warnings.append("轮次覆盖: world_state 缺 时间.具体时间（收尾自查③）")
-    except Exception:
-        pass
-
     if errors:
         print(f"[VALIDATE] {len(errors)} 个问题:")
         for e in errors:
@@ -1692,150 +1643,6 @@ def cmd_validate(world_dir: Path):
         print(f"[VALIDATE] 全部 {len(files)} 个文件验证通过 ✅")
 
 # ── CLI ───────────────────────────────────────────────────────────
-def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
-    """gate: 流程闸门工具化——强制在阶段1 结束（write-raw 前）与阶段2 推送前调用。
-    用法: worldctl.py <世界> gate dramatist|writer [--check]
-    - 无 --check: 输出该阶段闸门清单（D1-D10 / W1-W4），要求逐项作答（通过/不通过/跳过+证据）。
-    - 带 --check: 从 stdin 读取已生成的 change set 或叙事，运行可代码化检查（必含项/锚点），输出硬性违规——不合格 exit 1。
-    """
-    phase = extra[0] if extra else ""
-    scene_dir = get_scene_dir(world_dir)
-
-    if phase == "dramatist":
-        print("=" * 60, file=sys.stderr)
-        print("[GATE] 阶段1 出口闸门 · 戏剧家 D1-D10（独立审计·默认不通过·逐项找茬）", file=sys.stderr)
-        checklist = [
-            "D1  冲突推进: ≥1 条 CT 推进/注册",
-            "D2  代价前置: 双方可核验变化（资源易主/载体状态/伤害/控制权/被迫选择/关系档位）",
-            "D2① 资源载体: 被争夺资源含 当前载体=/当前持有者=",
-            "D3  档案强度: 反应强度 ≥ 档案基准",
-            "D4  认知边界: 行为/台词有叙事来源",
-            "D5  Value Boundary: 在场角色逐人查 CHAR_* X 条件",
-            "D6  抽象方出手: 显现机制+出手形态+抵抗痕迹",
-            "D7  焦外演化: pending_actions 滚动累积",
-            "D8  记忆维护: 判型/重置/入锚/淘汰 落 change set",
-            "D9  循环轨道: 循环角色在轨/偏离/回归",
-            "D10 世界收尾: 时间/轮次/前情/时间线 齐备",
-        ]
-        for line in checklist:
-            print("  " + line, file=sys.stderr)
-        print("  输出格式: D1 {通过|不通过|跳过}+证据 → 全部通过才进阶段2", file=sys.stderr)
-        print("=" * 60, file=sys.stderr)
-        if check_mode:
-            # 可代码化部分：stdin change set 必含项（与 write-raw audit 同一套）
-            raw = sys.stdin.buffer.read().decode("utf-8")
-            if not raw.strip():
-                print("[GATE] 未提供 change set（stdin 为空）——D1/D10 无法代码化核验，请人工逐项作答", file=sys.stderr)
-                return
-            ops, parse_errors = parse_batch_entries(raw.split("\n"))
-            hard, _ = check_batch(ops, world_dir)
-            # check_batch 的必含项 hard 用 op_index=-1 标记批次级违规
-            batch_violations = [msg for idx, msg in hard if idx == -1]
-            field_violations = [msg for idx, msg in hard if idx != -1]
-            if batch_violations or field_violations or parse_errors:
-                print("[GATE] D1/D10 代码化核验失败——change set 不合格:", file=sys.stderr)
-                for e in parse_errors:
-                    print(f"  - {e}", file=sys.stderr)
-                for msg in batch_violations:
-                    print(f"  - {msg}", file=sys.stderr)
-                for msg in field_violations:
-                    print(f"  - {msg}", file=sys.stderr)
-                sys.exit(1)
-            print("[GATE] D1/D10 代码化核验通过（硬性必含项齐备）——其余 D2-D9 请人工逐项作答", file=sys.stderr)
-
-    elif phase == "writer":
-        print("=" * 60, file=sys.stderr)
-        print("[GATE] 阶段2 输出闸门 · 作家 W1-W4（独立审计·默认不通过·逐项找茬）", file=sys.stderr)
-        checklist = [
-            "W1  数据忠诚: 行为在 conflicts 有依据·物理元素在 scene_state 有来源",
-            "W2  认知边界: POV 能看见/听见/推理出吗·内部动机用可观察动作表达",
-            "W3  代价在纸上: 失去/转折出现在叙事里·不只存在于 YAML",
-            "W4  锚点约束: 空间元素→物理锚点·物品→道具·线索→关键场景信息",
-        ]
-        for line in checklist:
-            print("  " + line, file=sys.stderr)
-        print("  输出格式: W1-W4 逐项 {通过|不通过|跳过}+证据 → 全部通过才推送", file=sys.stderr)
-        print("=" * 60, file=sys.stderr)
-        if check_mode:
-            raw = sys.stdin.buffer.read().decode("utf-8")
-            if not raw.strip():
-                print("[GATE] 未提供叙事（stdin 为空）——W1/W3 无法代码化核验，请人工逐项作答", file=sys.stderr)
-                return
-            # W4 可代码化部分（与 write_narrative.sh 同一套逻辑）：叙事「」内专名若命中锚点词，
-            # 必须与注册名有完整包含关系；位置型锚点核对叙事同语境无矛盾位置词
-            registered = {}
-            scenes_dir = world_dir / "scenes"
-            if scenes_dir.is_dir():
-                for sdir in sorted(scenes_dir.iterdir()):
-                    ssp = sdir / "scene_state.yaml"
-                    if ssp.exists():
-                        try:
-                            sdata = yaml.safe_load(ssp.read_text())
-                        except Exception:
-                            continue
-                        if not isinstance(sdata, dict):
-                            continue
-                        for fld in ("物理锚点", "道具"):
-                            val = sdata.get(fld)
-                            if not val:
-                                continue
-                            for line in str(val).splitlines():
-                                line = line.strip()
-                                m = re.match(r"^(?:\d+\.\s*|[A-Z]+\d*\s+|[·\-]\s*)?([^:：—]+?)\s*[:：—]\s*(.*)$", line)
-                                if m:
-                                    registered.setdefault(m.group(1).strip(), m.group(2).strip())
-                                pm = re.match(r"^\|\s*P\d+\s*\|\s*([^|]+)\s*\|\s*([^|]*)\s*\|", line)
-                                if pm:
-                                    registered.setdefault(pm.group(1).strip(), pm.group(2).strip())
-            anchor_words = {"门", "窗", "床", "楼梯", "钢琴", "吧台", "暗门", "金库", "后厨", "油灯",
-                           "纸玫瑰", "大门", "正门", "散桌", "房间", "门帘", "教堂", "月台", "墙根",
-                           "柜台", "长椅", "地窖", "盖板", "楼梯口", "窗户", "酒杯", "筷子"}
-            LOC_PATTERNS = [
-                (r"二楼", ["楼下", "一楼", "下楼", "走上楼去弹"]),
-                (r"一楼", ["楼上", "二楼", "上楼"]),
-                (r"吧台后", ["门外", "街上"]),
-                (r"后厨", ["二楼"]),
-                (r"门口", ["楼上"]),
-            ]
-            quoted = set(re.findall(r"「([^」]{1,12})」", raw))
-            suspect = []
-            # 对话语境跳过：前 4 字含言语动词 或 「」内以句末标点结尾 → 是台词，不是空间元素引用
-            SPEECH_VERBS = r"说|问|答|叫|喊|骂|复述|念|低声道|开口|吼|嚷|应声"
-            for q in quoted:
-                pos = raw.find("「" + q + "」")
-                prev = raw[max(0, pos - 4):pos]
-                is_speech = bool(re.search(SPEECH_VERBS, prev)) or q.endswith(("。", "？", "！", "——"))
-                if is_speech:
-                    continue
-                hit_word = next((w for w in anchor_words if w in q), None)
-                if not hit_word:
-                    continue
-                matches = [(rname, rdesc) for rname, rdesc in registered.items()
-                           if q == rname or q in rname or rname in q]
-                if not matches:
-                    suspect.append(f"{q}（未注册——「{hit_word}」在注册表中无包含关系匹配）")
-                    continue
-                ctx = raw[max(0, raw.find(q) - 25): raw.find(q) + len(q) + 25]
-                for rname, rdesc in matches:
-                    for loc_re, conflict_words in LOC_PATTERNS:
-                        if re.search(loc_re, rdesc):
-                            for cw in conflict_words:
-                                if cw in ctx:
-                                    suspect.append(f"{q}（注册「{rname}」位置含「{loc_re}」但叙事同语境出现「{cw}」）")
-                                    break
-            if suspect:
-                print(f"[GATE] W4 锚点核验失败——叙事「」内元素疑似未注册或位置冲突: {suspect}（请用 worldctl.py <世界> grep <元素名> 核对注册原文）", file=sys.stderr)
-                sys.exit(1)
-            print("[GATE] W4 锚点核验通过（叙事「」内专名均已注册且位置一致）——W1/W2/W3 请人工逐项作答", file=sys.stderr)
-
-    else:
-        print("用法: worldctl.py <世界> gate dramatist|writer [--check]", file=sys.stderr)
-        print("  dramatist: 阶段1 出口闸门 D1-D10（write-raw 前调用）", file=sys.stderr)
-        print("  writer:    阶段2 输出闸门 W1-W4（message 推送前调用）", file=sys.stderr)
-        print("  --check: 从 stdin 读 change set/叙事，运行可代码化硬性核验，不合格 exit 1", file=sys.stderr)
-        sys.exit(1)
-
-
 def main():
     parser = argparse.ArgumentParser(description="WorldSim 批量状态管理 V2")
     parser.add_argument("world", help="世界名")

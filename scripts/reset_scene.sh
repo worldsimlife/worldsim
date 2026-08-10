@@ -1,13 +1,14 @@
 #!/usr/bin/env sh
-# reset_scene.sh — 重置指定场景到「start_snapshot 状态」（清空场景内动态叙事）
+# reset_scene.sh — 场景级回退（L3）：重置指定场景到「start_snapshot 状态」（清空场景内动态叙事·不撤销世界进度）
 # 用法: sh scripts/reset_scene.sh <世界名> [<场景ID>]
 #   <场景ID> 缺省 = 当前焦点场景（world_state.焦点场景）；支持短 ID（S05）或完整目录名
+# 回退体系：L1 世界级 snap.sh load（快照·主动存档）/ L2 场景级本脚本 / L3 手工重建（详见 references/rollback.md）
 # 破坏性操作（重置前自动存档·可回滚）：
 #   - narrative.md → 轮转归档为 narrative.<时间戳>.md（保留历史叙事），新 narrative.md 置空
 #   - scene_state.yaml：场景时间线 → ''；核心状态 → 待填充占位（按 start_snapshot.md 恢复开场状态）
 #   - 静态基线保留：物理锚点/道具/关键场景信息/出场角色摘要（场景物理定义，不因重置销毁）
-#   - world_state 时间/轮次不动（时间只增不减是硬规则——重置后戏剧家按 start_snapshot 决定是否回退）
-# 重置后：按 start_snapshot.md 重新填充 scene_state 核心状态并继续叙事
+#   - world_state 时间/轮次回退至场景开场（start_snapshot 冻结时间/开场轮次）——「时间只增不减」只约束正常推进·显式重置是主动回退例外
+# 重置后：按 start_snapshot.md 重新填充 scene_state 核心状态并继续叙事（世界时间/轮次已与场景开场一致）
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
@@ -87,7 +88,40 @@ else
   echo "[WARN] start_snapshot.md 不存在——重置后无恢复依据，建议补写" >&2
 fi
 
+# ── 4. world_state 时间/轮次回退至场景开场（重置=场景重开·「时间只增不减」只约束正常推进，不约束显式重置）──
+WS_FILE="$WORLD_DIR/world_state.yaml"
+START_TIME=""
+START_ROUND=""
+if [ -f "$SNAP_FILE" ]; then
+  START_TIME=$(grep -A1 "^## 冻结时间" "$SNAP_FILE" | tail -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  START_ROUND=$(grep -A1 "^## 开场轮次" "$SNAP_FILE" | tail -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d "'\"")
+fi
+if [ -f "$WS_FILE" ]; then
+  if [ -n "$START_TIME" ]; then
+    sed -i "s/^  具体时间:.*/  具体时间: $START_TIME/" "$WS_FILE"
+    sed -i "s/^  基准时间:.*/  基准时间: $START_TIME/" "$WS_FILE"
+    echo "  回退: world_state 时间 → $START_TIME（场景开场）"
+  else
+    echo "[WARN] start_snapshot.md 无冻结时间，跳过 world_state 时间回退（请补填 start_snapshot「## 冻结时间」）" >&2
+  fi
+  if [ -n "$START_ROUND" ]; then
+    sed -i "s/^轮次:.*/轮次: '$START_ROUND'/" "$WS_FILE"
+    echo "  回退: world_state 轮次 → $START_ROUND（场景开场）"
+  else
+    echo "[WARN] start_snapshot.md 无开场轮次，跳过 world_state 轮次回退（请补填 start_snapshot「## 开场轮次」）" >&2
+  fi
+fi
+
 echo ""
-echo "已重置场景 '$SCENE_BASE' 到 start_snapshot 状态（静态基线保留·动态叙事清空）"
+echo "已重置场景 '$SCENE_BASE' 到 start_snapshot 状态（静态基线保留·动态叙事清空·世界时间/轮次已回退至开场）"
 echo "下一步: 戏剧家按 start_snapshot.md 重新填充 scene_state 核心状态，继续叙事"
+echo ""
+echo "【回退后必查·脚本不自动处理·LLM 按 references/rollback.md 涉及文件清单逐项核对】:"
+echo "  1. conflicts.yaml        CT 当前节拍回退/覆盖（或删除回退期间推进的节拍）"
+echo "  2. CHAR_*_state.yaml     核心状态/情绪/位置恢复开场形态；记忆锚点/反应轨迹含回退后'未来'条目需裁剪"
+echo "                            （外部者如 Guest 必须裁剪未来记忆·Host 可保留作既视感/碎片素材）"
+echo "  3. world_state.yaml      前情描述/外部倒计时/全局标记（脚本只回退了时间/轮次·其余仍可能是回退前状态）"
+echo "  4. scene_state.yaml      核心状态/出场角色摘要恢复开场形态（脚本只清了时间线·静态基线保留）"
+echo "  5. off_focus/pending_actions.yaml  焦外条目回退（最易漏）"
+echo "  6. world_map.yaml        回退期间新登记的区域（如有）"
 exit 0
