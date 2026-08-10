@@ -33,6 +33,9 @@ CHAR_STATE_SUFFIX = "_state.yaml"
 
 # ── 文件发现 ──────────────────────────────────────────────────────
 def get_world_dir(world: str) -> Path:
+    # 世界名校验：只禁路径分隔符/穿越（允许中文·如「遗弃之地」）
+    if not world or "/" in world or "\\" in world or ".." in world:
+        print(f"[ERR] 非法世界名 '{world}'（禁止路径分隔符/../相对路径穿越）", file=sys.stderr); sys.exit(1)
     wd = SKILL_DIR / "worlds" / world
     if not wd.is_dir():
         print(f"[ERR] 世界 '{world}' 不存在: {wd}", file=sys.stderr); sys.exit(1)

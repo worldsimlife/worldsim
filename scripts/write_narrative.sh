@@ -19,6 +19,14 @@ CONTENT_FILE="$3"
 [ -z "$WORLD" ] && echo "用法: write_narrative.sh <世界名> <场景ID> [content_file]" && exit 1
 [ -z "$SCENE_ID" ] && echo "用法: write_narrative.sh <世界名> <场景ID> [content_file]" && exit 1
 
+# 世界名校验：只禁路径分隔符/穿越（允许中文·如「遗弃之地」）；场景ID 同样禁分隔符
+case "$WORLD" in
+  ''|*/*|*\\*|*..*) echo "[ERR] 非法世界名 '$WORLD'（禁止路径分隔符/../相对路径穿越）" >&2; exit 1 ;;
+esac
+case "$SCENE_ID" in
+  */*|*\\*|*..*) echo "[ERR] 非法场景ID '$SCENE_ID'（禁止路径分隔符）" >&2; exit 1 ;;
+esac
+
 # WorldSim 根目录：可被环境变量 WORLDSIM_DIR 覆写
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"

@@ -29,6 +29,11 @@ esac
 [ -z "$WORLD" ] && echo "用法: index.sh <世界名> <add|update|activate|remove|show> [...]" && exit 1
 [ -z "$ACTION" ] && echo "用法: index.sh <世界名> <add|update|activate|remove|show> [...]" && exit 1
 
+# 世界名校验：只禁路径分隔符/穿越（允许中文·如「遗弃之地」）
+case "$WORLD" in
+  ''|*/*|*\\*|*..*) echo "[ERR] 非法世界名 '$WORLD'（禁止路径分隔符/../相对路径穿越）" >&2; exit 1 ;;
+esac
+
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"

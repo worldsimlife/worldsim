@@ -159,7 +159,7 @@ EOF
 
 ## 存档/读档
 
-统一通过 `snap.sh` 完成。**save 全量备份**（动态状态 + CHAR_state + scenes/ 全目录）；**load 差异恢复**（存档有→覆盖；磁盘有而存档无→移入 `archive/scenes/` 保留不删；废弃 .active 自动归档）。**焦点场景唯一权威源 = world_state.yaml 顶层 `焦点场景`**。用户未指定存档名时，自动生成「r<轮次>-<场景目录名>-时间戳」（r 前缀便于按轮次识别快照）。**回退是低频例外**：快照恢复（snap load）+ 手工重建协议（references/rollback.md）——回退不走 write-raw、yaml 字符串字段禁行删、回退后必做残留扫描+validate。
+统一通过 `snap.sh` 完成。**save 全量备份**（动态状态 + CHAR_state + scenes/ 全目录）；**load 差异恢复**（存档有→覆盖；磁盘有而存档无→移入 `archive/scenes/` 保留不删；废弃 .active 自动归档）。**load 为破坏性操作：覆盖当前世界状态（自动备份 _before_）——交互提示确认 / 非交互加 `--force`**。**焦点场景唯一权威源 = world_state.yaml 顶层 `焦点场景`**。用户未指定存档名时，自动生成「r<轮次>-<场景目录名>-时间戳」（r 前缀便于按轮次识别快照）。**回退是低频例外**：快照恢复（snap load）+ 手工重建协议（references/rollback.md）——回退不走 write-raw、yaml 字符串字段禁行删、回退后必做残留扫描+validate。
 
 ## 状态校验（必做——触发：读档后 / 跨 Session 恢复后 / 用户要求检查状态 / 叙事重启前）
 

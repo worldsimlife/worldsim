@@ -18,12 +18,9 @@ WORLD="$1"
 SCENE_ID="$2"
 [ -z "$WORLD" ] && { echo "用法: sh scripts/reset_scene.sh <世界名> [<场景ID>] [--force]" >&2; exit 1; }
 
-# 名称校验：仅允许 [A-Za-z0-9._-]，禁止路径分隔符与相对路径穿越
+# 世界名校验：只禁路径分隔符/穿越（允许中文·如「遗弃之地」）
 case "$WORLD" in
-  ''|*/*|*\\*|*..*) echo "[ERR] 非法世界名 '$WORLD'（仅允许字母/数字/._-，禁止路径分隔符）" >&2; exit 1 ;;
-esac
-case "$WORLD" in
-  *[!A-Za-z0-9._-]*) echo "[ERR] 非法世界名 '$WORLD'（仅允许字母/数字/._-）" >&2; exit 1 ;;
+  ''|*/*|*\\*|*..*) echo "[ERR] 非法世界名 '$WORLD'（禁止路径分隔符/../相对路径穿越）" >&2; exit 1 ;;
 esac
 
 WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"

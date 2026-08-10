@@ -22,13 +22,10 @@ WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
 SNAP_DIR="$WORLD_DIR/snaps"
 ARCHIVE_DIR="$WORLD_DIR/archive/scenes"
 
-# 名称校验：仅允许 [A-Za-z0-9._-]，禁止路径分隔符与相对路径穿越
+# 名称校验：世界名/快照名只禁路径分隔符/穿越（允许中文·如「遗弃之地」/「甜水镇」——自动生成名含中文场景名同理）
 validate_name() {
   case "$1" in
-    ''|*/*|*\\*|*..*) echo "错误: 非法名称 '$1'（仅允许字母/数字/._-，禁止路径分隔符）" >&2; exit 1 ;;
-  esac
-  case "$1" in
-    *[!A-Za-z0-9._-]*) echo "错误: 非法名称 '$1'（仅允许字母/数字/._-）" >&2; exit 1 ;;
+    ''|*/*|*\\*|*..*) echo "错误: 非法名称 '$1'（禁止路径分隔符/../相对路径穿越）" >&2; exit 1 ;;
   esac
 }
 

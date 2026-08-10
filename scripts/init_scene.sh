@@ -29,6 +29,11 @@ if [ -z "$WORLD" ] || [ -z "$SCENE_ID" ] || [ -z "$SCENE_NAME" ]; then
   exit 1
 fi
 
+# 世界名校验：只禁路径分隔符/穿越（允许中文·如「遗弃之地」）
+case "$WORLD" in
+  ''|*/*|*\\*|*..*) echo "[ERR] 非法世界名 '$WORLD'（禁止路径分隔符/../相对路径穿越）" >&2; exit 1 ;;
+esac
+
 # 场景名是目录名的一部分——禁止含路径分隔符（/）或反斜杠（\），防止破坏 scenes/ 目录结构
 case "$SCENE_NAME" in
   */*|*\\) echo "[ERR] 场景名不能含 / 或 \\（场景名=目录名，含分隔符会破坏目录结构）: $SCENE_NAME" >&2; exit 1 ;;
