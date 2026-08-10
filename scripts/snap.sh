@@ -10,6 +10,7 @@
 #   sh scripts/snap.sh <世界名> load <快照名>
 #   sh scripts/snap.sh <世界名> list
 #   sh scripts/snap.sh <世界名> delete <快照名>
+# 破坏性操作（load/delete）确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
 
 WORLD="$1"
 ACTION="$2"
@@ -21,6 +22,31 @@ WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
 SNAP_DIR="$WORLD_DIR/snaps"
 ARCHIVE_DIR="$WORLD_DIR/archive/scenes"
 
+# 名称校验：仅允许 [A-Za-z0-9._-]，禁止路径分隔符与相对路径穿越
+validate_name() {
+  case "$1" in
+    ''|*/*|*\\*|*..*) echo "错误: 非法名称 '$1'（仅允许字母/数字/._-，禁止路径分隔符）" >&2; exit 1 ;;
+  esac
+  case "$1" in
+    *[!A-Za-z0-9._-]*) echo "错误: 非法名称 '$1'（仅允许字母/数字/._-）" >&2; exit 1 ;;
+  esac
+}
+
+# 破坏性操作确认：--force 直过；交互终端提示 [y/N]（默认拒绝）；非交互且无 --force → 拒绝执行
+FORCE=0
+for _a in "$@"; do [ "$_a" = "--force" ] && FORCE=1; done
+confirm_destructive() {
+  [ "$FORCE" = "1" ] && return 0
+  if [ ! -t 0 ]; then
+    echo "错误: 非交互环境执行破坏性操作需显式 --force 标志（sh scripts/snap.sh $WORLD $ACTION $SNAPNAME --force）" >&2
+    exit 1
+  fi
+  printf "%s [y/N] " "$1"
+  read _answer
+  case "$_answer" in y|Y|yes|YES) return 0 ;; *) echo "已取消"; exit 0 ;; esac
+}
+
+validate_name "$WORLD"
 [ -d "$WORLD_DIR" ] || { echo "ERROR: world '$WORLD' not found"; exit 1; }
 mkdir -p "$SNAP_DIR"
 
@@ -59,6 +85,7 @@ case "$ACTION" in
       SNAPNAME=$(echo "$SNAPNAME" | sed 's/--*/-/g; s/^-//; s/-$//')
       echo "未指定存档名，自动生成: $SNAPNAME"
     fi
+    validate_name "$SNAPNAME"
     OUTDIR="$SNAP_DIR/$SNAPNAME"
     rm -rf "$OUTDIR"
     mkdir -p "$OUTDIR"
@@ -109,8 +136,10 @@ case "$ACTION" in
 
   load)
     [ -z "$SNAPNAME" ] && { echo "ERROR: 需要快照名称"; exit 1; }
+    validate_name "$SNAPNAME"
     SRCDIR="$SNAP_DIR/$SNAPNAME"
     [ -d "$SRCDIR" ] || { echo "ERROR: 快照 '$SNAPNAME' 不存在"; exit 1; }
+    confirm_destructive "载入快照 '$SNAPNAME' 将覆盖当前世界状态（当前状态会自动备份到 _before_）"
 
     # 加载前自动备份当前状态
     BAKDIR="$SNAP_DIR/_before_$(date +%s)"
@@ -204,8 +233,10 @@ case "$ACTION" in
 
   delete)
     [ -z "$SNAPNAME" ] && { echo "ERROR: 需要快照名称"; exit 1; }
+    validate_name "$SNAPNAME"
     TARGET="$SNAP_DIR/$SNAPNAME"
     [ -d "$TARGET" ] || { echo "ERROR: 快照 '$SNAPNAME' 不存在"; exit 1; }
+    confirm_destructive "删除快照 '$SNAPNAME' 不可恢复"
     rm -rf "$TARGET"
     echo "已删除快照: $SNAPNAME"
     ;;

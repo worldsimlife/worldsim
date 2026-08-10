@@ -1,6 +1,6 @@
 #!/usr/bin/env sh
 # reset_scene.sh — 场景级回退（L3）：重置指定场景到「start_snapshot 状态」（清空场景内动态叙事·不撤销世界进度）
-# 用法: sh scripts/reset_scene.sh <世界名> [<场景ID>]
+# 用法: sh scripts/reset_scene.sh <世界名> [<场景ID>] [--force]
 #   <场景ID> 缺省 = 当前焦点场景（world_state.焦点场景）；支持短 ID（S05）或完整目录名
 # 回退体系：L1 世界级 snap.sh load（快照·主动存档）/ L2 场景级本脚本 / L3 手工重建（详见 references/rollback.md）
 # 破坏性操作（重置前自动存档·可回滚）：
@@ -9,13 +9,22 @@
 #   - 静态基线保留：物理锚点/道具/关键场景信息/出场角色摘要（场景物理定义，不因重置销毁）
 #   - world_state 时间/轮次回退至场景开场（start_snapshot 冻结时间/开场轮次）——「时间只增不减」只约束正常推进·显式重置是主动回退例外
 # 重置后：按 start_snapshot.md 重新填充 scene_state 核心状态并继续叙事（世界时间/轮次已与场景开场一致）
+# 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 WORLD="$1"
 SCENE_ID="$2"
-[ -z "$WORLD" ] && { echo "用法: sh scripts/reset_scene.sh <世界名> [<场景ID>]" >&2; exit 1; }
+[ -z "$WORLD" ] && { echo "用法: sh scripts/reset_scene.sh <世界名> [<场景ID>] [--force]" >&2; exit 1; }
+
+# 名称校验：仅允许 [A-Za-z0-9._-]，禁止路径分隔符与相对路径穿越
+case "$WORLD" in
+  ''|*/*|*\\*|*..*) echo "[ERR] 非法世界名 '$WORLD'（仅允许字母/数字/._-，禁止路径分隔符）" >&2; exit 1 ;;
+esac
+case "$WORLD" in
+  *[!A-Za-z0-9._-]*) echo "[ERR] 非法世界名 '$WORLD'（仅允许字母/数字/._-）" >&2; exit 1 ;;
+esac
 
 WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
 [ -d "$WORLD_DIR" ] || { echo "[ERR] 世界 '$WORLD' 不存在: $WORLD_DIR" >&2; exit 1; }
@@ -23,6 +32,9 @@ WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
 # ── 解析场景目录（缺省=焦点场景；短 ID 前缀匹配完整目录名）──
 SCENE_DIR=""
 if [ -n "$SCENE_ID" ]; then
+  case "$SCENE_ID" in
+    */*|*\\*|*..*) echo "[ERR] 非法场景 ID '$SCENE_ID'（禁止路径分隔符）" >&2; exit 1 ;;
+  esac
   if [ -d "$WORLD_DIR/scenes/$SCENE_ID" ]; then
     SCENE_DIR="$WORLD_DIR/scenes/$SCENE_ID"
   else
@@ -36,6 +48,19 @@ else
 fi
 [ -z "$SCENE_DIR" ] || [ ! -d "$SCENE_DIR" ] && { echo "[ERR] 场景不存在: ${SCENE_ID:-<焦点场景>}（检查 scenes/ 目录与 world_state.焦点场景）" >&2; exit 1; }
 SCENE_BASE=$(basename "$SCENE_DIR")
+
+# 破坏性操作确认：--force 直过；交互终端提示 [y/N]（默认拒绝）；非交互且无 --force → 拒绝执行
+FORCE=0
+for _a in "$@"; do [ "$_a" = "--force" ] && FORCE=1; done
+if [ "$FORCE" != "1" ]; then
+  if [ ! -t 0 ]; then
+    echo "错误: 非交互环境执行场景重置需显式 --force 标志（sh scripts/reset_scene.sh $WORLD $SCENE_ID --force）" >&2
+    exit 1
+  fi
+  printf "重置场景 '$SCENE_BASE' 到 start_snapshot 状态（清空动态叙事·自动存档可回滚）[y/N] "
+  read _answer
+  case "$_answer" in y|Y|yes|YES) ;; *) echo "已取消"; exit 0 ;; esac
+fi
 
 # ── 安全网：自动存档（可回滚）──
 SNAP_OUTPUT=$(sh "$SCRIPT_DIR/snap.sh" "$WORLD" save "_before_reset_scene_${SCENE_BASE}_$(date +%Y%m%d-%H%M%S)" 2>&1)

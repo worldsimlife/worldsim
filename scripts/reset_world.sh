@@ -1,20 +1,42 @@
 #!/bin/sh
 # reset_world.sh — 重置世界到「创建完成态」（纯 .md 静态骨架·零 yaml）
-# 用法: sh scripts/reset_world.sh <世界名>
+# 用法: sh scripts/reset_world.sh <世界名> [--force]
 # 破坏性操作（重置前自动存档·可回滚）：
 #   删除 scenes/ 整个目录、CHAR_*_state.yaml、conflicts.yaml、world_state.yaml、
 #        world_map.yaml、off_focus/pending_actions.yaml
 #   保留 CHAR_*.md / SETTING.md / LOOPS.md / CROSS_NARRATIVES.md / CONFLICTS_SEED.md / snaps/
 # 重置后世界回到未启动状态——用『启动世界』重新物化（见 references/session_recovery.md 第二章）
+# 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
 
 WORLD="$1"
-[ -z "$WORLD" ] && { echo "用法: sh scripts/reset_world.sh <世界名>" >&2; exit 1; }
+[ -z "$WORLD" ] && { echo "用法: sh scripts/reset_world.sh <世界名> [--force]" >&2; exit 1; }
+
+# 名称校验：仅允许 [A-Za-z0-9._-]，禁止路径分隔符与相对路径穿越
+case "$WORLD" in
+  ''|*/*|*\\*|*..*) echo "错误: 非法世界名 '$WORLD'（仅允许字母/数字/._-，禁止路径分隔符）" >&2; exit 1 ;;
+esac
+case "$WORLD" in
+  *[!A-Za-z0-9._-]*) echo "错误: 非法世界名 '$WORLD'（仅允许字母/数字/._-）" >&2; exit 1 ;;
+esac
 
 WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
 [ -d "$WORLD_DIR" ] || { echo "错误: 世界 '$WORLD' 不存在: $WORLD_DIR" >&2; exit 1; }
+
+# 破坏性操作确认：--force 直过；交互终端提示 [y/N]（默认拒绝）；非交互且无 --force → 拒绝执行
+FORCE=0
+for _a in "$@"; do [ "$_a" = "--force" ] && FORCE=1; done
+if [ "$FORCE" != "1" ]; then
+  if [ ! -t 0 ]; then
+    echo "错误: 非交互环境执行重置需显式 --force 标志（sh scripts/reset_world.sh $WORLD --force）" >&2
+    exit 1
+  fi
+  printf "重置世界 '$WORLD' 到创建完成态（删除全部动态状态·自动存档可回滚）[y/N] "
+  read _answer
+  case "$_answer" in y|Y|yes|YES) ;; *) echo "已取消"; exit 0 ;; esac
+fi
 
 # 安全网：自动存档（可回滚）
 SNAP_OUTPUT=$(sh "$SCRIPT_DIR/snap.sh" "$WORLD" save "_before_reset_$(date +%Y%m%d-%H%M%S)" 2>&1)
