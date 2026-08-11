@@ -3,7 +3,7 @@
 # 用法: sh scripts/reset_world.sh <世界名> [--force]
 # 破坏性操作（重置前自动存档·可回滚）：
 #   删除 scenes/ 整个目录、CHAR_*_state.yaml、conflicts.yaml、world_state.yaml、
-#        world_map.yaml、off_focus/pending_actions.yaml
+#        world_map.yaml、off_focus/pending_actions.yaml、foreshadow.yaml
 #   保留 CHAR_*.md / SETTING.md / LOOPS.md / CROSS_NARRATIVES.md / CONFLICTS_SEED.md / snaps/
 # 重置后世界回到未启动状态——用『启动世界』重新物化（见 references/session_recovery.md 第二章）
 # 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
@@ -49,7 +49,7 @@ for f in "$WORLD_DIR"/CHAR_*_state.yaml; do
   rm -f "$f"
   echo "  删除: $(basename "$f")"
 done
-for f in conflicts.yaml world_state.yaml world_map.yaml off_focus/pending_actions.yaml; do
+for f in conflicts.yaml world_state.yaml world_map.yaml off_focus/pending_actions.yaml foreshadow.yaml; do
   if [ -f "$WORLD_DIR/$f" ]; then
     rm -f "$WORLD_DIR/$f"
     echo "  删除: $f"

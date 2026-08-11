@@ -1,0 +1,8 @@
+# WorldSim 行尾规范：所有文本文件统一 LF（根治 Windows/rsync 引入的 CRLF）
+# git add 时自动把 CRLF 规范化为 LF；检出时保持 LF。
+* text=auto
+*.sh   text eol=lf
+*.md   text eol=lf
+*.yaml text eol=lf
+*.py   text eol=lf
+*.txt  text eol=lf

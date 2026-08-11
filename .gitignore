@@ -7,16 +7,13 @@ worlds/*
 !worlds/westworld/
 !worlds/malena/
 
-# 保留的世界目录内，仍只跟踪静态 .md，运行时数据一律忽略
+# 保留的世界目录内，仍只跟踪静态 .md，运行时数据一律忽略（所有 yaml = 动态状态）
 worlds/*/scenes/
 worlds/*/off_focus/
 worlds/*/snaps/
 worlds/*/archive/
 worlds/*/import/
-worlds/*/*_state.yaml
-worlds/*/world_state.yaml
-worlds/*/world_map.yaml
-worlds/*/conflicts.yaml
+worlds/*/*.yaml
 
 # 备份/临时文件（sim-up/down.sh 的 rsync 排除项，git 应保持一致）
 *.bak*

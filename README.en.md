@@ -1,7 +1,8 @@
 # WorldSim — Where Worlds Come to Life
 
 > World Simulator · Story Engine
-> The world runs itself; characters live their own lives. Walk in — you are part of the story.
+> WorldSim is more than roleplay — it's a world that breathes: characters are flesh and blood, making trade-offs under pressure; in corners no one watches, fates keep rising and falling. Walk in — you are part of the story.
+> For players who want deep roleplay and creators chasing dramatic tension.
 
 **中文版: [README.md](README.md)**
 

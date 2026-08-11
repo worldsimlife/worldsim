@@ -115,8 +115,11 @@ WS_FILE="$WORLD_DIR/world_state.yaml"
 START_TIME=""
 START_ROUND=""
 if [ -f "$SNAP_FILE" ]; then
-  START_TIME=$(grep -A1 "^## 冻结时间" "$SNAP_FILE" | tail -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-  START_ROUND=$(grep -A1 "^## 开场轮次" "$SNAP_FILE" | tail -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d "'\"")
+  # 兼容两种格式：`冻结时间：值`（模板·冒号单行）/ `## 冻结时间`+下一行（旧版标题）
+  START_TIME=$(grep -E "^冻结时间[:：]" "$SNAP_FILE" | head -1 | sed -E 's/^冻结时间[:：][[:space:]]*//')
+  [ -z "$START_TIME" ] && START_TIME=$(grep -A1 "^## 冻结时间" "$SNAP_FILE" | tail -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
+  START_ROUND=$(grep -E "^开场轮次[:：]" "$SNAP_FILE" | head -1 | sed -E 's/^开场轮次[:：][[:space:]]*//' | tr -d "'\"")
+  [ -z "$START_ROUND" ] && START_ROUND=$(grep -A1 "^## 开场轮次" "$SNAP_FILE" | tail -1 | sed 's/^[[:space:]]*//;s/[[:space:]]*$//' | tr -d "'\"")
 fi
 if [ -f "$WS_FILE" ]; then
   if [ -n "$START_TIME" ]; then

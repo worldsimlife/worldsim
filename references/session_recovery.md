@@ -58,8 +58,9 @@
 0. 静态设定：SETTING.md + **当前焦点场景出场角色**（scene_card/INDEX 出场列）的 CHAR_.md——背景角色档案不预读，进场或需推导反应时按需 `worldctl.py <世界> grep <角色名>` 补读；**CHAR_.md 缺失=禁止推导反应**，先补读
 1. 动态核心：world_state / conflicts / world_map / pending_actions + 当前焦点场景出场角色的 CHAR_state（conflicts 关联角色**不驱动**档案加载——conflicts.yaml 照常读作推进依据，但档案只按当前场景出场加载）
 2. **焦点场景目录四件套（scene_card/scene_state/narrative/start_snapshot）必读**——narrative.md 原文用于叙事文本接续（只用于接续，不改变创作依赖）
-3. CROSS_NARRATIVES.md 与 LOOPS.md（有则各读一次）；CONFLICTS_SEED.md（已有 conflicts.yaml 则只核对不物化）
+3. CROSS_NARRATIVES.md 与 LOOPS.md（有则各读一次）；knowledge_index.yaml（有则读一次·知情边界索引·认知边界闸门辅助·见 references/knowledge_index.md）；CONFLICTS_SEED.md（已有 conflicts.yaml 则只核对不物化）
 4. 执行 scene_management.md §状态校验（validate + 内容核查 + 修复）——validate 报错=修数据，不重读加载
+4.5 **有 knowledge_index.yaml → 知情边界核对（独立审计者视角·复用「角色转变声明」）：** 逐条按 `记录` 指针读状态文件 → 比对事实的知情状态与索引是否一致。一致=通过；矛盾=能定位的修复（补写状态文件）/ **循环重置导致的失效条目直接删除**（知情边界已抹平·检查对象不存在）/ 定位不了标记「存疑」留给用户。检查后顺手清理：已公开/已落定/循环重置失效 → 删，仍隐藏/仍在延续 → 留（不确定就留）。细则见 references/knowledge_index.md §检查流程/清理标准
 
 **恢复后如需回到历史状态**（叙事走错/用户要求撤销）：走回退协议——`snap.sh load <快照>`（主动存档恢复）或按 references/rollback.md 手工重建；回退后同样执行状态校验。回退是低频例外，不给每轮加载加负担。
 

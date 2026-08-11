@@ -1,7 +1,8 @@
 # WorldSim — Where Worlds Come to Life
 
 > 世界模拟器 · 故事引擎
-> 世界自己运转，角色自己生活。走进去，你就是故事中人。
+> WorldSim 不只是角色扮演，它是一个会呼吸的世界：角色有血有肉，在冲突中做出取舍；无人注视的角落，命运也在沉浮。你走进去，就是故事中人。
+> 给深度角色扮演玩家与戏剧创作者。
 
 **English version: [README.en.md](README.en.md)**
 

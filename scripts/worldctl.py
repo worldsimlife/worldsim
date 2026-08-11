@@ -90,6 +90,9 @@ def discover_files(world_dir: Path, scene_dir: Path | None) -> dict[str, Path]:
     # 焦外
     ofp = world_dir / "off_focus" / "pending_actions.yaml"
     if ofp.exists(): files["pending_actions"] = ofp
+    # 伏笔登记（可选·触发式）
+    ffp = world_dir / "foreshadow.yaml"
+    if ffp.exists(): files["foreshadow"] = ffp
     return files
 
 # ── CHAR key 命名归一化 ──────────────────────────────────────────
@@ -624,7 +627,7 @@ def check_batch(ops, world_dir):
                 if not key_path[0].startswith("CT-"):
                     hard.append((idx, f"{file_key}.{key_path_str}: conflicts 顶层键必须是 CT-XX（当前 '{key_path[0]}'）——疑似 FILE 标记错位/字段写入错误文件"))
             elif file_key.startswith(CHAR_STATE_PREFIX):
-                CHAR_STATE_KEYS = {"自主性", "位置", "核心状态", "情绪", "压力水平", "防御有效性", "偏离登记", "人际动态", "决策状态", "信念演化", "记忆锚点", "反应轨迹", "名字"}
+                CHAR_STATE_KEYS = {"自主性", "位置", "已知地点", "核心状态", "情绪", "压力水平", "防御有效性", "偏离登记", "人际动态", "决策状态", "信念演化", "记忆锚点", "反应轨迹", "名字"}
                 if key_path[0] not in CHAR_STATE_KEYS:
                     hard.append((idx, f"{file_key}.{key_path_str}: CHAR_state 顶层键必须在键表内（当前 '{key_path[0]}'）——疑似 FILE 标记错位/字段写入错误文件"))
             elif file_key == "scene_state":
@@ -787,12 +790,15 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 target[k] = {}
             target = target[k]
         leaf = key_path[-1]
-        # 结构化累积字段（记忆锚点/信念演化/偏离登记）：append 时追加为 yaml 列表元素
-        # 判定：content 以「- 轮次:」或「- 轮次：」开头 → 按列表元素追加；否则走字符串追加（兼容旧格式）
-        STRUCTURED_APPEND_FIELDS = {"记忆锚点", "信念演化", "偏离登记"}
-        is_structured_field = (file_key.startswith(CHAR_STATE_PREFIX)
+        # 结构化累积字段（记忆锚点/信念演化/偏离登记/已知地点/伏笔）：append 时追加为 yaml 列表元素
+        # 判定：记忆锚点/信念演化/偏离登记/伏笔以「- 轮次:/时间:/线索:」开头；已知地点以「- 」开头（元素=地点名字符串）
+        STRUCTURED_APPEND_FIELDS = {"记忆锚点", "信念演化", "偏离登记", "已知地点", "伏笔"}
+        is_structured_field = ((file_key.startswith(CHAR_STATE_PREFIX) or file_key == "foreshadow")
                                and leaf in STRUCTURED_APPEND_FIELDS)
-        is_list_item_content = bool(re.match(r"^\s*-\s*(?:轮次|时间)[:：]", content))
+        if leaf == "已知地点":
+            is_list_item_content = bool(re.match(r"^\s*-\s+", content))
+        else:
+            is_list_item_content = bool(re.match(r"^\s*-\s*(?:轮次|时间|线索)[:：]", content))
         if append and is_structured_field and is_list_item_content:
             # 解析 change set 中给出的列表元素（可能多条）——直接用 yaml 解析（与 write_yaml 同款）
             try:
@@ -801,9 +807,12 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 print(f"[ERR] {file_key}.{'.'.join(key_path)} 结构化追加内容不是合法 YAML 列表，拒绝写入", file=sys.stderr)
                 return False
             if not isinstance(new_items, list):
-                print(f"[ERR] {file_key}.{'.'.join(key_path)} 结构化追加内容必须是 YAML 列表（- 轮次: ...）", file=sys.stderr)
+                print(f"[ERR] {file_key}.{'.'.join(key_path)} 结构化追加内容必须是 YAML 列表（- 轮次: ... / - 地点名）", file=sys.stderr)
                 return False
-            new_items = [it for it in new_items if isinstance(it, dict)]
+            if leaf == "已知地点":
+                new_items = [str(it).strip() for it in new_items if isinstance(it, str) and it.strip()]
+            else:
+                new_items = [it for it in new_items if isinstance(it, dict)]
 
             existing_val = target.get(leaf, [])
             if not isinstance(existing_val, list):
@@ -811,18 +820,26 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 existing_val = [{"轮次": "", "内容": ent.strip()}
                                 for ent in re.split(r"\n\s*(?:·\s*)?(?=\[)", str(existing_val))
                                 if ent.strip()]
-            # 重复追加检测：按 轮次+内容 判断
+            # 重复追加检测：已知地点按元素相等；伏笔按 线索 相等；其余按 轮次+内容 判断
             for item in new_items:
                 dup = False
                 for e in existing_val:
-                    if (str(e.get("轮次", "")) == str(item.get("轮次", ""))
+                    if leaf == "已知地点":
+                        if str(e) == str(item):
+                            dup = True
+                            break
+                    elif leaf == "伏笔":
+                        if str(e.get("线索", "")) == str(item.get("线索", "")):
+                            dup = True
+                            break
+                    elif (str(e.get("轮次", "")) == str(item.get("轮次", ""))
                             and str(e.get("内容", "")) == str(item.get("内容", ""))):
                         dup = True
                         break
                 if not dup:
                     existing_val.append(item)
                 else:
-                    print(f"[SKIP] {file_key}.{'.'.join(key_path)} 重复追加已跳过（轮次+内容已存在）", file=sys.stderr)
+                    print(f"[SKIP] {file_key}.{'.'.join(key_path)} 重复追加已跳过（{'地点已存在' if leaf == '已知地点' else ('线索已存在' if leaf == '伏笔' else '轮次+内容已存在')}）", file=sys.stderr)
             target[leaf] = existing_val
             write_yaml(filepath, data)
             print(f"[OK] {file_key}.{'.'.join(key_path)} 已追加 {len(new_items)} 条结构化元素", file=sys.stderr)
@@ -835,6 +852,25 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 print(f"[SKIP] {file_key}.{'.'.join(key_path)} 重复追加已跳过（内容已存在——同一批次只执行一次，禁止重放 write 命令验证）", file=sys.stderr)
                 return True
             target[leaf] = existing_val.rstrip("\n") + "\n" + content
+        elif not append and is_structured_field and (is_list_item_content or content.strip() in ("[]", "{}")):
+            # KEY 覆盖结构化列表字段：content 为 yaml 列表文本（- item / []）→ 解析为列表全量替换
+            # （字段级替换意图与 APPEND 增量区分；非列表文本仍按原始文本覆盖）
+            try:
+                new_items = yaml.safe_load(content)
+            except Exception:
+                print(f"[ERR] {file_key}.{'.'.join(key_path)} 结构化覆盖内容不是合法 YAML 列表，拒绝写入", file=sys.stderr)
+                return False
+            if not isinstance(new_items, list):
+                print(f"[ERR] {file_key}.{'.'.join(key_path)} 结构化覆盖内容必须是 YAML 列表（- 轮次: ... / - 地点名 / []）", file=sys.stderr)
+                return False
+            if leaf == "已知地点":
+                new_items = [str(it).strip() for it in new_items if isinstance(it, str) and it.strip()]
+            else:
+                new_items = [it for it in new_items if isinstance(it, dict)]
+            target[leaf] = new_items
+            write_yaml(filepath, data)
+            print(f"[OK] {file_key}.{'.'.join(key_path)} 已覆盖（结构化列表·{len(new_items)} 条）", file=sys.stderr)
+            return True
         else:
             target[leaf] = content
 
@@ -1393,7 +1429,9 @@ def cmd_validate(world_dir: Path):
                             warnings.append(f"world_state.yaml: 未知地点子键 '{k}'（键表: 当前区域/已探索区域）")
         except Exception:
             pass
-    # 4c. 场景骨架占位检查（scene_card 目标/钩子/焦外、start_snapshot 姿态/道具——创建后禁止带占位运行）
+    # 4c. 场景骨架占位检查（scene_card 目标/钩子/焦外、start_snapshot 姿态/道具——创建后禁止带模板占位运行）
+    # 模板占位特征 = [字段定义] 或 (例: 示例)——真实场景文件不应含这两类（templates/ 符号契约）
+    PLACEHOLDER_RE = re.compile(r"\[[^\]]{2,40}\]|\(例:")
     scenes_dir = world_dir / "scenes"
     if scenes_dir.is_dir():
         for d in sorted(scenes_dir.iterdir()):
@@ -1402,13 +1440,13 @@ def cmd_validate(world_dir: Path):
             sc_fp = d / "scene_card.md"
             if sc_fp.exists():
                 sc_text = sc_fp.read_text(encoding="utf-8", errors="ignore")
-                if re.search(r"<!--\s*待填充", sc_text):
-                    warnings.append(f"{d.name}/scene_card.md: 场景目标/前情钩子/焦外仍为占位（<!-- 待填充 -->）——创建后应已填充，禁止带占位运行")
+                if PLACEHOLDER_RE.search(sc_text):
+                    warnings.append(f"{d.name}/scene_card.md: 场景目标/前情钩子/焦外等仍为模板占位（[字段定义]/(例:) 残留）——创建后应已填充，禁止带占位运行")
             ss_fp = d / "start_snapshot.md"
             if ss_fp.exists():
                 ss_text = ss_fp.read_text(encoding="utf-8", errors="ignore")
-                if re.search(r"<!--\s*角色名", ss_text):
-                    warnings.append(f"{d.name}/start_snapshot.md: 角色姿态/道具位置仍为占位注释——创建后应已填充，禁止带占位运行")
+                if PLACEHOLDER_RE.search(ss_text):
+                    warnings.append(f"{d.name}/start_snapshot.md: 角色姿态/道具位置等仍为模板占位（[字段定义]/(例:) 残留）——创建后应已填充，禁止带占位运行")
     # 5. world_map.yaml（可选增强层·迷雾制·多层嵌套）——缺失时静默跳过，不影响运行
     wm_fp = world_dir / "world_map.yaml"
     if wm_fp.exists():
@@ -1442,8 +1480,54 @@ def cmd_validate(world_dir: Path):
                     walk_map(sub, f"已探索区域.{name}")
         except Exception:
             pass
+    # 5b. foreshadow.yaml 伏笔闭环检查（可选文件·仅世界有该文件时检查）
+    fs_fp = world_dir / "foreshadow.yaml"
+    if fs_fp.exists():
+        try:
+            fdata = yaml.safe_load(fs_fp.read_text())
+            f_list = fdata.get("伏笔", []) if isinstance(fdata, dict) else None
+            if f_list is None:
+                errors.append("foreshadow.yaml: 缺顶层键 伏笔（应为列表）")
+            elif not isinstance(f_list, list):
+                errors.append("foreshadow.yaml: 顶层键 伏笔 应为列表")
+            else:
+                cur_round = 0
+                if ws_fp.exists():
+                    try:
+                        ws_cur = yaml.safe_load(ws_fp.read_text())
+                        if isinstance(ws_cur, dict):
+                            cur_round = int(ws_cur.get("轮次") or 0)
+                    except Exception:
+                        pass
+                for i, it in enumerate(f_list, 1):
+                    if not isinstance(it, dict):
+                        warnings.append(f"foreshadow.yaml 伏笔[{i}]: 元素应为映射（线索/种下/时间/回收/状态）")
+                        continue
+                    clue = str(it.get("线索", "")).strip()
+                    status = str(it.get("状态", "")).strip()
+                    try:
+                        plant = int(it.get("种下") or 0)
+                    except (TypeError, ValueError):
+                        plant = -1
+                    try:
+                        pay = int(it.get("回收") or 0)
+                    except (TypeError, ValueError):
+                        pay = 0
+                    if not clue:
+                        warnings.append(f"foreshadow.yaml 伏笔[{i}]: 缺 线索")
+                    if status not in ("待回收", "已回收", "废弃"):
+                        warnings.append(f"foreshadow.yaml 伏笔[{i}]: 非法状态 '{status}'（枚举：待回收/已回收/废弃）")
+                    elif status == "已回收":
+                        if pay == 0:
+                            warnings.append(f"foreshadow.yaml 伏笔[{i}] '{clue}': 已回收但缺 回收 轮次")
+                        elif plant > 0 and pay < plant:
+                            errors.append(f"foreshadow.yaml 伏笔[{i}] '{clue}': 回收轮次 {pay} 早于种下轮次 {plant}（伏笔倒置·硬错）")
+                    elif status == "待回收" and plant > 0 and cur_round - plant > 20:
+                        warnings.append(f"foreshadow.yaml 伏笔[{i}] '{clue}': 种下 {plant} 轮已过 {cur_round - plant} 轮未回收（>20 轮·建议回收或废弃）")
+        except Exception as e:
+            warnings.append(f"foreshadow.yaml: 解析失败 {e}")
     # 6. CHAR_state 字段级校验（键表/人际动态档位/废弃键/全知视角/反应轨迹方向）
-    CHAR_ALLOWED_KEYS = {"位置", "名字", "核心状态", "情绪", "人际动态", "决策状态",
+    CHAR_ALLOWED_KEYS = {"位置", "已知地点", "名字", "核心状态", "情绪", "人际动态", "决策状态",
                          "压力水平", "防御有效性", "信念演化", "记忆锚点", "反应轨迹",
                          "偏离登记",
                          "自主性",
@@ -1461,7 +1545,7 @@ def cmd_validate(world_dir: Path):
         # 6a. 未知顶层键（键表外字段=无语义定义的漂移字段）
         for k in cdata:
             if k not in CHAR_ALLOWED_KEYS:
-                warnings.append(f"{cname}: 未知键 '{k}'（键表: 自主性/位置/名字/核心状态/情绪/人际动态/决策状态/压力水平/防御有效性/信念演化/记忆锚点/反应轨迹；模板扩展: 服装/健康/随身）")
+                warnings.append(f"{cname}: 未知键 '{k}'（键表: 自主性/位置/已知地点/名字/核心状态/情绪/人际动态/决策状态/压力水平/防御有效性/信念演化/记忆锚点/反应轨迹；模板扩展: 服装/健康/随身）")
         # 6b. 废弃键
         if "信任度" in cdata:
             warnings.append(f"{cname}: 顶层键 信任度 已废弃——唯一权威源=人际动态各对象行档位，应删除")
@@ -1633,6 +1717,23 @@ def cmd_validate(world_dir: Path):
                     warnings.append(f"叙事新鲜度: {scene_dir.name}/narrative.md 不存在（焦点场景叙事文件缺失）")
     except Exception:
         pass
+
+    # 8d. CRLF 行尾检测（防 Windows/rsync 引入 CRLF——破坏 shell 语法与脚本解析）
+    crlf_hits = []
+    for cfp in sorted(world_dir.rglob("*")):
+        if not cfp.is_file() or ".git" in cfp.parts:
+            continue
+        if cfp.suffix not in (".yaml", ".md", ".sh", ".txt"):
+            continue
+        try:
+            if b"\r\n" in cfp.read_bytes():
+                crlf_hits.append(str(cfp.relative_to(world_dir.parent)))
+        except Exception:
+            continue
+    if crlf_hits:
+        shown = "；".join(crlf_hits[:5])
+        more = f" 等 {len(crlf_hits)} 个" if len(crlf_hits) > 5 else ""
+        warnings.append(f"CRLF 行尾: {len(crlf_hits)} 个文件含 \\r\\n（Windows/rsync 引入·会破坏 shell 语法）——应转 LF（.gitattributes 已锁定 eol=lf，git add 自动规范化）: {shown}{more}")
 
     if errors:
         print(f"[VALIDATE] {len(errors)} 个问题:")

@@ -70,33 +70,17 @@ fi
 mkdir -p "$SCENE_DIR"
 
 
-# scene_card.md（字段名与 templates/scene_card.md 对齐：类型(INT/EXT)/基准时间；非替换字段用 <!-- --> 注释占位，不生成"空提示文本"）
-cat > "$SCENE_DIR/scene_card.md" << 'CARD'
-# 场景卡片
-
-| 字段 | 值 |
-|------|-----|
-| 场景ID | __SCENE_ID__ |
-| 场景名 | __SCENE_NAME__ |
-| 类型(INT/EXT) | __SCENE_TYPE__ |
-| 基准时间 | __SCENE_TIME__ |
-| 出场角色 | __SCENE_CAST__ |
-| 焦外/在场 | <!-- 待填充：焦外角色及其位置 --> |
-| 场景目标 | <!-- 待填充：一句话目标 --> |
-| 前情钩子 | <!-- 待填充：上一场结束时的最后一个画面或台词 --> |
-CARD
-
-# scene_state.yaml（新键表，见 references/keys.md §scene_state.yaml）
+# scene_card.md / start_snapshot.md / CHAR_state：由戏剧家参考 templates/ 直接生成完整文件（脚本不生成内容骨架）
+# scene_state.yaml（新键表，见 references/keys.md §scene_state.yaml；脚本只建空值骨架，字段值由戏剧家填充）
 # 创建时只写静态基线（核心状态快照/物理锚点/道具/关键场景信息/出场角色）。
 # 场景时间线【禁止预写】——剧情事件一律由每轮 change set ###APPEND: 追加（预写=把计划当记录·会与 change set 双写重复）。
-# 占位一律 <!-- --> 注释体系且【不含冒号/破折号格式】——防止 extract_anchor_names 把占位注释误提取为真实锚点（P2）。
 cat > "$SCENE_DIR/scene_state.yaml" << 'STATE'
-核心状态: '<!-- 待填充 -->'
+核心状态: ''
 场景时间线: ''
-物理锚点: '<!-- 待填充 物理锚点清单（至少5条） -->'
-道具: '<!-- 待填充 道具清单 -->'
-关键场景信息: '<!-- 待填充 线索清单 -->'
-出场角色摘要: '<!-- 待填充 角色摘要 -->'
+物理锚点: ''
+道具: ''
+关键场景信息: ''
+出场角色摘要: ''
 STATE
 
 # ── INHERIT: --from 继承旧场景物理锚点/道具（同物理地点切换必用；源存在性+可解析性已在创建前预检）──
@@ -115,14 +99,21 @@ def block(text, key):
     return m.group(0) if m else ''
 
 inherited = []
+src_name = source_path.split('/')[-2]
 for key in ('物理锚点', '道具'):
     src_block = block(source, key)
     if not src_block:
         print(f"[WARN] 旧场景缺字段 {key}，跳过继承")
         continue
-    pattern = rf'^{re.escape(key)}:.*?(?=\n[^ \t#\n]|\Z)'
+    pattern = rf'^(# 道具清单继承自[^\n]*\n)?{re.escape(key)}:.*?(?=\n[^ \t#\n]|\Z)'
     # P6: 去掉 src_block.replace('\\','\\\\')——re.sub 对 callable 返回值不再解析转义，加倍反斜杠反而污染数据
-    target = re.sub(pattern, lambda m: src_block, target, count=1, flags=re.M | re.S)
+    if key == '道具':
+        # 时间感知提醒（仅继承场景）：道具状态随时间流逝自然变化——倒了的酒隔几天会干涸；位置一般不变
+        def repl_prop(m):
+            return f'# 道具清单继承自 {src_name}：状态随时间流逝自然变化，请按当前时间更新（位置一般不变）\n' + src_block
+        target = re.sub(pattern, repl_prop, target, count=1, flags=re.M | re.S)
+    else:
+        target = re.sub(pattern, lambda m: src_block, target, count=1, flags=re.M | re.S)
     inherited.append(key)
 open(target_path, 'w').write(target)
 print(f"[OK] 场景继承: {source_path.split('/')[-2]} -> {target_path.split('/')[-2]} ({'、'.join(inherited)})")
@@ -134,71 +125,18 @@ PYEOF
     fi
 fi
 
-# start_snapshot.md（角色姿态/道具位置用 <!-- --> 注释占位，与 templates/start_snapshot.md 对齐——不生成空列表；开场轮次由下方自动填当前轮次）
-cat > "$SCENE_DIR/start_snapshot.md" << 'SNAP'
-# 场景起点快照 — __SCENE_NAME__
-
-## 冻结时间
-第X日 HH:MM
-
-## 开场轮次
-<!-- 待填：场景开场时世界所在轮次 -->
-
-## 角色姿态（此场景开场时的位置/姿势/状态）
-- <!-- 角色名：站立/坐/靠位置+正在做什么 -->
-- <!-- 角色名：同上 -->
-
-## 道具位置（此场景开场时的物品位置）
-- <!-- 道具名(ID)：位置，状态 -->
-- <!-- 道具名(ID)：位置，状态 -->
-SNAP
-
 # narrative.md（空文件——每轮由 write_narrative.sh 轮转写入，创建时留空为设计）
 touch "$SCENE_DIR/narrative.md"
 
-# 替换占位符（scene_card + start_snapshot；缺省类型/时间/出场给「待填」，避免模板示例误导为真实数据）
-# P7: 所有 sed 替换经 sed_escape 转义——场景名/时间/类型含 / & \ 不再破坏 sed
-SCENE_ID_E=$(sed_escape "$SCENE_ID")
-SCENE_NAME_E=$(sed_escape "$SCENE_NAME")
+# INDEX 行转义变量（场景名/时间/类型含 / & \ 时经 sed_escape 防破坏 sed——P7）
 [ -n "$SCENE_TYPE" ] || SCENE_TYPE="待填"
 [ -n "$SCENE_TIME" ] || SCENE_TIME="待填"
 [ -n "$SCENE_CAST" ] || SCENE_CAST="待填"
+SCENE_ID_E=$(sed_escape "$SCENE_ID")
+SCENE_NAME_E=$(sed_escape "$SCENE_NAME")
 SCENE_TYPE_E=$(sed_escape "$SCENE_TYPE")
 SCENE_TIME_E=$(sed_escape "$SCENE_TIME")
 SCENE_CAST_E=$(sed_escape "$SCENE_CAST")
-sed -i "s/__SCENE_ID__/$SCENE_ID_E/g" "$SCENE_DIR/scene_card.md"
-sed -i "s/__SCENE_NAME__/$SCENE_NAME_E/g" "$SCENE_DIR/scene_card.md"
-sed -i "s/__SCENE_NAME__/$SCENE_NAME_E/g" "$SCENE_DIR/start_snapshot.md"
-sed -i "s/__SCENE_TYPE__/$SCENE_TYPE_E/g" "$SCENE_DIR/scene_card.md"
-sed -i "s/__SCENE_TIME__/$SCENE_TIME_E/g" "$SCENE_DIR/scene_card.md"
-sed -i "s/__SCENE_CAST__/$SCENE_CAST_E/g" "$SCENE_DIR/scene_card.md"
-sed -i "s/第X日 HH:MM/$SCENE_TIME_E/g" "$SCENE_DIR/start_snapshot.md"
-# 开场轮次自动填当前轮次（场景开场=切换发生时=当前轮次·重置场景时回退依据）
-if [ -f "$WORLD_DIR/world_state.yaml" ]; then
-  CUR_ROUND=$(grep -m1 "^轮次:" "$WORLD_DIR/world_state.yaml" 2>/dev/null | sed 's/^轮次:[[:space:]]*//' | tr -d "[:space:]'\"")
-  if [ -n "$CUR_ROUND" ]; then
-    sed -i "s|<!-- 待填：场景开场时世界所在轮次 -->|$CUR_ROUND|" "$SCENE_DIR/start_snapshot.md"
-  fi
-fi
-
-# ── CHAR_state 骨架补建（防线：write-raw 要求状态文件已存在——出场角色缺状态文件则当场建骨架）──
-if [ -n "$SCENE_CAST" ]; then
-  OLD_IFS="$IFS"; IFS=','
-  for c in $SCENE_CAST; do
-    name=$(echo "$c" | sed 's/(.*//' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')
-    [ -z "$name" ] && continue
-    state_file="$WORLD_DIR/CHAR_${name}_state.yaml"
-    if [ ! -f "$state_file" ]; then
-      if [ -f "$WORLDSIM_DIR/templates/CHAR_state.yaml" ]; then
-        cp "$WORLDSIM_DIR/templates/CHAR_state.yaml" "$state_file"
-        echo "[OK] CHAR_state 骨架已补建: $name"
-      else
-        echo "[WARN] 模板缺失，跳过 CHAR_state 骨架补建: $name" >&2
-      fi
-    fi
-  done
-  IFS="$OLD_IFS"
-fi
 
 # 更新场景索引（用 printf 避免 POSIX echo 不解释 \n；表头与 templates/INDEX.md 对齐：场景名称/基准时间——P5）
 INDEX_FILE="$WORLD_DIR/scenes/INDEX.md"
@@ -233,11 +171,11 @@ if [ -f "$WS_FILE" ]; then
   echo "[OK] world_state.焦点场景 已更新为 $SCENE_ID"
 fi
 
-# ── 待填清单输出（对齐 create_world.sh 模式：脚本只生成骨架——填充由 LLM 创建后立即完成·禁止带占位运行）──
+# ── 待填清单输出（脚本只建基础设施——内容文件由戏剧家参考 templates/ 直接生成，禁止带模板占位运行）──
 echo ""
-echo "【场景待填清单·创建后立即填充·禁止带占位运行】:"
-echo "  1. scene_card.md      焦外/在场 · 场景目标 · 前情钩子（当前为 <!-- --> 占位注释）"
-echo "  2. scene_state.yaml   物理锚点≥5 / 道具 / 核心状态快照 / 出场角色摘要（当前为 '<!-- 待填充 -->'）"
-echo "  3. start_snapshot.md  角色姿态 / 道具位置（当前为 <!-- --> 占位注释·开场轮次已自动填）"
-echo "  4. CHAR_state         出场角色状态文件已建骨架——核心状态/情绪/压力水平/防御有效性按当前剧情填充（勿留模板默认值）"
+echo "【场景待填清单·创建后立即填充·禁止带模板占位（[字段定义]/(例:) 残留）运行】:"
+echo "  1. scene_card.md      按 templates/scene_card.md 生成：焦外/在场 · 场景目标 · 前情钩子"
+echo "  2. scene_state.yaml   已建空值骨架——填充：物理锚点≥5 / 道具 / 核心状态快照 / 关键场景信息 / 出场角色摘要"
+echo "  3. start_snapshot.md  按 templates/start_snapshot.md 生成：角色姿态 / 道具位置 / 开场心理态 / 开场 conflicts 节拍态 / 开场 world_state 附加态 / 焦外待揭示"
+echo "  4. CHAR_state         出场角色按 templates/CHAR_state.yaml 生成状态文件（核心状态/情绪/位置/压力水平/防御有效性等）"
 exit 0

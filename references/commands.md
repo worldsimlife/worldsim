@@ -59,7 +59,7 @@
 | `/save [名]` / `/load <名>` | 存档管理 |
 | `/silent` | 切回静默模式（全局默认·沉浸·只推叙事正文）——world_state 写 `输出模式: 静默` |
 | `/loud` / 说「调试」「标准模式」 | 切到标准模式（完整回复正文 + D1-D10/W1-W4 闸口）——world_state 写 `输出模式: 标准` |
-| 「审计」/「戏剧家审计」/「/audit」 | **用户觉察不对劲时使用**——三合一审计流程（LLM 按 gate 规格执行·机械项调用现成工具，不重写脚本）：① 机械核验=worldctl.py `validate` + `audit` + `gate`（现成）② 戏剧家审计=加载 references/gate_dramatist.md → D1-D10 逐项（使命三问/实质推进/抽象方/强度/字段质量/循环轨道）③ 作家审计=加载 references/gate_writer.md → W1-W4 逐项（POV 可见/身体显影/代价在纸上/锚点核对）④ 场记写入检查=时间/轮次单调/倒计时演化/反应轨迹同步/叙事落盘。输出=逐项 PASS/FAIL + 证据（文件路径+字段原文）；FAIL→按 gate 修复流程（≤2 轮），超限终止报告。**若审计反复发现同类违规（LLM 老是不按 skill 执行·补丁无效）→ 主动建议用户更换 LLM model——不无限打补丁·诚实承认模型能力/注意力上限** |
+| 「审计」/「戏剧家审计」/「/audit」 | **用户觉察不对劲时使用**——三合一审计流程（LLM 按 gate 规格执行·机械项调用现成工具，不重写脚本）：① 机械核验=worldctl.py `validate` + `audit` + `gate`（现成）② 戏剧家审计=加载 references/gate_dramatist.md → D1-D10 逐项（使命三问/实质推进/抽象方/强度/字段质量/循环轨道）③ 作家审计=加载 references/gate_writer.md → W1-W4 逐项（POV 可见/身体显影/代价在纸上/锚点核对）④ 场记写入检查=时间/轮次单调/倒计时演化/反应轨迹同步/叙事落盘 ⑤ 知情边界核对=有 knowledge_index.yaml → 独立审计者视角逐条按 `记录` 指针读状态文件比对 + 清理（已公开/已落定/循环重置失效→删·不确定留）——细则见 references/knowledge_index.md ⑥ 伏笔闭环核对=有 foreshadow.yaml → validate 已机械检查（倒置/枚举/超时）+ 人工核对 `时间` 错位（如种下第3日·到第7日未回收）——细则见 references/foreshadow.md。输出=逐项 PASS/FAIL + 证据（文件路径+字段原文）；FAIL→按 gate 修复流程（≤2 轮），超限终止报告。**若审计反复发现同类违规（LLM 老是不按 skill 执行·补丁无效）→ 主动建议用户更换 LLM model——不无限打补丁·诚实承认模型能力/注意力上限** |
 
 ---
 
