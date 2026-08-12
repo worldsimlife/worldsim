@@ -70,9 +70,9 @@ fi
 mkdir -p "$SCENE_DIR"
 
 
-# scene_card.md / start_snapshot.md / CHAR_state：由戏剧家参考 templates/ 直接生成完整文件（脚本不生成内容骨架）
-# scene_state.yaml（新键表，见 references/keys.md §scene_state.yaml；脚本只建空值骨架，字段值由戏剧家填充）
-# 创建时只写静态基线（核心状态快照/物理锚点/道具/关键场景信息/出场角色）。
+# scene_card.md / start_snapshot.md / CHAR_state：按 templates/ 直接生成完整文件（脚本不生成内容骨架）
+# scene_state.yaml（新键表，见 references/keys.md §scene_state.yaml；脚本只建空值骨架，字段值随剧情轮 change set 注册自然累积）
+# 元素随剧情轮注册自然累积（物理锚点/道具/核心状态/关键场景信息/出场角色摘要）。
 # 场景时间线【禁止预写】——剧情事件一律由每轮 change set ###APPEND: 追加（预写=把计划当记录·会与 change set 双写重复）。
 cat > "$SCENE_DIR/scene_state.yaml" << 'STATE'
 核心状态: ''
@@ -171,11 +171,13 @@ if [ -f "$WS_FILE" ]; then
   echo "[OK] world_state.焦点场景 已更新为 $SCENE_ID"
 fi
 
-# ── 待填清单输出（脚本只建基础设施——内容文件由戏剧家参考 templates/ 直接生成，禁止带模板占位运行）──
+# ── 待填清单输出（脚本只建基础设施——内容文件按 templates/ 直接生成，禁止带模板占位运行）──
+echo ""
+echo "【注意】本目录已生成 scene_state.yaml / narrative.md（骨架·已存在）——后续用 Write/覆盖写前必须先 Read 该文件再改（写入工具拒绝未读覆盖）。"
 echo ""
 echo "【场景待填清单·创建后立即填充·禁止带模板占位（[字段定义]/(例:) 残留）运行】:"
 echo "  1. scene_card.md      按 templates/scene_card.md 生成：焦外/在场 · 场景目标 · 前情钩子"
-echo "  2. scene_state.yaml   已建空值骨架——填充：物理锚点≥5 / 道具 / 核心状态快照 / 关键场景信息 / 出场角色摘要"
+echo "  2. scene_state.yaml   已建空值骨架——元素随剧情轮 change set 注册自然累积（入场帧已涉及的元素随 change set 正常记录）"
 echo "  3. start_snapshot.md  按 templates/start_snapshot.md 生成：角色姿态 / 道具位置 / 开场心理态 / 开场 conflicts 节拍态 / 开场 world_state 附加态 / 焦外待揭示"
 echo "  4. CHAR_state         出场角色按 templates/CHAR_state.yaml 生成状态文件（核心状态/情绪/位置/压力水平/防御有效性等）"
 exit 0

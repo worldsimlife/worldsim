@@ -384,7 +384,33 @@ def cmd_write(world_dir: Path, full_replace: bool = False):
 # ── 语义不变量（audit）─────────────────────────────────────────
 # 脚本校验线（与 SKILL.md §记忆维护/§场记 一致）
 ANCHOR_LIMIT_TOTAL = 3000
-ANCHOR_LIMIT_ENTRY = 100
+ANCHOR_LIMIT_ENTRY = 100           # 写作线（audit 写前提醒·整理以 100 为准）
+ANCHOR_LIMIT_ENTRY_VALIDATE = 150  # validate 宽松校验线（防强制压缩·写作线仍按 100）
+REACTION_WINDOW = 5                # 反应轨迹窗口（最近 N 轮·APPEND 后脚本自动裁剪·LLM 零操作）
+
+def trim_reaction_window(text: str, max_blocks: int = REACTION_WINDOW) -> str:
+    """反应轨迹窗口裁剪：保留最近 max_blocks 个「第N轮(」块，删除更旧块。
+    块前的非块行（如模板占位符）保留；块数不超窗口时原样返回。"""
+    lines = text.splitlines()
+    starts = [i for i, ln in enumerate(lines) if re.match(r"^\s*第\s*\d+\s*轮\(", ln)]
+    if len(starts) <= max_blocks:
+        return text
+    keep_from = starts[len(starts) - max_blocks]
+    return "\n".join(lines[:starts[0]] + lines[keep_from:])
+
+def _parse_world_time(text: str):
+    """解析世界时间 '第N日 HH:MM' → (day:int, minutes:int)；无法解析返回 (None, None)。
+    供重置点机械拦截（④b）与 reset-cycle 重建到期时刻使用。"""
+    m = re.match(r"第\s*(\d+)\s*日\s*(\d{1,2}):(\d{2})", str(text).strip())
+    if not m:
+        return None, None
+    try:
+        day = int(m.group(1))
+        minutes = int(m.group(2)) * 60 + int(m.group(3))
+        return day, minutes
+    except ValueError:
+        return None, None
+
 
 def parse_batch_entries(lines):
     """解析 ###FILE/###KEY/###APPEND/###DELETE/###META 行到操作列表。
@@ -464,6 +490,16 @@ def check_batch(ops, world_dir):
             current[key] = yaml.safe_load(fp.read_text()) or {}
         except Exception:
             current[key] = {}
+
+    # 重置豁免预扫描（2026-08-12 加入）：批次内登记了角色重置（world_state.重置记录.{角色} KEY 写入）→
+    # 该角色按 loop_machinery §4 联动表清空/压缩 记忆锚点/反应轨迹（脚本档全清·漂移压缩·觉醒/变质保留）。
+    # ⑬b 反应轨迹覆盖写检查对此豁免——重置清空是机制执行（联动表），不是丢失历史
+    reset_chars = set()
+    for _i, (_k, _fk, _kp, _c, _a) in enumerate(ops):
+        if _k == "write" and _fk == "world_state" and _kp.startswith("重置记录."):
+            _name = _kp[len("重置记录."):].strip()
+            if _name:
+                reset_chars.add(_name)
 
     # 批次整体必含项标记（完整推进轮·查询轮豁免）
     has_ct_op = False
@@ -561,6 +597,37 @@ def check_batch(ops, world_dir):
             except ValueError:
                 hard.append((idx, f"world_state.轮次: 非整数 '{content.strip()}'"))
 
+        # ④b 重置点机械拦截（循环世界·周期倒计时管道）：写 时间.具体时间 越过 重置类周期到期时刻
+        #     且 重置记录 无覆盖新时间日期的记录 → 硬性顶回（防跨天漏重置/回退重放；执行=worldctl.py reset-cycle）
+        if file_key == "world_state" and key_path == ["时间", "具体时间"]:
+            try:
+                ws_cur = current.get("world_state", {}) or {}
+                new_day, new_min = _parse_world_time(content)
+                if new_day is not None:
+                    cds = ws_cur.get("外部倒计时") or {}
+                    due_hit = None
+                    if isinstance(cds, dict):
+                        for cd in cds.values():
+                            if isinstance(cd, dict) and str(cd.get("到期时刻", "")).strip():
+                                dd, dm = _parse_world_time(str(cd.get("到期时刻", "")))
+                                if dd is not None and (dd, dm) <= (new_day, new_min):
+                                    due_hit = cd.get("到期时刻", "")
+                                    break
+                    if due_hit:
+                        reset_rec = ws_cur.get("重置记录") or {}
+                        covered = False
+                        day_label = f"第{new_day}日"
+                        if isinstance(reset_rec, dict):
+                            for rspec in reset_rec.values():
+                                if isinstance(rspec, dict) and str(rspec.get("重置日期", "")) == day_label:
+                                    covered = True
+                                    break
+                        if not covered:
+                            hard.append((idx, f"world_state.时间.具体时间: 越过周期重置到期时刻 {due_hit}·但 重置记录 无覆盖 {day_label} 的记录——重置未执行（执行: worldctl.py {world_dir.name} reset-cycle 后重写）"))
+            except Exception:
+                pass
+
+
         # ⑤ scene_state 落点：必须有焦点场景目录（防止写错场景）
         if file_key == "scene_state" and scene_dir is None:
             hard.append((idx, "scene_state 落点错误: 无法定位当前焦点场景目录——先确认 world_state.焦点场景 后再写入"))
@@ -635,6 +702,24 @@ def check_batch(ops, world_dir):
                 if key_path[0] not in SCENE_STATE_KEYS:
                     hard.append((idx, f"{file_key}.{key_path_str}: scene_state 顶层键必须在键表内（当前 '{key_path[0]}'）——疑似 FILE 标记错位/字段写入错误文件"))
 
+        # ⑬b 反应轨迹覆盖写检测（硬性——防覆盖写丢失历史：覆盖写必须保留旧值首末轮次标记·窗口由脚本自动裁剪·禁止手动删块）
+        # 重置豁免：该角色已登记重置（world_state.重置记录.{角色}）→ 按 loop_machinery §4 联动表清空/压缩重建，不拦
+        if (file_key.startswith(CHAR_STATE_PREFIX) and key_path == ["反应轨迹"] and not append):
+            _fp_r, _ = resolve_char_file(existing, file_key, world_dir)
+            if _fp_r is not None:
+                _stem = _fp_r.stem[len(CHAR_STATE_PREFIX):]
+                if _stem.endswith("_state"):
+                    _stem = _stem[:-len("_state")]
+                if _stem in reset_chars:
+                    continue
+            old_val = (current.get(file_key, {}) or {}).get("反应轨迹", "")
+            if isinstance(old_val, str) and old_val.strip():
+                old_marks = re.findall(r"第\s*\d+\s*轮\(", old_val)
+                if old_marks:
+                    first, last = old_marks[0], old_marks[-1]
+                    if first not in content or last not in content:
+                        hard.append((idx, f"{file_key}.反应轨迹: 覆盖写丢失历史——新内容必须保留旧值首末轮次标记（{first}…/{last}…）·窗口由脚本自动裁剪·禁止手动删块"))
+
     # ⑩⑪⑫ 批次整体必含项（软性·完整推进轮——查询轮豁免；批次为空不检查）
     if ops:
         if not has_ct_op:
@@ -699,16 +784,16 @@ def quick_validate_summary(world_dir):
                 total = sum(len(str(it.get("内容", ""))) for it in mem if isinstance(it, dict))
                 if total > ANCHOR_LIMIT_TOTAL:
                     warnings.append(f"{cfp.name}: 记忆锚点 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需按 §记忆淘汰 整理")
-                over = [it for it in mem if isinstance(it, dict) and len(str(it.get("内容", ""))) > ANCHOR_LIMIT_ENTRY]
+                over = [it for it in mem if isinstance(it, dict) and len(str(it.get("内容", ""))) > ANCHOR_LIMIT_ENTRY_VALIDATE]
                 if over:
-                    warnings.append(f"{cfp.name}: {len(over)} 条记忆锚点超单条 {ANCHOR_LIMIT_ENTRY} 字上限")
+                    warnings.append(f"{cfp.name}: {len(over)} 条记忆锚点超单条 {ANCHOR_LIMIT_ENTRY_VALIDATE} 字上限（宽松校验线·写作线 100）")
             elif isinstance(mem, str) and mem.strip():
                 if len(mem) > ANCHOR_LIMIT_TOTAL:
                     warnings.append(f"{cfp.name}: 记忆锚点 {len(mem)} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需按 §记忆淘汰 整理")
                 entries = re.split(r"\n\s*(?:·\s*)?(?=\[)", mem)
-                over = [e for e in entries if len(e.strip()) > ANCHOR_LIMIT_ENTRY]
+                over = [e for e in entries if len(e.strip()) > ANCHOR_LIMIT_ENTRY_VALIDATE]
                 if over:
-                    warnings.append(f"{cfp.name}: {len(over)} 条记忆锚点超单条 {ANCHOR_LIMIT_ENTRY} 字上限")
+                    warnings.append(f"{cfp.name}: {len(over)} 条记忆锚点超单条 {ANCHOR_LIMIT_ENTRY_VALIDATE} 字上限（宽松校验线·写作线 100）")
         # 焦点场景 ↔ 场景目录
         ws_fp = world_dir / "world_state.yaml"
         if ws_fp.exists():
@@ -852,6 +937,12 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 print(f"[SKIP] {file_key}.{'.'.join(key_path)} 重复追加已跳过（内容已存在——同一批次只执行一次，禁止重放 write 命令验证）", file=sys.stderr)
                 return True
             target[leaf] = existing_val.rstrip("\n") + "\n" + content
+            # 反应轨迹窗口（🪟）：APPEND 后超 5 轮自动删最旧块——LLM 零操作
+            if file_key.startswith(CHAR_STATE_PREFIX) and leaf == "反应轨迹":
+                trimmed = trim_reaction_window(target[leaf])
+                if trimmed != target[leaf]:
+                    print(f"[TRIM] {file_key}.反应轨迹 已自动裁剪至最近 {REACTION_WINDOW} 轮（窗口滚动·删最旧块）", file=sys.stderr)
+                    target[leaf] = trimmed
         elif not append and is_structured_field and (is_list_item_content or content.strip() in ("[]", "{}")):
             # KEY 覆盖结构化列表字段：content 为 yaml 列表文本（- item / []）→ 解析为列表全量替换
             # （字段级替换意图与 APPEND 增量区分；非列表文本仍按原始文本覆盖）
@@ -1603,9 +1694,9 @@ def cmd_validate(world_dir: Path):
         except Exception:
             pass
 
-    # 8. CHAR_state 记忆锚点校验（脚本校验线：单条≤100字 | 总字数≤3000——超限告警，提示戏剧家按 §记忆淘汰 整理）
+    # 8. CHAR_state 记忆锚点校验（脚本校验线：单条≤150字宽松校验线 | 总字数≤3000——超限告警，提示戏剧家按 §记忆淘汰 整理；写作线单条≤100 见 audit 写前提醒）
     ANCHOR_LIMIT_TOTAL = 3000
-    ANCHOR_LIMIT_ENTRY = 100
+    ANCHOR_LIMIT_ENTRY = ANCHOR_LIMIT_ENTRY_VALIDATE  # 150 宽松校验线（防强制压缩·写作按 100 为准）
     for cfp in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
         try:
             cdata = yaml.safe_load(cfp.read_text())
@@ -1668,6 +1759,23 @@ def cmd_validate(world_dir: Path):
         ws_data = yaml.safe_load((world_dir / "world_state.yaml").read_text()) or {}
     except Exception:
         ws_data = {}
+    # 8b-0. 循环机制完整性软告警（循环世界：SETTING 声明循环/重置关键词 → 周期倒计时应有周期条目）
+    try:
+        setting_fp = world_dir / "SETTING.md"
+        setting_txt = setting_fp.read_text(encoding="utf-8", errors="ignore") if setting_fp.exists() else ""
+        mech_kw = ("循环", "重置", "循环日终", "抹除记忆", "遗忘法则")
+        is_loop_world = any(kw in setting_txt for kw in mech_kw)
+        cd_data = ws_data.get("外部倒计时") or {}
+        has_periodic = False
+        if isinstance(cd_data, dict):
+            for cd in cd_data.values():
+                if isinstance(cd, dict) and ("周期" in str(cd.get("威胁", "")) or "重置" in str(cd.get("威胁", "")) or "循环" in str(cd.get("威胁", ""))):
+                    has_periodic = True
+                    break
+        if is_loop_world and not has_periodic:
+            warnings.append("循环机制完整性: SETTING 声明循环/重置机制但外部倒计时无周期条目（含空表）——周期倒计时未初始化登记（见 session_recovery.md §第三章循环机制核对）")
+    except Exception:
+        pass
     reset_rec = ws_data.get("重置记录") or {}
     if isinstance(reset_rec, dict):
         for rname, rspec in reset_rec.items():
@@ -1747,10 +1855,183 @@ def cmd_validate(world_dir: Path):
         print(f"[VALIDATE] 全部 {len(files)} 个文件验证通过 ✅")
 
 # ── CLI ───────────────────────────────────────────────────────────
+def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
+    """循环世界周期重置（循环日终/到期点）——机械重置全员·登记重置记录·重建周期倒计时。
+    触发：write-raw audit ④b 顶回后执行（或恢复序列 4.6②）。脚本做机械部分：
+    反应轨迹清空 / 记忆锚点按自主性档位压缩（脚本全清·漂移/觉醒压缩+输出保留候选·变质保留）/
+    状态字段回基线占位 / 压力防御回默认（觉醒/变质保留防御崩解）/ 人际动态与决策清空（LLM 按 LOOPS 补写）/
+    信念演化与自主性保留 / 自动存档（snap.sh save _before_）/ 登记重置记录 / 重建周期倒计时（到期时刻+1 周期）。
+    LLM 只做：保留候选确认/微调 + 状态字段按 LOOPS 补写 + CT 节拍核查 + 重置叙事。"""
+    ws_fp = world_dir / "world_state.yaml"
+    if not ws_fp.exists():
+        print("[ERR] world_state.yaml 不存在", file=sys.stderr)
+        return 1
+    ws = yaml.safe_load(ws_fp.read_text(encoding="utf-8")) or {}
+    cur_time = str(ws.get("时间", {}).get("具体时间", "") or "").strip()
+    cur_round = str(ws.get("轮次", "0") or "0").strip()
+    cur_day = None
+    _, _m = _parse_world_time(cur_time)
+    if _m is None:
+        print(f"[ERR] 当前时间无法解析（需 '第N日 HH:MM' 格式）: '{cur_time}'", file=sys.stderr)
+        return 1
+    dm, _ = _parse_world_time(cur_time)
+    cur_day = dm
+
+    # 定位周期重置倒计时（含 到期时刻）
+    cds = ws.get("外部倒计时") or {}
+    cd_id, cd_spec = None, None
+    if isinstance(cds, dict):
+        for cid, cspec in cds.items():
+            if isinstance(cspec, dict) and str(cspec.get("到期时刻", "") or "").strip():
+                cd_id, cd_spec = cid, cspec
+                break
+    if cd_id is None:
+        print("[WARN] 未找到含 到期时刻 的周期倒计时——重置仍执行（周期倒计时登记见 session_recovery.md §4.6）", file=sys.stderr)
+
+    # 0. 自动存档（可回滚）
+    import subprocess
+    snap_script = Path(__file__).parent / "snap.sh"
+    snap_name = f"_before_reset_cycle_{world_name}_{_ts()}"
+    try:
+        r = subprocess.run(["sh", str(snap_script), world_name, "save", snap_name],
+                           capture_output=True, text=True, timeout=120)
+        print(f"[OK] 自动存档: {snap_name}（{r.stdout.strip()[:200] if r.stdout.strip() else 'snap.sh 输出为空'}）")
+    except Exception as e:
+        print(f"[WARN] 自动存档失败（继续执行）: {e}", file=sys.stderr)
+
+    # 机械重置全员（含焦外——机制执行全员化）
+    candidates = []          # (角色, 档位, 被压缩条目) 保留候选
+    key_anchor_kw = ("承诺", "命名", "关系转折", "决定", "记得", "承诺", "他/她")
+    for cfp in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+        try:
+            cdata = yaml.safe_load(cfp.read_text(encoding="utf-8")) or {}
+        except Exception as e:
+            print(f"[WARN] {cfp.name} 解析失败·跳过: {e}", file=sys.stderr)
+            continue
+        # 豁免判定（硬性）：自主性 字段仅循环角色有（模板语义）——外部者/管理者（Guest/Ford/Stubbs 等）
+        #   无此字段 → 豁免周期重置（loop_machinery §4 豁免）。事件型角色（死亡即回收·如 Teddy/Hector）
+        #   = 循环角色（有自主性字段）——周期时刻若活着度过当日，同样按「次日清晨仍按循环日终重置」执行，不豁免
+        if "自主性" not in cdata or not str(cdata.get("自主性", "") or "").strip():
+            print(f"[SKIP] {cfp.stem}: 无自主性字段（外部者/管理者·豁免周期重置）")
+            continue
+        lvl = str(cdata.get("自主性", "") or "").strip()
+        old_mem = cdata.get("记忆锚点")
+        # 记忆锚点按档位压缩
+        if lvl == "脚本":
+            new_mem = []
+        elif lvl == "变质":
+            new_mem = old_mem  # 几乎全保留（时间位抹除交给戏剧家）
+        else:  # 漂移/觉醒：压缩为碎片 + 保留候选清单
+            kept, removed = [], []
+            if isinstance(old_mem, list):
+                for it in old_mem:
+                    if not isinstance(it, dict):
+                        removed.append(it)
+                        continue
+                    content = str(it.get("内容", ""))
+                    ts = str(it.get("时间", ""))
+                    mark = str(it.get("标记", ""))
+                    if "碎片" in content or "碎片" in ts or "可揭示" in mark:
+                        kept.append(it)
+                    elif lvl == "觉醒" and any(k in content for k in key_anchor_kw):
+                        kept.append(it)
+                    else:
+                        removed.append(it)
+                if kept and not any("碎片" in str(k.get("时间", "")) or "碎片" in str(k.get("内容", "")) for k in kept):
+                    last = kept[-1] if kept else None
+                    kept = kept[-1:]
+                if not kept and removed:
+                    last = removed[-1]
+                    last = dict(last) if isinstance(last, dict) else {"内容": str(last)}
+                    last["时间"] = "碎片"
+                    kept = [last]
+            elif old_mem:
+                removed = [old_mem]
+                last = dict(old_mem) if isinstance(old_mem, dict) else {"内容": str(old_mem)}
+                last["时间"] = "碎片"
+                kept = [last]
+            new_mem = kept
+            for it in removed:
+                candidates.append((cfp.stem, lvl, str(it)[:120]))
+        cdata["记忆锚点"] = new_mem if isinstance(new_mem, list) else ([] if not new_mem else [new_mem])
+        # 反应轨迹清空（联动表·新循环从零累积）
+        cdata["反应轨迹"] = ""
+        # 状态字段回基线占位（LLM 按 LOOPS 补写——脚本不解析 LOOPS 自然语言）
+        cdata["核心状态"] = ""
+        cdata["情绪"] = ""
+        cdata["决策状态"] = ""
+        cdata["人际动态"] = ""
+        # 压力/防御回默认；觉醒/变质保留防御崩解状态
+        cdata["压力水平"] = "低"
+        if lvl in ("觉醒", "变质"):
+            cur_def = str(cdata.get("防御有效性", "") or "").strip()
+            cdata["防御有效性"] = cur_def if cur_def == "已彻底崩解" else "有效"
+        else:
+            cdata["防御有效性"] = "有效"
+        # 已知地点：脚本=回基线（清空·LLM 按 LOOPS 补常驻）；漂移/觉醒/变质=保留（保守不丢）
+        if lvl == "脚本":
+            cdata["已知地点"] = []
+        # 信念演化/自主性/名字 保留（联动表）
+        with open(cfp, "w", encoding="utf-8") as f:
+            yaml.safe_dump(cdata, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+        print(f"[OK] 重置 {cfp.stem}: 档位={lvl} · 记忆锚点→{len(new_mem) if isinstance(new_mem, list) else 1} 条 · 状态字段回基线")
+
+    # 登记重置记录（{档位/轮次/重置日期}）
+    reset_rec = ws.get("重置记录") or {}
+    if not isinstance(reset_rec, dict):
+        reset_rec = {}
+    for cfp in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+        try:
+            cdata = yaml.safe_load(cfp.read_text(encoding="utf-8")) or {}
+        except Exception:
+            continue
+        # 豁免者（无自主性字段·外部者/管理者）不登记重置记录
+        if "自主性" not in cdata or not str(cdata.get("自主性", "") or "").strip():
+            continue
+        name = cfp.stem[len(CHAR_STATE_PREFIX):-len("_state")]
+        lvl = str(cdata.get("自主性", "") or "").strip()
+        reset_rec[name] = {"档位": lvl, "轮次": cur_round, "重置日期": f"第{cur_day}日"}
+    ws["重置记录"] = reset_rec
+
+    # 重建周期倒计时（到期时刻 +1 周期·同时刻）
+    if cd_id is not None:
+        old_due = str(cd_spec.get("到期时刻", "") or "").strip()
+        dd, dm = _parse_world_time(old_due)
+        if dd is not None:
+            nd = dd + 1
+            new_due = f"第{nd}日 {old_due.split('日 ')[-1] if '日 ' in old_due else '07:00'}"
+            cd_spec["到期时刻"] = new_due
+            cd_spec["剩余时间"] = "1周期"
+            ws.setdefault("外部倒计时", {})[cd_id] = cd_spec
+            print(f"[OK] 周期倒计时 {cd_id} 重建: 到期时刻 {old_due} → {new_due}")
+    with open(ws_fp, "w", encoding="utf-8") as f:
+        yaml.safe_dump(ws, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
+
+    # 保留候选清单 + 提示
+    print("\n【重置完成】")
+    print(f"  时间 {cur_time} · 轮次 {cur_round} · 重置记录 {len(reset_rec)} 角色")
+    print("【LLM 后续动作（非脚本）】")
+    print("  1. 状态字段（核心状态/情绪/决策状态/人际动态/已知地点）按 LOOPS.md 当前时段补写")
+    print("  2. 觉醒/漂移档保留候选确认——压缩掉的条目：")
+    if candidates:
+        for role, lvl, content in candidates[:20]:
+            print(f"    · {role}（{lvl}）: {content}")
+    else:
+        print("    （无压缩条目）")
+    print("  3. CT 节拍核查（挂载 CT 是否依赖被抹记忆）· 重置叙事（醒来·新一天帧）")
+    return 0
+
+
+def _ts():
+    import datetime
+    return datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+# ── CLI ───────────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser(description="WorldSim 批量状态管理 V2")
     parser.add_argument("world", help="世界名")
-    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate"])
+    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "reset-cycle"])
     parser.add_argument("--files", help="read 时限定文件 key 列表，逗号分隔")
     parser.add_argument("--full", action="store_true", help="write 时全量覆写")
     parser.add_argument("--batch", action="store_true", help="write-raw/append-raw 批量模式：stdin 为 ###FILE/###KEY/###APPEND 记录格式（⚠非幂等：APPEND 重复执行会重复追加·同一批次只执行一次·验证用 read/validate/--dry-run）")
@@ -1786,6 +2067,9 @@ def main():
         cmd_scan(world_dir, args.extra, live_only=args.live)
     elif args.action == "gate":
         cmd_gate(world_dir, args.extra, check_mode=args.check)
+    elif args.action == "reset-cycle":
+        force = any(x == "--force" for x in args.extra)
+        sys.exit(cmd_reset_cycle(world_dir, args.world, force=force))
 
 if __name__ == "__main__":
     main()
