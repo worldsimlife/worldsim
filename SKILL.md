@@ -41,7 +41,7 @@ metadata:
 ### 场记（优先级高于写入完整性）
 
 工作不是把每个字段填满，是**让世界的每一轮都活进档案**。三问：
-1. 痕迹完整吗？（时间/倒计时/全局标记→world_state？冲突节拍→conflicts？道具/线索→scene_state？角色质变→CHAR_state？焦外→pending_actions？新区域→world_map？**只写 narrative 不算留痕**）
+1. 痕迹完整吗？（时间/倒计时/全局标记→world_state？冲突节拍→conflicts？道具/线索→scene_state？角色质变→CHAR_state？焦外→pending_actions？新区域→world_map？伏笔/知情差异→foreshadow/knowledge_index（触发即登记·缺文件按模板建）？**只写 narrative 不算留痕**）
 2. 每条痕迹落对地方了吗？（scene_state 落点=焦点场景目录·先核对 world_state.焦点场景）
 3. 连续性断了吗？（时间一致？场景切换冻结？存档/校验？）
 
@@ -349,7 +349,7 @@ N
 ### 每轮必写
 world_state：时间.具体时间（旧值+本轮时长·方向只增不减·**跨天先走场景切换**）+ 轮次（单调递增）+ 时间.前情描述（≤100字状态短语）+ 外部倒计时（本轮有确立/走表/到期时必写·周期倒计时每轮递减=有变化）；CT 池扫池结果（推进/冷却/删除）；记忆决策落地（判型/重置/入锚/淘汰）；焦外状态增量（有变化才写·**检查不可降频·描写可降频**）；时间线转折点（###APPEND:·粗粒度≤120字·明细写 scene_state 场景时间线）。
 
-收尾自查（每轮必做）：按开篇「场记三问」逐条核对——①痕迹完整：时间/轮次/前情→world_state · CT→conflicts · 出场/退场角色逐一→CHAR_state（退场=位置转焦外）· 道具线索→scene_state · 焦外→pending_actions · 新区域→world_map；②落点=焦点场景目录；③连续性=时间/轮次/存档一致。validate 通过 ≠ 自查通过。
+收尾自查（每轮必做）：按开篇「场记三问」逐条核对——①痕迹完整：时间/轮次/前情→world_state · CT→conflicts · 出场/退场角色逐一→CHAR_state（退场=位置转焦外）· 道具线索→scene_state · 焦外→pending_actions · 新区域→world_map · 伏笔种下/回收→foreshadow（触发即登记·缺文件按模板建）· 知情差异事实→knowledge_index（触发即收录·缺文件按模板建）；②落点=焦点场景目录；③连续性=时间/轮次/存档一致。validate 通过 ≠ 自查通过。
 
 ### 写入方式
 write-raw --batch（###FILE:/###KEY:/###APPEND:/###DELETE:）——**change set 原样转交**：阶段1 输出的批次即最终写入批次，场记不翻译、不重组，只 stdin 直通 + audit + 写入。**破坏性操作警告（硬性）：** `###DELETE:` 为破坏性操作——删除前确认目标记录与范围，删除后建议 `snap.sh save` 留底。**非幂等警告（硬性）：** write-raw --batch 是副作用命令——`###APPEND:` 重复执行会把累积字段（记忆锚点/场景时间线等）**再追加一遍**。同一批次只允许执行一次。执行后的确认只用只读手段（`read` / `validate` / 重跑 `--dry-run` 对比磁盘差异），**禁止重放 write 命令**做"确认"。**内置 audit**：硬性违规单字段顶回（角色反应四件套缺一/代价后为空/资源载体缺失/轮次非单调/scene_state 无焦点场景落点），其余字段照写；软性警告（记忆锚点超限/必含项缺失）不拦截，validate 汇总。输出不向用户转发；但执行者**必须查看完整输出（stdout+stderr）**——落盘失败会在 stdout 打 `[FAIL]` 且 exit 1，出现 `[FAIL]`/`[ERR]` 必须处理后才能进入收尾自查。narrative 用 write_narrative.sh 写入，旧文件自动轮转。格式详见 references/write_protocol.md。

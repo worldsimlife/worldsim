@@ -163,7 +163,9 @@
 
 ## knowledge_index.yaml
 
-> **知情边界追踪索引（可选·纯数据·非状态文件）**——不参与 write-raw/FILE 体系·普通文件操作·规则全文见 references/knowledge_index.md。收录「谁知道了什么、谁知道谁不知道」——有知情差异的事实（世界状态体系唯一没有承载的事实维度）。
+> **知情边界追踪索引（可选·纯数据·非状态文件）**——不参与 write-raw/FILE 体系·普通文件操作·规则全文见 references/knowledge_index.md。收录「谁知道了什么、谁知道谁不知道」——有知情差异的事实（世界状态体系唯一没有承载的事实维度）。触发式收录：仅关键节点（事实产生知情差异/事实变化时）·不逐轮同步。
+
+**顶层键：** `知情事实`（列表）——每条=一事实条目（键表如下）。模板见 templates/knowledge_index.yaml；收录/更新=关键节点触发式·清理=检查后顺手（见 references/knowledge_index.md）。
 
 **键表：**
 
