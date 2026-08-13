@@ -22,6 +22,11 @@
 | validate | `python3 {skill_dir}/scripts/worldctl.py <世界> validate` | YAML 格式报错 + 内容级警告（load 后/跨 Session 恢复后必跑；含同物理地点场景元素继承检查） |
 | grep | `python3 {skill_dir}/scripts/worldctl.py <世界> grep <关键词>` | 全仓（含所有场景 scene_state）搜索元素注册原文——**使用已有元素前核对形态/位置/状态/性质的标准工具（D11/W4 前置·防凭印象改写元素）**；无匹配=未注册=使用即幻觉 |
 | delete | `python3 {skill_dir}/scripts/worldctl.py <世界> delete <文件key> <键路径>` | 删整条 CT / pending 条目；批量流支持 `###DELETE:` |
+| beatsheet show | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet show [N]` | 读节拍表（全部 / 指定事件线 N） |
+| beatsheet add | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet add`（stdin=单条事件线 YAML：事件线/当前拍/拍序） | **节拍表唯一写入入口**——建线=全新事件线（追加 `节拍表.{N}`·N 自动递增·脚本机械落盘+结构/枚举校验·LLM 不直接改 YAML） |
+| beatsheet advance | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet advance N 拍名` | 推进事件线 N 到指定拍（写 当前拍·校验拍名在拍序中·禁回退） |
+| beatsheet rewrite | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet rewrite N`（stdin=新事件线 YAML） | 换线（现实与该线当前拍内容不承接时重写该条） |
+| beatsheet clear | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet clear N` | 清线（该线当前拍=余波时·清空该条保留字段名） |
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |
 
 ## Shell 脚本
@@ -59,8 +64,8 @@
 | `/sync` / `/update` | 场记记录变化更新状态 |
 | `/save [名]` / `/load <名>` | 存档管理 |
 | `/silent` | 切回静默模式（全局默认·沉浸·只推叙事正文）——world_state 写 `输出模式: 静默` |
-| `/loud` / 说「调试」「标准模式」 | 切到标准模式（完整回复正文 + D1-D10/W1-W4 闸口）——world_state 写 `输出模式: 标准` |
-| 「审计」/「戏剧家审计」/「/audit」 | **用户觉察不对劲时使用**——三合一审计流程（LLM 按 gate 规格执行·机械项调用现成工具，不重写脚本）：① 机械核验=worldctl.py `validate` + `audit` + `gate`（现成）② 戏剧家审计=加载 references/gate_dramatist.md → D1-D10 逐项（使命三问/实质推进/抽象方/强度/字段质量/循环轨道）③ 作家审计=加载 references/gate_writer.md → W1-W4 逐项（POV 可见/身体显影/代价在纸上/锚点核对）④ 场记写入检查=时间/轮次单调/倒计时演化/反应轨迹同步/叙事落盘 ⑤ 知情边界核对=有 knowledge_index.yaml → 独立审计者视角逐条按 `记录` 指针读状态文件比对 + 清理（已公开/已落定/循环重置失效→删·不确定留）——细则见 references/knowledge_index.md ⑥ 伏笔闭环核对=有 foreshadow.yaml → validate 已机械检查（倒置/枚举/超时）+ 人工核对 `时间` 错位（如种下第3日·到第7日未回收）——细则见 references/foreshadow.md。输出=逐项 PASS/FAIL + 证据（文件路径+字段原文）；FAIL→按 gate 修复流程（≤2 轮），超限终止报告。**若审计反复发现同类违规（LLM 老是不按 skill 执行·补丁无效）→ 主动建议用户更换 LLM model——不无限打补丁·诚实承认模型能力/注意力上限** |
+| `/loud` / 说「调试」「标准模式」 | 切到标准模式（完整回复正文 + D1-D14/W1-W4 闸口）——world_state 写 `输出模式: 标准` |
+| 「审计」/「戏剧家审计」/「/audit」 | **用户觉察不对劲时使用**——三合一审计流程（LLM 按 gate 规格执行·机械项调用现成工具，不重写脚本）：① 机械核验=worldctl.py `validate` + `audit` + `gate`（现成）② 戏剧家审计=加载 references/gate_dramatist.md → D1-D14 逐项（使命三问/实质推进/抽象方/强度/字段质量/节拍表/顶点爆破/循环重置/循环轨道）③ 作家审计=加载 references/gate_writer.md → W1-W4 逐项（POV 可见/身体显影/代价在纸上/锚点核对）④ 场记写入检查=时间/轮次单调/倒计时演化/反应轨迹同步/叙事落盘 ⑤ 知情边界核对=有 knowledge_index.yaml → 独立审计者视角逐条按 `记录` 指针读状态文件比对 + 清理（已公开/已落定/循环重置失效→删·不确定留）——细则见 references/knowledge_index.md ⑥ 伏笔闭环核对=有 foreshadow.yaml → validate 已机械检查（倒置/枚举/超时）+ 人工核对 `时间` 错位（如种下第3日·到第7日未回收）——细则见 references/foreshadow.md。输出=逐项 PASS/FAIL + 证据（文件路径+字段原文）；FAIL→按 gate 修复流程（≤2 轮），超限终止报告。**若审计反复发现同类违规（LLM 老是不按 skill 执行·补丁无效）→ 主动建议用户更换 LLM model——不无限打补丁·诚实承认模型能力/注意力上限** |
 
 ---
 

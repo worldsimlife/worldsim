@@ -36,7 +36,7 @@
 **加载序列（按此顺序执行，不跳过不交换）：**
 
 0. **动态文件物化**（缺失时从 templates/ 生成）：
-   - `conflicts.yaml` ← 物化 `CONFLICTS_SEED.md`（复制+头注释）——只落结构字段（描述/对抗双方/被争夺资源/紧迫度/关联角色），`当前节拍` 与 `下一个节拍` 留空，由戏剧家首轮按首场景填充后正常演化。CONFLICTS_SEED.md 只读不改；conflicts.yaml 自此为唯一权威
+   - `conflicts.yaml` ← 物化 `CONFLICTS_SEED.md`（复制+头注释）——只落结构字段（描述/对抗双方/被争夺资源/紧迫度/关联角色），`当前节拍`、`下一个节拍` 留空，由戏剧家首轮按首场景填充后正常演化；`节拍表` 由 `worldctl.py <世界> beatsheet` 子命令维护（建线 add·LLM 不直接改）。CONFLICTS_SEED.md 只读不改；conflicts.yaml 自此为唯一权威
    - `world_state.yaml` ← `templates/world_state.yaml`（初始态模板）
    - `world_map.yaml` ← `templates/world_map.yaml`（迷雾制·初始为空）
    - `off_focus/pending_actions.yaml` ← `templates/pending_actions.yaml`

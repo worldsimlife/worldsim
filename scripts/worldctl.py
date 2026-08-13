@@ -31,6 +31,10 @@ SKILL_DIR = Path(os.environ.get("WORLDSIM_DIR", Path(__file__).resolve().parent.
 CHAR_STATE_PREFIX = "CHAR_"
 CHAR_STATE_SUFFIX = "_state.yaml"
 
+# 节拍表（conflicts.yaml 顶层·脚本维护·LLM 不直接改）
+BEAT_TOP_KEY = "节拍表"
+BEAT_ENUM = ("铺垫", "接触", "升级", "顶点", "余波")
+
 # ── 文件发现 ──────────────────────────────────────────────────────
 def get_world_dir(world: str) -> Path:
     # 世界名校验：只禁路径分隔符/穿越（允许中文·如「遗弃之地」）
@@ -608,7 +612,10 @@ def check_batch(ops, world_dir):
                     due_hit = None
                     if isinstance(cds, dict):
                         for cd in cds.values():
-                            if isinstance(cd, dict) and str(cd.get("到期时刻", "")).strip():
+                            # 仅重置类周期倒计时（威胁含 周期/重置/循环 关键字）触发重置拦截；
+                            # 非周期倒计时即使误带「到期时刻」字段也不参与（2026-08-13 修复）
+                            if isinstance(cd, dict) and str(cd.get("到期时刻", "")).strip() and (
+                                    "周期" in str(cd.get("威胁", "")) or "重置" in str(cd.get("威胁", "")) or "循环" in str(cd.get("威胁", ""))):
                                 dd, dm = _parse_world_time(str(cd.get("到期时刻", "")))
                                 if dd is not None and (dd, dm) <= (new_day, new_min):
                                     due_hit = cd.get("到期时刻", "")
@@ -806,7 +813,7 @@ def quick_validate_summary(world_dir):
         if c_fp.exists():
             cdata = yaml.safe_load(c_fp.read_text()) or {}
             for k in cdata:
-                if not re.match(r"^CT-\d{2}$", str(k)):
+                if not re.match(r"^CT-\d{2}$", str(k)) and str(k) != BEAT_TOP_KEY:
                     warnings.append(f"conflicts.yaml: 顶层键 '{k}' 不符合 CT-XX 格式")
     except Exception:
         pass
@@ -1255,6 +1262,20 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
             # 批次必含项缺失（soft·op_index=-1 且消息为「完整推进轮 change set 应含」）→ 硬拦 exit 1
             batch_required = [msg for idx, msg in soft if idx == -1 and msg.startswith("完整推进轮 change set 应含")]
             field_violations = [msg for idx, msg in hard if idx != -1]
+            # 节拍表空拍检查（软性·先于硬拦打印）：建线应预设完整拍序·推进/换线后空拍仍在=现实与该拍无法承接
+            _c_fp = world_dir / "conflicts.yaml"
+            if _c_fp.exists():
+                try:
+                    _cdata = yaml.safe_load(_c_fp.read_text(encoding="utf-8")) or {}
+                except Exception:
+                    _cdata = {}
+                _beats = _cdata.get(BEAT_TOP_KEY) or {}
+                if isinstance(_beats, dict):
+                    for _n in sorted(_beats, key=lambda x: int(x) if str(x).isdigit() else 0):
+                        _line = _beats[_n]
+                        if isinstance(_line, dict):
+                            for _w in _empty_beat_warnings(_line):
+                                print(f"[GATE] 提醒: 节拍表 事件线 {_n} {_w}", file=sys.stderr)
             if parse_errors or field_violations or batch_required:
                 print("[GATE] D1/D10 代码化核验失败——change set 不合格:", file=sys.stderr)
                 for e in parse_errors:
@@ -1442,8 +1463,31 @@ def cmd_validate(world_dir: Path):
             cdata = yaml.safe_load(conflicts_fp.read_text())
             if isinstance(cdata, dict):
                 for k in cdata:
-                    if not re.match(r"^CT-\d{2}$", str(k)):
+                    if not re.match(r"^CT-\d{2}$", str(k)) and str(k) != BEAT_TOP_KEY:
                         warnings.append(f"conflicts.yaml: 顶层键 '{k}' 不符合 CT-XX 格式")
+                    else:
+                        cv = cdata[k]
+                        if isinstance(cv, dict) and cv.get("当前节拍") and not cv.get("下一个节拍(推荐)"):
+                            warnings.append(f"conflicts.yaml: {k} 有当前节拍但缺「下一个节拍(推荐)」（推进轮必写·多候选·方向灵活）")
+                # 1b. 节拍表 CT 对齐（软性）——牵动 CT 的 当前节拍.拍名 应为某事件线 当前拍 的镜像
+                beats = cdata.get(BEAT_TOP_KEY)
+                if isinstance(beats, dict) and beats:
+                    for k in cdata:
+                        if not re.match(r"^CT-\d{2}$", str(k)):
+                            continue
+                        cv = cdata[k]
+                        if not isinstance(cv, dict):
+                            continue
+                        cp = cv.get("当前节拍")
+                        if not isinstance(cp, dict):
+                            continue
+                        beat_name = str(cp.get("拍名", "") or "").strip()
+                        if not beat_name:
+                            continue
+                        matched = any(str(ln.get("当前拍", "") or "").strip() == beat_name
+                                      for ln in beats.values() if isinstance(ln, dict))
+                        if not matched:
+                            warnings.append(f"conflicts.yaml: {k}.当前节拍.拍名 '{beat_name}' 未对齐任何事件线当前拍（节拍表.{{N}}.当前拍）——CT 拍名应镜像事件线当前拍")
         except Exception:
             pass
     # 2. world_state.焦点场景（唯一权威源）↔ INDEX + 场景目录一致性
@@ -1855,6 +1899,176 @@ def cmd_validate(world_dir: Path):
         print(f"[VALIDATE] 全部 {len(files)} 个文件验证通过 ✅")
 
 # ── CLI ───────────────────────────────────────────────────────────
+def _beatsheet_usage():
+    print("用法: worldctl.py <世界> beatsheet <子命令> [参数]", file=sys.stderr)
+    print("  show [N]          读节拍表（全部 / 指定事件线 N）", file=sys.stderr)
+    print("  add               stdin YAML 建线（追加事件线 N·N 自动递增）", file=sys.stderr)
+    print("  advance N 拍名    推进事件线 N 到指定拍（写 当前拍）", file=sys.stderr)
+    print("  rewrite N         stdin YAML 换线（现实不承接时重写事件线 N）", file=sys.stderr)
+    print("  clear N           清线（当前拍=余波时·清空保留字段名）", file=sys.stderr)
+
+
+def _validate_storyline(line) -> str | None:
+    """校验单条事件线结构。返回错误描述，None=通过。"""
+    if not isinstance(line, dict):
+        return "事件线必须是映射（事件线/当前拍/拍序）"
+    if "事件线" not in line or not str(line.get("事件线", "")).strip():
+        return "缺 事件线（当前跨轮展开的戏剧事件标识）"
+    if "当前拍" not in line or not str(line.get("当前拍", "")).strip():
+        return "缺 当前拍（当前所处节拍·拍名）"
+    cur = str(line["当前拍"]).strip()
+    if cur not in BEAT_ENUM:
+        return f"当前拍 '{cur}' 非法（枚举: {'/'.join(BEAT_ENUM)}）"
+    seq = line.get("拍序")
+    if not isinstance(seq, list) or not seq:
+        return "拍序 必须是非空 yaml 列表（元素: 拍名/空间/时间/事件）"
+    names = []
+    for b in seq:
+        if not isinstance(b, dict):
+            return "拍序 元素必须是映射（拍名/空间/时间/事件）"
+        nm = str(b.get("拍名", "")).strip()
+        if nm not in BEAT_ENUM:
+            return f"拍名 '{nm}' 非法（枚举: {'/'.join(BEAT_ENUM)}）"
+        if nm in names:
+            return f"拍名 '{nm}' 重复"
+        names.append(nm)
+        ev = str(b.get("事件", "")).strip()
+        if ev and "→" not in ev:
+            return f"拍名 '{nm}' 的事件未含 '→'（事件=双方互动·主谓宾齐全·禁止独角戏）"
+    if cur not in names:
+        return f"当前拍 '{cur}' 不在拍序拍名中（{names}）"
+    return None
+
+
+def _next_storyline_id(beats: dict) -> str:
+    """下一个事件线编号（{N}·数字递增）。"""
+    max_n = 0
+    for k in beats:
+        m = re.match(r"^(\d+)$", str(k))
+        if m:
+            max_n = max(max_n, int(m.group(1)))
+    return str(max_n + 1)
+
+
+def _empty_beat_warnings(line) -> list[str]:
+    """检查事件线拍序：空间/时间/事件 任一为空的拍 → 警告列表。
+    建线应预设完整拍序内容（拍=规划蓝图）；推进/换线后空拍仍在 = 现实与该拍无法承接（需 rewrite 补填或明确留空）。"""
+    warns = []
+    seq = line.get("拍序") or []
+    if not isinstance(seq, list):
+        return warns
+    for b in seq:
+        if not isinstance(b, dict):
+            continue
+        nm = str(b.get("拍名", "")).strip()
+        missing = [f for f in ("空间", "时间", "事件") if not str(b.get(f, "")).strip()]
+        if missing:
+            warns.append(f"拍 '{nm}' 内容不完整（缺: {'/'.join(missing)}）——建线应预设完整拍序·现实与空拍无法承接·需 rewrite 补填")
+    return warns
+
+
+def _warn_empty_beats(n: str, line) -> None:
+    """对单条事件线打印空拍警告（add/advance/rewrite 后调用·软性不拦截）。"""
+    for w in _empty_beat_warnings(line):
+        print(f"[WARN] {BEAT_TOP_KEY} 事件线 {n} {w}", file=sys.stderr)
+
+
+def cmd_beatsheet(world_dir: Path, extra: list[str]):
+    """节拍表维护（conflicts.yaml 顶层 节拍表）——脚本唯一入口·LLM 不直接改。
+    结构/枚举校验后机械写入，保证格式正确。"""
+    fp = world_dir / "conflicts.yaml"
+    if not fp.exists():
+        print("[ERR] conflicts.yaml 不存在", file=sys.stderr)
+        sys.exit(1)
+    data = yaml.safe_load(fp.read_text(encoding="utf-8")) or {}
+    if not isinstance(data, dict):
+        data = {}
+    beats = data.get(BEAT_TOP_KEY)
+    if beats is None:
+        beats = {}
+    if not isinstance(beats, dict):
+        print(f"[ERR] {BEAT_TOP_KEY} 已存在但非映射结构: {type(beats).__name__}", file=sys.stderr)
+        sys.exit(1)
+
+    if not extra:
+        _beatsheet_usage()
+        sys.exit(1)
+    sub = extra[0]
+
+    if sub == "show":
+        n = extra[1] if len(extra) > 1 else None
+        if n is not None:
+            line = beats.get(n)
+            if line is None:
+                print(f"[WARN] {BEAT_TOP_KEY} 无事件线 {n}", file=sys.stderr)
+                sys.exit(1)
+            out = {n: line}
+        else:
+            out = beats
+        yaml.dump(out, sys.stdout, allow_unicode=True, default_flow_style=False, sort_keys=False, width=120)
+        return
+
+    if sub == "add":
+        line = yaml.safe_load(sys.stdin)
+        err = _validate_storyline(line)
+        if err:
+            print(f"[ERR] 事件线结构校验失败: {err}", file=sys.stderr)
+            sys.exit(1)
+        n = _next_storyline_id(beats)
+        beats[n] = line
+        data[BEAT_TOP_KEY] = beats
+        write_yaml(fp, data)
+        print(f"[OK] {BEAT_TOP_KEY} 事件线 {n} 已建（{sub}）")
+        _warn_empty_beats(n, line)
+        return
+
+    if sub in ("advance", "clear", "rewrite"):
+        if len(extra) < 2:
+            _beatsheet_usage()
+            sys.exit(1)
+        n = extra[1]
+        if n not in beats:
+            print(f"[ERR] {BEAT_TOP_KEY} 无事件线 {n}", file=sys.stderr)
+            sys.exit(1)
+        line = beats[n]
+        if sub == "advance":
+            if len(extra) < 3:
+                _beatsheet_usage()
+                sys.exit(1)
+            target = extra[2]
+            names = [str(b.get("拍名", "")) for b in line.get("拍序", []) if isinstance(b, dict)]
+            if target not in names:
+                print(f"[ERR] 拍名 '{target}' 不在事件线 {n} 的拍序中（拍序拍名: {names}）", file=sys.stderr)
+                sys.exit(1)
+            cur = str(line.get("当前拍", ""))
+            if cur and cur in names and names.index(cur) > names.index(target):
+                print(f"[ERR] 当前拍回退（{cur}→{target}）不允许——节拍只向前推进", file=sys.stderr)
+                sys.exit(1)
+            line["当前拍"] = target
+        elif sub == "clear":
+            if str(line.get("当前拍", "")) != "余波":
+                print(f"[ERR] 当前拍='{line.get('当前拍', '')}' 非余波——不能清线（清线=当前拍=余波）", file=sys.stderr)
+                sys.exit(1)
+            line = {}
+        elif sub == "rewrite":
+            newline = yaml.safe_load(sys.stdin)
+            err = _validate_storyline(newline)
+            if err:
+                print(f"[ERR] 事件线结构校验失败: {err}", file=sys.stderr)
+                sys.exit(1)
+            line = newline
+        beats[n] = line
+        data[BEAT_TOP_KEY] = beats
+        write_yaml(fp, data)
+        print(f"[OK] {BEAT_TOP_KEY} 事件线 {n} 已更新（{sub}）")
+        if sub in ("advance", "rewrite"):
+            _warn_empty_beats(n, line)
+        return
+
+    _beatsheet_usage()
+    sys.exit(1)
+
+
 def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
     """循环世界周期重置（循环日终/到期点）——机械重置全员·登记重置记录·重建周期倒计时。
     触发：write-raw audit ④b 顶回后执行（或恢复序列 4.6②）。脚本做机械部分：
@@ -2031,7 +2245,7 @@ def _ts():
 def main():
     parser = argparse.ArgumentParser(description="WorldSim 批量状态管理 V2")
     parser.add_argument("world", help="世界名")
-    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "reset-cycle"])
+    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "beatsheet", "reset-cycle"])
     parser.add_argument("--files", help="read 时限定文件 key 列表，逗号分隔")
     parser.add_argument("--full", action="store_true", help="write 时全量覆写")
     parser.add_argument("--batch", action="store_true", help="write-raw/append-raw 批量模式：stdin 为 ###FILE/###KEY/###APPEND 记录格式（⚠非幂等：APPEND 重复执行会重复追加·同一批次只执行一次·验证用 read/validate/--dry-run）")
@@ -2067,6 +2281,8 @@ def main():
         cmd_scan(world_dir, args.extra, live_only=args.live)
     elif args.action == "gate":
         cmd_gate(world_dir, args.extra, check_mode=args.check)
+    elif args.action == "beatsheet":
+        cmd_beatsheet(world_dir, args.extra)
     elif args.action == "reset-cycle":
         force = any(x == "--force" for x in args.extra)
         sys.exit(cmd_reset_cycle(world_dir, args.world, force=force))
