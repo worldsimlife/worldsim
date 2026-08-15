@@ -1,0 +1,313 @@
+/* ============================================================
+ * WorldSim 品宣动态 Logo · 样式（worldsim.css）
+ * 由 index.htm 引用（<link rel="stylesheet" href="worldsim.css">）。
+ * 与 worldsim-anim.js 分离：本文件只负责视觉样式，
+ * 动画时序见 worldsim-anim.js 的 CFG 对象。
+ * 配色语义（品牌叙事）：
+ *   · World      = 数码青 --digital  数字世界未醒时的颜色（冷色休眠）
+ *   · Sim/标语   = 觉醒金 --wake     Westworld 里 host 的觉醒（金色黎明）
+ *   · 最终 .Life = 生命绿 --life     生命的颜色（脉搏荧光）
+ * ============================================================ */
+
+  :root {
+    --ink-0: #05070C;                 /* 最深夜幕          */
+    --ink-1: #0C1019;                 /* 视窗主夜幕        */
+    --ink-2: #10151F;                 /* 中心微光          */
+    --digital: #4DD0E1;               /* 数码青·数字世界未醒时 */
+    --wake: #d6c7aa;                  /* 香槟金 原色 #EDB64E    */
+    --wake-hi: #d6c7aa;               /* 原色 #FFD98F      */
+    --life:  #4ADE80;                 /* 生命绿            */
+    --caret: #4DD0E1;
+    --font-logo: "Cascadia Code", Consolas, "Courier New", monospace;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body { height: 100%; }
+
+  body {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    background:
+      radial-gradient(130% 105% at 50% 38%, var(--ink-2) 0%, var(--ink-1) 52%, var(--ink-0) 100%);
+    font-family: var(--font-logo);
+    color: var(--digital);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* 星尘画布（记忆碎片·三色：数字青/觉醒金/生命绿） */
+  #dust {
+    position: fixed; inset: 0;
+    width: 100%; height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  .stage {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 6vh 6vw;
+  }
+
+  /* 觉醒之灯（host 醒来的金色黎明地平线微光） */
+  .halo {
+    position: absolute;
+    left: 50%; top: 50%;
+    width: min(92vw, 760px);
+    height: min(44vw, 280px);
+    transform: translate(-50%, -52%);
+    background: radial-gradient(ellipse at center,
+      rgba(237,182,78,.14) 0%,
+      rgba(237,182,78,.04) 42%,
+      transparent 72%);
+    filter: blur(8px);
+    pointer-events: none;
+  }
+
+  /* 整行：同一字体 / 同一字号 / 同一高度 */
+  .logo {
+    position: relative;
+    display: inline-flex;
+    align-items: flex-start;
+    font-family: var(--font-logo);
+    font-size: clamp(16px, 3.6vw, 46px);
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: .08em;
+    user-select: none;
+    white-space: nowrap;
+  }
+  .logo.pulse { animation: pulse .5s ease-out; }
+
+  /* 字标：数字世界未醒时的休眠青 */
+  .wordmark {
+    display: inline-block;
+    color: var(--digital);
+    text-shadow: 0 0 26px rgba(77,208,225,.16);
+  }
+
+  /* 标语段：host 的觉醒金 · 与字标同字体同字号同高度 */
+  .tagline {
+    display: inline-block;
+    margin-left: .5em;
+    color: var(--wake);
+    transition: margin-left var(--exit-dur, .36s) cubic-bezier(.62, 0, 1, .38);
+  }
+  .tagline.close { margin-left: 0; }
+
+  /* 前缀（含前导空格与破折号）：向左收起消失，宽度收缩让 Life 左移。
+     .lead 因 overflow:hidden 使 inline-block 的 baseline 退化为底边缘，
+     若外层用 align-items:baseline 会让字标与标语错位 ~14px（上下晃动根因）。
+     .logo 已改用 align-items:flex-start 顶边对齐；此处 vertical-align:top
+     仅用于让 .lead 与同段 .life-part 顶对齐（两者文字同高）。 */
+  .lead {
+    display: inline-block;
+    vertical-align: top;
+    white-space: nowrap;
+    overflow: hidden;
+    transition:
+      width     var(--exit-dur, .36s) cubic-bezier(.62, 0, 1, .38),
+      opacity   var(--exit-dur, .36s) ease,
+      transform var(--exit-dur, .36s) cubic-bezier(.62, 0, 1, .38);
+    will-change: width, opacity, transform;
+  }
+  .lead.gone {
+    width: 0 !important;
+    opacity: 0;
+    transform: translateX(-30%);
+  }
+
+  /* Life：与标语同字形（同一节点，从不消失重造），打字亮起时由觉醒金过渡为生命绿 */
+  .life-part {
+    display: inline-block;
+    vertical-align: top;
+    color: var(--wake);
+    text-shadow: 0 0 16px rgba(237,182,78,.25);
+    transition: color var(--life-dur, .5s) ease, text-shadow var(--life-dur, .5s) ease;
+  }
+  .life-part.lit {
+    color: var(--life);
+    text-shadow: 0 0 18px rgba(74,222,128,.5);
+  }
+  .life-part.breath { animation: breathe 3.2s ease-in-out infinite; }
+
+  /* 点：紧跟 WorldSim，与 Life 同字体同字号，生命绿点亮 */
+  .dot {
+    display: inline-block;
+    color: var(--life);
+    text-shadow: 0 0 14px rgba(74,222,128,.55);
+    animation: ignite .4s ease-out both;
+  }
+
+  .subtitle {
+    margin-top: 1.2em;
+    font-size: clamp(11px, 1.5vw, 14px);
+    letter-spacing: .34em;
+    color: rgba(139,147,167,.85);
+    opacity: 0;
+  }
+  .subtitle.show { animation: sub-in .9s ease-out .2s both; }
+
+  /* 逐字（每个字符一根 span，插入即播放）——纯淡入，无上下位移。
+     display:inline（非 inline-block）：避免空格字符 span 的空内容基线把整行顶歪（基线错位=上下晃动根因）；
+     white-space:pre 保证空格不塌缩。 */
+  .ch { display: inline; white-space: pre; }
+  .ch-w { animation: fade-w .42s ease-out both; }
+  .ch-t { animation: fade-t .30s ease-out both; }
+  /* Sim：与标语同觉醒金，数字世界向觉醒世界的连接（覆盖 .wordmark 的青色继承） */
+  .ch-sim { color: var(--wake); text-shadow: 0 0 10px rgba(237,182,78,.45); animation: fade-sim .42s ease-out both; }
+
+  /* 打字光标（呼吸型，不位移；颜色跟随前一个字符，JS 设置 color 驱动 currentColor） */
+  .caret {
+    display: inline-block;
+    align-self: center;
+    width: .07em;
+    height: .95em;
+    margin-left: .05em;
+    border-radius: 2px;
+    background: currentColor;
+    box-shadow: 0 0 12px rgba(77,208,225,.55);
+    animation: caret-blink 1.05s steps(2, start) infinite;
+  }
+
+  /* 循环淡出 */
+  .stage.fadeout { opacity: 0; transition: opacity .24s ease; }
+
+  /* ---------- Keyframes（全部无 translateY，无上下晃动） ---------- */
+  @keyframes fade-w {
+    from {
+      opacity: 0;
+      filter: blur(4px) drop-shadow(0 0 9px rgba(77,208,225,.95));
+    }
+    to {
+      opacity: 1;
+      filter: blur(0) drop-shadow(0 0 0 transparent);
+    }
+  }
+  @keyframes fade-t {
+    from {
+      opacity: 0;
+      filter: blur(2px) drop-shadow(0 0 7px rgba(237,182,78,.8));
+    }
+    to   { opacity: 1; filter: blur(0) drop-shadow(0 0 0 transparent); }
+  }
+  @keyframes fade-sim {
+    from {
+      opacity: 0;
+      filter: blur(3px) drop-shadow(0 0 8px rgba(237,182,78,.85));
+    }
+    to   { opacity: 1; filter: blur(0) drop-shadow(0 0 0 transparent); }
+  }
+  @keyframes caret-blink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  @keyframes pulse {
+    0%   { transform: scale(1); }
+    42%  { transform: scale(1.012); }
+    100% { transform: scale(1); }
+  }
+  @keyframes ignite {
+    from { opacity: 0; transform: scale(.82); filter: blur(5px); }
+    to   { opacity: 1; transform: scale(1); filter: blur(0); }
+  }
+  @keyframes breathe {
+    0%, 100% {
+      transform: scale(1);
+      filter: blur(0) drop-shadow(0 0 12px rgba(74,222,128,.32));
+    }
+    50% {
+      transform: scale(1.012);
+      filter: blur(0) drop-shadow(0 0 24px rgba(74,222,128,.55));
+    }
+  }
+  @keyframes sub-in {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: .9; transform: none; }
+  }
+
+  /* ---------- 控制条 ---------- */
+  .controls {
+    position: fixed;
+    right: 18px; bottom: 16px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    font-size: 12px;
+    letter-spacing: .06em;
+    color: rgba(255,255,255,.5);
+    opacity: .75;
+    transition: opacity .3s;
+  }
+  .controls:hover { opacity: 1; }
+  .controls button {
+    appearance: none;
+    border: 1px solid rgba(255,255,255,.22);
+    background: rgba(255,255,255,.05);
+    color: rgba(255,255,255,.72);
+    padding: 4px 12px;
+    border-radius: 999px;
+    font-size: 12px;
+    cursor: pointer;
+    letter-spacing: .08em;
+    transition: background .2s, color .2s;
+  }
+  .controls button:hover { background: rgba(74,222,128,.14); color: var(--life); }
+  .controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .controls input { accent-color: var(--life); cursor: pointer; }
+
+  /* GitHub 链接（左下角，与右下控制条对称） */
+  .gh-link {
+    position: fixed;
+    left: 18px; bottom: 16px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px; height: 34px;
+    border: 1px solid rgba(255,255,255,.22);
+    border-radius: 999px;
+    background: rgba(255,255,255,.05);
+    color: rgba(255,255,255,.5);
+    opacity: .75;
+    transition: background .2s, color .2s, opacity .3s;
+  }
+  .gh-link:hover { opacity: 1; background: rgba(74,222,128,.14); color: var(--life); }
+
+  /* 故事入口（底部居中）：hover 变生命绿，与其它链接配色一致 */
+  .story-link {
+    position: fixed;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 2px 6px;
+    color: var(--wake);
+    /*color: rgba(255,255,255,.5);*/
+    font-size: 10px;
+    letter-spacing: .18em;
+    text-decoration: none;
+    white-space: nowrap;
+    opacity: .8;
+    transition: color .25s, opacity .3s;
+  }
+  .story-link:hover { color: var(--life); opacity: 1; }
+  .story-arrow { transition: transform .2s; }
+  .story-link:hover .story-arrow { transform: translateX(2px); }
+
+  /* 无障碍：静止模式直接呈现终态，禁用一切动画/过渡 */
+  body.reduce-motion #dust,
+  body.reduce-motion .controls,
+  body.reduce-motion .gh-link,
+  body.reduce-motion .story-link { display: none; }
+  body.reduce-motion *,
+  body.reduce-motion *::before,
+  body.reduce-motion *::after {
+    animation: none !important;
+    transition: none !important;
+  }
