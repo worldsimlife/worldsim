@@ -12,7 +12,8 @@
 # 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORLDS_ROOT="${WORLDSIM_WORLDS_DIR:-$SKILL_DIR/worlds}"
 
 WORLD="$1"
 SCENE_ID="$2"
@@ -23,7 +24,7 @@ case "$WORLD" in
   ''|*/*|*\\*|*..*) echo "[ERR] 非法世界名 '$WORLD'（禁止路径分隔符/../相对路径穿越）" >&2; exit 1 ;;
 esac
 
-WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
+WORLD_DIR="$WORLDS_ROOT/$WORLD"
 [ -d "$WORLD_DIR" ] || { echo "[ERR] 世界 '$WORLD' 不存在: $WORLD_DIR" >&2; exit 1; }
 
 # ── 解析场景目录（缺省=焦点场景；短 ID 前缀匹配完整目录名）──

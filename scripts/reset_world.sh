@@ -9,7 +9,8 @@
 # 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORLDS_ROOT="${WORLDSIM_WORLDS_DIR:-$SKILL_DIR/worlds}"
 
 WORLD="$1"
 [ -z "$WORLD" ] && { echo "用法: sh scripts/reset_world.sh <世界名> [--force]" >&2; exit 1; }
@@ -19,7 +20,7 @@ case "$WORLD" in
   ''|*/*|*\\*|*..*) echo "错误: 非法世界名 '$WORLD'（禁止路径分隔符/../相对路径穿越）" >&2; exit 1 ;;
 esac
 
-WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
+WORLD_DIR="$WORLDS_ROOT/$WORLD"
 [ -d "$WORLD_DIR" ] || { echo "错误: 世界 '$WORLD' 不存在: $WORLD_DIR" >&2; exit 1; }
 
 # 破坏性操作确认：--force 直过；交互终端提示 [y/N]（默认拒绝）；非交互且无 --force → 拒绝执行

@@ -6,7 +6,8 @@
 # 创作填充顺序见 references/session_recovery.md 第一章
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORLDS_ROOT="${WORLDSIM_WORLDS_DIR:-$SKILL_DIR/worlds}"
 
 WORLD="$1"
 [ -z "$WORLD" ] && { echo "用法: sh scripts/create_world.sh <世界名>" >&2; exit 1; }
@@ -19,14 +20,14 @@ case "$WORLD" in
     ;;
 esac
 
-WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
+WORLD_DIR="$WORLDS_ROOT/$WORLD"
 [ -d "$WORLD_DIR" ] && { echo "错误: 世界 '$WORLD' 已存在: $WORLD_DIR" >&2; exit 1; }
 
 mkdir -p "$WORLD_DIR"
 
 for f in SETTING.md CONFLICTS_SEED.md; do
-  if [ -f "$WORLDSIM_DIR/templates/$f" ]; then
-    cp "$WORLDSIM_DIR/templates/$f" "$WORLD_DIR/$f"
+  if [ -f "$SKILL_DIR/templates/$f" ]; then
+    cp "$SKILL_DIR/templates/$f" "$WORLD_DIR/$f"
     echo "  生成: $f"
   else
     echo "  警告: 模板缺失 templates/$f" >&2

@@ -27,7 +27,10 @@ worldctl.py — WorldSim 批量状态管理 V2
 import sys, os, yaml, re, shutil, argparse
 from pathlib import Path
 
-SKILL_DIR = Path(os.environ.get("WORLDSIM_DIR", Path(__file__).resolve().parent.parent))
+# skill 根 = 脚本自身位置推导（不可被环境变量覆写——SKILL.md/脚本/模板必须同源）
+SKILL_DIR = Path(__file__).resolve().parent.parent
+# worlds 根 = 可被环境变量 WORLDSIM_WORLDS_DIR 覆写（用户自己的存储）；缺省 = {skill_dir}/worlds
+WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
 CHAR_STATE_PREFIX = "CHAR_"
 CHAR_STATE_SUFFIX = "_state.yaml"
 
@@ -40,7 +43,7 @@ def get_world_dir(world: str) -> Path:
     # 世界名校验：只禁路径分隔符/穿越（允许中文·如「遗弃之地」）
     if not world or "/" in world or "\\" in world or ".." in world:
         print(f"[ERR] 非法世界名 '{world}'（禁止路径分隔符/../相对路径穿越）", file=sys.stderr); sys.exit(1)
-    wd = SKILL_DIR / "worlds" / world
+    wd = WORLDS_ROOT / world
     if not wd.is_dir():
         print(f"[ERR] 世界 '{world}' 不存在: {wd}", file=sys.stderr); sys.exit(1)
     return wd
@@ -417,13 +420,15 @@ def _parse_world_time(text: str):
 
 
 def parse_batch_entries(lines):
-    """解析 ###FILE/###KEY/###APPEND/###DELETE/###META 行到操作列表。
-    返回 (ops, errors, meta_lines)。ops 元素: (kind, file_key, key_path, content, append)
+    """解析 ###FILE/###KEY/###APPEND/###DELETE/###META/###BEATSHEET 行到操作列表。
+    返回 (ops, errors, meta_lines, beatsheet_lines)。ops 元素: (kind, file_key, key_path, content, append)
     kind ∈ {"write", "delete"}。空值 KEY 覆盖在此阶段即拒绝。
-    ###META: 是批次级元数据（静默自查锚点）——不产生写入 ops，单独收集返回，不落盘。"""
+    ###META: 是批次级元数据（静默自查锚点）——不产生写入 ops，单独收集返回，不落盘。
+    ###BEATSHEET: 是事件线动作元数据——不产生写入 ops，单独收集返回，不落盘。"""
     ops = []
     errors = []
     meta_lines = []
+    beatsheet_lines = []
     current_file = None
     current_key = None
     current_append = False
@@ -444,6 +449,8 @@ def parse_batch_entries(lines):
     for line in lines:
         if line.startswith("###META:"):
             meta_lines.append(line[8:].strip())
+        elif line.startswith("###BEATSHEET:"):
+            beatsheet_lines.append(line[len("###BEATSHEET:"):].strip())
         elif line.startswith("###FILE:"):
             flush()
             current_file = line[8:].strip()
@@ -465,7 +472,7 @@ def parse_batch_entries(lines):
                 errors.append("###DELETE 格式: ###DELETE: <文件key> <YAML键路径>")
         elif current_file and current_key:
             # 内容行内嵌标记检测（防拼接 bug）：行内出现 ###FILE:/###KEY:/###APPEND: 但不在行首 = 上一字段内容被拼接
-            for marker in ("###FILE:", "###KEY:", "###APPEND:", "###DELETE:"):
+            for marker in ("###FILE:", "###KEY:", "###APPEND:", "###DELETE:", "###BEATSHEET:"):
                 if marker in line and not line.lstrip().startswith(marker):
                     errors.append(
                         f"内容行内嵌标记 {marker.strip(':')}（行首无标记）：'{line[:60]}'——疑似上一字段内容与标记拼接（如缺少换行）。"
@@ -474,10 +481,10 @@ def parse_batch_entries(lines):
                     break
             current_content.append(line)
     flush()
-    return ops, errors, meta_lines
+    return ops, errors, meta_lines, beatsheet_lines
 
 
-def check_batch(ops, world_dir):
+def check_batch(ops, world_dir, beatsheet_lines=None):
     """语义不变量检查（change set 草案→硬性违规/软性警告分类）。
     硬性违规（hard）：结构性/机械性错误——关键字段缺失、载体核验、轮次回归、落点错误。写入时**单字段顶回**。
     软性警告（soft）：内容质量类——记忆锚点超限等。写入时**不拦截**，仅记录（validate 汇总）。
@@ -511,6 +518,7 @@ def check_batch(ops, world_dir):
     has_ws_round = False
     has_ws_summary = False
     has_scene_timeline = False
+    has_beatsheet = bool(beatsheet_lines)
 
     for idx, (kind, file_key, key_path_str, content, append) in enumerate(ops):
         if kind != "write":
@@ -740,6 +748,10 @@ def check_batch(ops, world_dir):
         if not has_scene_timeline:
             soft.append((-1, "完整推进轮 change set 应含 scene_state.场景时间线 追加（查询轮豁免）"))
 
+    # ⑬c 节拍表事件线动作（软性——完整推进轮必含；gate --check 将其升级为硬性拦截）
+    if has_ct_op and has_ws_time and has_ws_round and has_ws_summary and has_scene_timeline and not has_beatsheet:
+        soft.append((-1, "完整推进轮 change set 应含 ###BEATSHEET: 事件线动作（add/advance N 拍名/rewrite N/clear N）——查询轮/维护轮豁免"))
+
     # ⑭ 跨叙事提醒（软性——CROSS_NARRATIVES.md 存在时，完整推进轮应核对深匹配）
     if (world_dir / "CROSS_NARRATIVES.md").exists() and has_ct_op:
         soft.append((-1, "CROSS_NARRATIVES.md 存在——完整推进轮应核对跨叙事深匹配（SKILL ④: 浅匹配=登记不操作；深匹配=注入可写行为偏移；激活=注册新 CT；每轮最多激活一条·同线间隔≥3轮）"))
@@ -754,8 +766,10 @@ def cmd_audit(world_dir):
     """audit: 校验 stdin 的 change set 草案（###FILE/###KEY/###APPEND 格式），不落盘。
     硬性违规 → 列出全部并 exit 1（草案不合格）；仅软性警告 → 打印警告，exit 0（可写入）。"""
     raw_stdin = sys.stdin.buffer.read().decode("utf-8")
-    ops, parse_errors, meta_lines = parse_batch_entries(raw_stdin.split("\n"))
-    hard, soft = check_batch(ops, world_dir)
+    ops, parse_errors, meta_lines, beatsheet_lines = parse_batch_entries(raw_stdin.split("\n"))
+    hard, soft = check_batch(ops, world_dir, beatsheet_lines)
+    if beatsheet_lines:
+        print(f"[AUDIT] ###BEATSHEET 回显: {beatsheet_lines[0]}", file=sys.stderr)
     if meta_lines:
         print(f"[AUDIT] ###META 回显: {meta_lines[0]}", file=sys.stderr)
     else:
@@ -984,9 +998,11 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
         lines = raw_stdin.split("\n")
 
         # 解析 + 语义不变量检查（audit）——硬性违规 → 单字段顶回（不整批拒绝）
-        ops, parse_errors, meta_lines = parse_batch_entries(lines)
-        hard, soft = check_batch(ops, world_dir)
+        ops, parse_errors, meta_lines, beatsheet_lines = parse_batch_entries(lines)
+        hard, soft = check_batch(ops, world_dir, beatsheet_lines)
         blocked = {idx for idx, _ in hard}
+        if beatsheet_lines:
+            print(f"[AUDIT] ###BEATSHEET 回显: {beatsheet_lines[0]}", file=sys.stderr)
         if meta_lines:
             print(f"[AUDIT] ###META 回显: {meta_lines[0]}", file=sys.stderr)
         else:
@@ -1252,8 +1268,11 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
             if not raw.strip():
                 print("[GATE] 未提供 change set（stdin 为空）——批次缺失，闸门拦截：不进阶段2", file=sys.stderr)
                 sys.exit(1)
-            ops, parse_errors, meta_lines = parse_batch_entries(raw.split("\n"))
-            hard, soft = check_batch(ops, world_dir)
+            ops, parse_errors, meta_lines, beatsheet_lines = parse_batch_entries(raw.split("\n"))
+            hard, soft = check_batch(ops, world_dir, beatsheet_lines)
+            # ###BEATSHEET 事件线动作：回显（软性缺失由 batch_required 升级为硬拦）
+            if beatsheet_lines:
+                print(f"[GATE] ###BEATSHEET 回显: {beatsheet_lines[0]}", file=sys.stderr)
             # ###META 静默自查锚点：回显/缺失告警（软性·与 audit/write-raw 一致）
             if meta_lines:
                 print(f"[GATE] ###META 回显: {meta_lines[0]}", file=sys.stderr)
@@ -1484,10 +1503,20 @@ def cmd_validate(world_dir: Path):
                         beat_name = str(cp.get("拍名", "") or "").strip()
                         if not beat_name:
                             continue
-                        matched = any(str(ln.get("当前拍", "") or "").strip() == beat_name
-                                      for ln in beats.values() if isinstance(ln, dict))
-                        if not matched:
-                            warnings.append(f"conflicts.yaml: {k}.当前节拍.拍名 '{beat_name}' 未对齐任何事件线当前拍（节拍表.{{N}}.当前拍）——CT 拍名应镜像事件线当前拍")
+                        m = re.match(r"^(\d+)[-·](.+)$", beat_name)
+                        if not m:
+                            warnings.append(f"conflicts.yaml: {k}.当前节拍.拍名 '{beat_name}' 缺少事件线编号前缀——应为 `{{N}}-{{拍名}}`（如 `1-接触`）")
+                            continue
+                        n, name = m.group(1), m.group(2).strip()
+                        ln = beats.get(n) or beats.get(int(n)) if str(n).isdigit() else None
+                        if not isinstance(ln, dict) or str(ln.get("当前拍", "") or "").strip() != name:
+                            warnings.append(f"conflicts.yaml: {k}.当前节拍.拍名 '{beat_name}' 未对齐事件线 {n} 的当前拍（节拍表.{n}.当前拍='{ln.get('当前拍', '') if isinstance(ln, dict) else ''}')——CT 拍名应镜像为 `{n}-{拍名}`")
+                elif not isinstance(beats, dict) or not beats:
+                    # 1c. 有 CT 当前节拍但节拍表为空——事件线应建未建
+                    if any(isinstance(cdata.get(k), dict) and isinstance((cdata.get(k) or {}).get("当前节拍"), dict)
+                           and any(str(v or "").strip() for v in (cdata.get(k) or {}).get("当前节拍", {}).values())
+                           for k in cdata if re.match(r"^CT-\d{2}$", str(k))):
+                        warnings.append("conflicts.yaml: 存在 CT 当前节拍但 节拍表 为空——完整推进轮应建线（beatsheet add）并写 CT.当前节拍.拍名")
         except Exception:
             pass
     # 2. world_state.焦点场景（唯一权威源）↔ INDEX + 场景目录一致性
@@ -2182,6 +2211,8 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
             cdata["防御有效性"] = cur_def if cur_def == "已彻底崩解" else "有效"
         else:
             cdata["防御有效性"] = "有效"
+        # 偏离登记全档位清空（联动表·机械计数事实·新循环从零累积·validate 3b 计数源重置）
+        cdata["偏离登记"] = []
         # 已知地点：脚本=回基线（清空·LLM 按 LOOPS 补常驻）；漂移/觉醒/变质=保留（保守不丢）
         if lvl == "脚本":
             cdata["已知地点"] = []

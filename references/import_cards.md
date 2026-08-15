@@ -22,7 +22,7 @@ python {skill_dir}/scripts/import_card.py <世界名> <角色卡.json>          
 python {skill_dir}/scripts/import_card.py <世界名> --dry-run <角色卡.png> ← 只解析预览，不落盘
 ```
 
-路径用相对或环境变量推导（脚本基于 `WORLDSIM_DIR` 或自身位置定位 skill 目录），禁止硬编码绝对路径。
+路径推导：skill 根由脚本自身位置定位（不可覆写）；worlds 根由环境变量 `WORLDSIM_WORLDS_DIR` 覆写（缺省 `{skill_dir}/worlds/`），禁止硬编码绝对路径。
 
 ## 导入流程（脚本提取 + LLM 内容驱动综合）
 

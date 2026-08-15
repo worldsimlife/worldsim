@@ -2,11 +2,12 @@
 # list_worlds.sh — 列出所有世界（当前 .yaml 体系）
 # 用法: sh scripts/list_worlds.sh
 
-# WorldSim 根目录：可被环境变量 WORLDSIM_DIR 覆写，不依赖 picoclaw
+# worlds 根：可被环境变量 WORLDSIM_WORLDS_DIR 覆写（用户自己的存储）；skill 根恒由脚本自身位置推导，不依赖 picoclaw
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORLDS_ROOT="${WORLDSIM_WORLDS_DIR:-$SKILL_DIR/worlds}"
 
-for d in "$WORLDSIM_DIR"/worlds/*/; do
+for d in "$WORLDS_ROOT"/*/; do
   [ -d "$d" ] || continue
   name=$(basename "$d")
   # 跳过非世界目录（如 snaps 归档目录）

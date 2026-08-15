@@ -27,14 +27,15 @@ case "$SCENE_ID" in
   */*|*\\*|*..*) echo "[ERR] 非法场景ID '$SCENE_ID'（禁止路径分隔符）" >&2; exit 1 ;;
 esac
 
-# WorldSim 根目录：可被环境变量 WORLDSIM_DIR 覆写
+# worlds 根：可被环境变量 WORLDSIM_WORLDS_DIR 覆写；skill 根恒由脚本自身位置推导
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-SCENE_DIR="$WORLDSIM_DIR/worlds/$WORLD/scenes/$SCENE_ID"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORLDS_ROOT="${WORLDSIM_WORLDS_DIR:-$SKILL_DIR/worlds}"
+SCENE_DIR="$WORLDS_ROOT/$WORLD/scenes/$SCENE_ID"
 
 # 支持短 ID（如 S05）→ 前缀匹配完整目录名（如 S05-Sweetwater-MainStreet-Guide）
 if [ ! -d "$SCENE_DIR" ]; then
-  MATCH=$(ls -d "$WORLDSIM_DIR/worlds/$WORLD/scenes/${SCENE_ID}-"* 2>/dev/null | head -1)
+  MATCH=$(ls -d "$WORLDS_ROOT/$WORLD/scenes/${SCENE_ID}-"* 2>/dev/null | head -1)
   if [ -n "$MATCH" ]; then
     SCENE_DIR="$MATCH"
   else

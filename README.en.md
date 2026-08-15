@@ -60,6 +60,10 @@ Want to look back? Open the scene directory under `worlds/{world}/scenes/` — t
 
 Every turn is written to the current scene's `narrative.md` (with rotated archives); imported SillyTavern character cards are stored in full under `{world}/import/`. All data lives on your local disk — **do not enter passwords, secrets, or sensitive personal information into stories**. Deleting the `worlds/{world}/` directory removes the entire world's records (narrative, state, snapshots, and imported originals).
 
+### Where World Data Lives (Environment Variable)
+
+By default, world data is stored in `worlds/` inside the skill directory. To keep it on your own storage (separate disk / network share / container volume), set the **`WORLDSIM_WORLDS_DIR`** environment variable to your directory — all scripts (validate/write/snapshot/reset/import) resolve world paths through it; when unset it falls back to `{skill_dir}/worlds/`. The skill itself (SKILL.md / scripts / templates) is always located from the script's own position and **cannot** be overridden by an environment variable.
+
 ---
 
 ## Installation

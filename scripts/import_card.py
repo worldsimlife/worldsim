@@ -25,12 +25,13 @@ import_card.py — SillyTavern 兼容角色卡提取（解析+完整留存+预�
   - 角色名按 Windows 文件名规范消毒（\\/:*?"<>| → -），含空格保留空格
   - 素材文件放 <世界>/import/（已 gitignore），不干扰 validate/scan
 
-路径推导: 基于脚本相对位置或 WORLDSIM_DIR 环境变量，禁止硬编码。
+路径推导: skill 根基于脚本自身位置（不可覆写）；worlds 根由 WORLDSIM_WORLDS_DIR 环境变量覆写（缺省 {skill_dir}/worlds），禁止硬编码。
 """
 import sys, os, re, json, base64, struct
 from pathlib import Path
 
-SKILL_DIR = Path(os.environ.get("WORLDSIM_DIR", Path(__file__).resolve().parent.parent))
+SKILL_DIR = Path(__file__).resolve().parent.parent
+WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
 INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 # 与 WorldSim 引擎语义冲突、永不导入的字段（仍在 card.json 完整留存供溯源，不注入引擎）
@@ -38,7 +39,7 @@ NOT_IMPORTED = ["system_prompt", "post_history_instructions"]
 
 
 def get_world_dir(world: str) -> Path:
-    wd = SKILL_DIR / "worlds" / world
+    wd = WORLDS_ROOT / world
     if not wd.is_dir():
         print(f"[ERR] 世界 '{world}' 不存在: {wd}", file=sys.stderr)
         print(f"      提示: 先执行 'sh scripts/create_world.sh <世界名>' 创建世界，或确认世界名正确", file=sys.stderr)

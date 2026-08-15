@@ -35,8 +35,9 @@ case "$WORLD" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORLDS_ROOT="${WORLDSIM_WORLDS_DIR:-$SKILL_DIR/worlds}"
+WORLD_DIR="$WORLDS_ROOT/$WORLD"
 FILEPATH="$WORLD_DIR/scenes/INDEX.md"
 
 [ -d "$WORLD_DIR" ] || { echo "[ERR] 世界 '$WORLD' 不存在"; exit 1; }

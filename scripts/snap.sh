@@ -17,8 +17,9 @@ ACTION="$2"
 SNAPNAME="$3"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORLDS_ROOT="${WORLDSIM_WORLDS_DIR:-$SKILL_DIR/worlds}"
+WORLD_DIR="$WORLDS_ROOT/$WORLD"
 SNAP_DIR="$WORLD_DIR/snaps"
 ARCHIVE_DIR="$WORLD_DIR/archive/scenes"
 

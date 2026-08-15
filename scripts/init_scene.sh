@@ -40,8 +40,9 @@ case "$SCENE_NAME" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORLDSIM_DIR="${WORLDSIM_DIR:-$(cd "$SCRIPT_DIR/.." && pwd)}"
-WORLD_DIR="$WORLDSIM_DIR/worlds/$WORLD"
+SKILL_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+WORLDS_ROOT="${WORLDSIM_WORLDS_DIR:-$SKILL_DIR/worlds}"
+WORLD_DIR="$WORLDS_ROOT/$WORLD"
 SCENE_DIR="$WORLD_DIR/scenes/$SCENE_ID-$SCENE_NAME"
 
 # sed 转义（防场景名/时间/类型含 / & \ 破坏 sed——P7）

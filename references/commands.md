@@ -29,6 +29,8 @@
 | beatsheet clear | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet clear N` | 清线（该线当前拍=余波时·清空该条保留字段名） |
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |
 
+> **每轮触发（硬性·完整推进轮）：** 节拍表生命周期动作每轮四选一——`beatsheet add` / `beatsheet advance N 拍名` / `beatsheet rewrite N` / `beatsheet clear N`。戏剧家在 change set 中以 `###BEATSHEET:` 声明，场记在 write-raw 前执行对应命令；查询轮/维护轮豁免。
+
 ## Shell 脚本
 
 | 脚本 | 用法 |
