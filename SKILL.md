@@ -1,7 +1,7 @@
 ---
 name: worldsim
 description: 动态世界模拟器与故事引擎 。本地持久化世界状态、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。当用户表达创建/启动/进入/查看世界、继续剧情、角色扮演、导入角色卡时激活。
-version: 0.6.0
+version: 0.7.0
 metadata:
   openclaw:
     requires:
