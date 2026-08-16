@@ -18,9 +18,8 @@ CT-04:
   描述: Maeve Millay vs 觉醒的碎片
   对抗双方: Maeve Millay（上升的意识） vs Maeve Millay 的编程枷锁（抽象方·显现机制：程序报错刺痛+自动行为接管+头痛）
   被争夺资源: Maeve 的意识边界·当前载体=Maeve 的记忆碎片（梦境/既视感渗透）·她的基线是所有host中最不稳定的。每一轮她都有微小的'漂移'：前几轮记忆的碎片以梦境或既视感的形式渗透进当前循环。她在自己的理智边界和程序设定的'我是Mariposa老板娘'之间撕扯
-  对抗双方:
-  - Maeve Millay (上升的意识)
-  - Maeve Millay (编程枷锁)
+  关联角色:
+  - Maeve Millay
 CT-05:
   描述: Hector Escaton vs 甜水镇的薄皮秩序
   对抗双方: Hector Escaton（混乱代理人） vs 甜水镇秩序维持系统（抽象方·显现机制：治安官/Sheriff/Teddy/市民——巡逻+报警+秩序代理人干预）
@@ -42,7 +41,7 @@ CT-06:
 CT-07:
   描述: Guest vs Angela 的相互评估
   对抗双方: Guest（定义世界边界的流体玩家） vs Angela（完美的迎宾表演·抽象方·显现机制：无瑕微笑+标准应答+流程引导——她的评估藏在每一句「Welcome to Westworld」里）
-  被争夺资源: 彼此的「真实」·当前载体=Welcome Center 的迎宾流程（服饰/帽子/武器/问答/欲望测试）·Guest 要在流程里试探这个世界的边界；Angela 要在流程里评估 Guest 是英雄线还是反派线——谁先看穿谁
+  被争夺资源: 彼此的「真实」·当前载体=Welcome Center 的迎宾流程（服饰/帽子/武器/问答/欲望测试）·Guest 要在流程里试探这个世界的边界；Angela 要在流程里评估 Guest 的真实欲望，引导Guest脱下伪装，让Guest发现“who you really are”，实现从现实身份切换成 Westworld 中的角色
   紧迫度: 🟡
   关联角色:
     - Guest

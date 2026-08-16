@@ -1,6 +1,6 @@
 # WorldSim.Life — Where Worlds Come to Life
 
-> World Simulator · Story Engine
+> Autonomous Narrative Engine · Dynamic World Simulator
 
 > WorldSim is more than roleplay — it's a world that breathes: characters are flesh and blood, making trade-offs under pressure; in corners no one watches, fates keep rising and falling. Walk in — you are part of the story.
 > For players who want deep roleplay and creators chasing dramatic tension.
@@ -19,23 +19,32 @@ What "alive" means: characters have their own obsessions, fears, and hard limits
 
 **SillyTavern character card import built in**: drop in existing character cards (PNG/JSON) and a full character profile is generated automatically — no need to write from scratch.
 
-**The protagonists of this world are its characters, not the player.** You are part of it too — you're the one who decides who gets to remember, and who stays forgotten.
+**The protagonists of this world are its characters, not the player.** You are part of it too — you're the one who decides who gets to remember, and who stays forgotten. Every decision you make is a seed planted into this world — everything that follows is its own evolution.
 
-Behind every word you say, three people inside the engine are working for you — you just can't see them:
+---
 
-- **The Dramatist** — manufactures conflict and cost, pushing characters to the edge
-- **The Writer** — narrates only in details you can see, putting the tension on the page
-- **The Continuity Keeper** — files every decision, every line, every trace, across scenes, sessions, persistently (manually cleanable anytime)
+## Try It Now: The Westworld Demo
 
-Your only job: **speak.** The world does the rest.
+> **Content warning:** This example world contains adult, violent, and coercive themes. It will **not start unless explicitly requested** — it activates only when you clearly say you want to enter Westworld and accept its themes.
 
-### Design Philosophy
+The characters, laws, and loops all live in the world's files at `worlds/westworld/`. Say 「start Westworld」 and walk in.
 
-#### Come Alive: Real People First
+Angela, your personal Delos host, will guide you through your arrival, help you select your attire and accessories, and invite you to choose how you wish to enter the world of Westworld. White hat or black. Gunslinger or gentleman. Who will you choose to be? Welcome to Westworld. **The only limit is your imagination.**
+
+> He thought he was playing a game. Until the woman said, "I'll wait for you to come back."
+
+This is one story, woven from every narrative of an early WorldSim test run: **https://worldsim.life/welcome_center.htm**
+
+
+---
+
+## Design Philosophy
+
+### Come Alive: Real People First
 
 Making a character come alive means **sculpting their character cracks through lived experience and psychological defenses, and granting them an autonomous logic that exceeds plot control**. When a character is torn by their own desires and fears, beliefs and contradictions — and makes a choice in crisis that matches their instincts and values — they stop being an author's puppet and become a person who truly lives.
 
-#### Dramatize: Let Real People Bleed Under Pressure
+### Dramatize: Let Real People Bleed Under Pressure
 
 Realism alone sinks into "mundane daily life." The essence of Drama is **conflict and choice under pressure**.
 
@@ -50,17 +59,35 @@ Four demolition projects:
 
 > Every rule in this engine (personality system, conflict beats, defenses and boundaries, external countdowns) serves two words: **come alive**, and then **choose under pressure**.
 
-### Your Story Stays Written
+Why so many rules? — Because an AI's default instinct is compliance: quick reconciliation, retreat, a safe wrap-up. Every rule in WorldSim fights that instinct. The rules are war scars, not redundancy: their only purpose is to keep the story on the cliff's edge.
+
+---
+
+## It's Just an Example
+
+WorldSim builds any world you want: a medieval castle, a cyberpunk rain-soaked night, a one-sentence world of your own invention — the same engine, the same "making characters come alive."
+
+If you haven't settled on a world yet, start with Westworld — it's already in the repo, and saying 「start Westworld」 puts you on the train.
+
+---
+
+## Your Story Stays Written
 
 Every turn, the engine files the narrative into the current scene's `narrative.md` — Sweetwater's story lands in Sweetwater's narrative, the next scene in the next. Read them in time order and you have a complete novel: the chronicle of that world, from the first line of dialogue to the last full stop.
 
 Want to look back? Open the scene directory under `worlds/{world}/scenes/` — the `narrative.md` files together with their rotated archives hold every word. Read it from chapter one to the end.
 
-### Data Storage & Privacy
+You can also simply tell WorldSim: "help me turn the story into a novel" — it will read through the full narrative archives and shape the chronicle into a finished manuscript.
+
+---
+
+## Data Storage & Privacy
 
 Every turn is written to the current scene's `narrative.md` (with rotated archives); imported SillyTavern character cards are stored in full under `{world}/import/`. All data lives on your local disk — **do not enter passwords, secrets, or sensitive personal information into stories**. Deleting the `worlds/{world}/` directory removes the entire world's records (narrative, state, snapshots, and imported originals).
 
-### Where World Data Lives (Environment Variable)
+---
+
+## Where World Data Lives (Environment Variable)
 
 By default, world data is stored in `worlds/` inside the skill directory. To keep it on your own storage (separate disk / network share / container volume), set the **`WORLDSIM_WORLDS_DIR`** environment variable to your directory — all scripts (validate/write/snapshot/reset/import) resolve world paths through it; when unset it falls back to `{skill_dir}/worlds/`. The skill itself (SKILL.md / scripts / templates) is always located from the script's own position and **cannot** be overridden by an environment variable.
 
@@ -69,6 +96,8 @@ By default, world data is stored in `worlds/` inside the skill directory. To kee
 ## Installation
 
 WorldSim is distributed through two channels: **Clawhub** (recommended) and **GitHub**. Same skill either way — pick one.
+
+Releases and version history: [GitHub Releases](https://github.com/zhaowh/worldsim/releases)
 
 ### Capability Notice
 
@@ -104,7 +133,7 @@ Place the `worldsim` directory (or a symlink to it) in your client's skills dire
 
 1. **Create a world** — tell it 「create a world <name>」 and what kind of world you want to see. It scaffolds the lore, the character files, and the conflict seeds — give it a single sentence if you're lazy, or polish it together if you want. **You can also say 「import the character card <file>」 at this step** and create a new world.
 2. **Start the world** — say 「start the <name> world.」 The engine materializes everything, paints the world's entrance, then **waits at the starting line for you.**
-3. **Speak** — say the first thing you want to do in that world. The story begins with that line — and never fully returns to how it was.
+3. **Speak** — say the first thing you want to do in that world. The story begins with that line — and never fully returns to how it was. Or just say 「continue the story」 — the world keeps moving on its own.
 
 ### Importing Character Cards (SillyTavern / Chub.ai)
 
@@ -115,8 +144,6 @@ WorldSim can import **SillyTavern-compatible character cards** (`.png` with embe
 - **Any time in an existing world** — say 「import character card <card.png> into <world>」 or `/import-card <card.png...>`
 
 **How it works**: a script mechanically extracts the card's full content (lore, greetings, alternate greetings, knowledge base, etc.) into the material store → the AI reads all of it and synthesizes a proper WorldSim character file (fields left blank when unsupported, overflow info collected in the "Supplementary Settings" section, nothing thrown away) → the original material stays in `{world}/import/` for reference.
-
-> Supports V1 / V2 / V3 card formats; `system_prompt` / `post_history_instructions` — which conflict with WorldSim's engine-driven philosophy — are archived but never imported. Details: `references/import_cards.md`.
 
 ### What You'll Discover
 
@@ -129,42 +156,16 @@ WorldSim can import **SillyTavern-compatible character cards** (`.png` with embe
 
 ---
 
-## Try It Now: The Westworld Demo
-
-> **Content warning:** This example world contains adult, violent, and coercive themes. It will **not start unless explicitly requested** — it activates only when you clearly say you want to enter Westworld and accept its themes.
-
-This is hard to explain in words — so the repo ships with a complete, ready-to-start **example world**: **Westworld**.
-
-It's not just a western skin. It actually *runs* the rules from the show:
-
-- **The loops are real** — Dolores wakes at 06:00 at the ranch gate, walks to the general store at 08:30, and in 90% of loops Rebus harasses her there; Hector robs the Mariposa at 13:00 sharp, every day.
-- **Resets differ by tier** — script-tier Hosts are wiped clean; drifting Hosts keep time-blind shadow fragments — a strange melody, a hand that once held theirs; awakened Hosts keep the key anchors — names, promises, turning points. Stand at the reset point at dawn and watch who remembers, who doesn't, and how much.
-- **Pain is the key to awakening** — script → drift → awakened → transcendent, each step traceable. No sudden betrayal.
-- **Cracks spread** — Maeve's memory fragments from previous loops seep into the current one; her daughter is erased every reset, but the pain of loss stays at the neural level.
-- **The hidden threads actually run** — Peter Abernathy drops a photograph that doesn't belong to the West; the line he speaks in his breakdown freezes every Host present for 0.5 seconds; beneath the church lies the entrance to a maze that exists on no map.
-
-**How to verify it?** Say 「start Westworld」 and go test it yourself: whisper her daughter's name to Maeve, watch this loop's reaction, then watch her reaction at dawn; speak that line out loud and watch the Hosts freeze; pry open the cellar hatch behind the Mariposa bar — then check whether it's still open the next morning.
-
-Or 「switch to Maeve」 and live a full loop inside her body — counting the clock chimes as the last table leaves, then deciding whether to open that hatch.
-
----
-
-## It's Just an Example
-
-WorldSim builds any world you want: a medieval castle, a cyberpunk rain-soaked night, a one-sentence world of your own invention — the same engine, the same "making characters come alive."
-
-If you haven't settled on a world yet, start with Westworld — it's already in the repo, and saying 「start Westworld」 puts you on the train.
-
----
-
 ## Useful Phrases
 
 | What you want | What to say |
 |---------------|-------------|
-| See where the world is | `/status` |
+| See where the world is (full status incl. hidden details) | `/status` · `/status --full` |
 | See the conflicts brewing in the dark | `/conflicts` |
 | Become a character, live through their eyes | 「switch to Dolores」 |
-| Save / load (live one choice two ways) | `/save [name]` · `/load <name>` |
+| Switch / create scenes | `/scene <ID>` · `/scene new <name>` |
+| Sync the log (tell the engine the latest changes) | `/sync` |
+| Save / load (auto-backup `_before_` before load, rollback-able) | `/save [name]` · `/load <name>` |
 | Reopen a scene | `/reset-scene [scene ID]` |
 | Restart the whole world | `/reset` |
 | Import a ready-made character card | `/import-card <card.png...>` |
@@ -172,7 +173,21 @@ If you haven't settled on a world yet, start with Westworld — it's already in 
 | Back to immersion mode | `/silent` |
 | **Something feels off — audit the engine** | 「audit」/「/audit」 |
 
-> **Audit** (「audit」/「/audit」): use it whenever something feels off — the engine checks world state and narrative against the dramatist/writer/continuity gates, item by item, outputting PASS/FAIL with evidence (file paths + field text), and follows the repair flow on failures. If audits keep finding the same class of violations (the engine repeatedly fails to follow its rules, patches don't help) — recommend switching to a different LLM model instead of endlessly patching.
+> **Audit** (「audit」/「/audit」): use it whenever something feels off — the engine checks world state and narrative against the dramatist/writer/continuity gates, item by item, outputting PASS/FAIL with evidence (file paths + field text), and follows the repair flow on failures. If audits keep finding the same class of violations (the engine repeatedly fails to follow its rules, patches don't help) — recommend switching to a different agent or LLM model instead of endlessly patching.
+
+---
+
+## Architecture: A Single-Context, Phase-Segmented Pipeline
+
+WorldSim's core architecture is a single LLM within a single shared context — unlike the industry-common Multi-Agent architecture (multiple models colliding in high-cost, low-density "swarm chat"). It is not many models talking to each other; it is one engine executing three logical phases in sequence within the same context, sharing the same world knowledge and conversation history:
+
+1. **The Dramatist** — conflict modeling and state pressure: reviews the previous turn, manufactures dilemmas and irreversible costs, pushes characters to the edge of choice
+2. **The Writer** — detail rendering and cinematic framing: given the tension targets, writes "Show, Don't Tell" — actions, micro-expressions, senses, and subtext
+3. **The Continuity Keeper** — state persistence and archiving: distills each turn's irreversible state changes (shattered psychological defenses, destroyed key objects, deep memory imprints), keeping long-session context drift-free
+
+The three are pistons of the same engine, completing all the work in sequence within a single inference. To keep per-turn cognitive load in check, **rules are loaded at the point of use**: SKILL.md keeps only the orchestration and constraints needed every turn; the phase rule files (`references/phase_*.md`) are read when that phase or moment is reached — phase rules enter the context when needed, no longer resident in full. Phases are separated by **artifact handoff + script gates**: the Dramatist outputs a change set (`gate dramatist --check`), the Writer outputs the narrative (`gate writer --check`), the Continuity Keeper persists (`write-raw` built-in audit); a failed gate means redo. 
+
+**Dramatic craft instead of model stacking** — quality comes from the discipline of screenwriting, not from model count: low cost, results that exceed expectations.
 
 ---
 

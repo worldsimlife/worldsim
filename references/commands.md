@@ -1,7 +1,7 @@
 # WorldSim — 命令速查（commands.md）
 
 > **本文件 = 全部命令的唯一速查**（worldctl.py 子命令 / shell 脚本 / 用户命令）。命令不会用时来这里查，不需要逐轮执行。
-> 行为指令在 SKILL.md（CORE·每轮必读）；键表/写语义在 references/keys.md；写入批次格式在 references/write_protocol.md。
+> 行为指令在 SKILL.md（编排·每轮必读）+ references/phase_*.md（阶段规则·阶段开始前必读）；键表/写语义在 references/keys.md；写入批次格式在 references/write_protocol.md。
 
 ---
 
@@ -23,13 +23,15 @@
 | grep | `python3 {skill_dir}/scripts/worldctl.py <世界> grep <关键词>` | 全仓（含所有场景 scene_state）搜索元素注册原文——**使用已有元素前核对形态/位置/状态/性质的标准工具（D11/W4 前置·防凭印象改写元素）**；无匹配=未注册=使用即幻觉 |
 | delete | `python3 {skill_dir}/scripts/worldctl.py <世界> delete <文件key> <键路径>` | 删整条 CT / pending 条目；批量流支持 `###DELETE:` |
 | beatsheet show | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet show [N]` | 读节拍表（全部 / 指定事件线 N） |
-| beatsheet add | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet add`（stdin=单条事件线 YAML：事件线/当前拍/拍序） | **节拍表唯一写入入口**——建线=全新事件线（追加 `节拍表.{N}`·N 自动递增·脚本机械落盘+结构/枚举校验·LLM 不直接改 YAML） |
-| beatsheet advance | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet advance N 拍名` | 推进事件线 N 到指定拍（写 当前拍·校验拍名在拍序中·禁回退） |
-| beatsheet rewrite | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet rewrite N`（stdin=新事件线 YAML） | 换线（现实与该线当前拍内容不承接时重写该条） |
-| beatsheet clear | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet clear N` | 清线（该线当前拍=余波时·清空该条保留字段名） |
+| beatsheet add | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet add`（stdin=单条事件线 YAML：事件线/当前拍/拍序） | **节拍表唯一写入入口**——建线=全新事件线（追加 `节拍表.{N}`·N 自动递增·脚本机械落盘+结构/枚举校验·LLM 不直接改 YAML·**顶点拍须含 `顶点落点`（缺则拒绝 exit 1）**） |
+| beatsheet stay | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet stay N` | 停留当前拍（当前拍内容未完成·拍序保持原样·下轮继续·默认动作） |
+| beatsheet advance | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet advance N 拍名` | 推进事件线 N 到指定拍（写 当前拍·校验拍名在拍序中·禁回退·顶点出线=advance N 余波 形态:XXX 受 gate 收束核验（形态枚举+字段族变化）；停留用 stay N） |
+| beatsheet rewrite | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet rewrite N`（stdin=新事件线 YAML） | 换线/重规划（现实与该线当前拍不承接·判线仍有继续价值时·顶点拍同步重填 `顶点落点`·缺则拒绝 exit 1） |
+| beatsheet clear | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet clear N` | 清线（当前拍=余波 或 现实与当前拍不承接时·清空该条保留字段名·CT 照常在 conflicts 演化·新冲突内核可清后建） |
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |
 
-> **每轮触发（硬性·完整推进轮）：** 节拍表生命周期动作每轮四选一——`beatsheet add` / `beatsheet advance N 拍名` / `beatsheet rewrite N` / `beatsheet clear N`。戏剧家在 change set 中以 `###BEATSHEET:` 声明，场记在 write-raw 前执行对应命令；查询轮/维护轮豁免。
+> **批次自动执行（硬性）：** change set 中的 `###BEATSHEET:` 由 write-raw --batch 自动执行对应子命令落盘节拍表（`add`/`rewrite` 后直接跟事件线 YAML 块直到下一个 `###` 行·失败=批次拦截 exit 1）——**LLM 不手动调用 beatsheet 写命令**；下表命令保留用于查询（show）与维护。
+> **每轮触发（硬性·完整推进轮·按序判定选一·承接判定先于完成度判定）：** 余波→`beatsheet clear N`（不用等余波事件完成·清后建）·空表/新线→`beatsheet add`（顶点拍预填 顶点落点·戏剧目标声明·缺则拒绝）·现实不承接→**默认 `beatsheet clear N` 清线**（低阻力出口·复用余波清线语义·新内核可清后建）·判线仍有继续价值→`beatsheet rewrite N` 重规划（当前拍按现实落位·顶点拍同步重填 顶点落点）·**承接不符时 advance 不参与判定**·承接成立后：内容未完成→`beatsheet stay N`（默认动作·拍序保持原样）·内容已完成→`beatsheet advance N 下一拍`（顶点=advance N 余波 形态:XXX·受 gate 收束核验）。戏剧家在 change set 中以 `###BEATSHEET:` 声明（write-raw 自动执行）；查询轮/维护轮豁免。
 
 ## Shell 脚本
 
