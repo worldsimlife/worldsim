@@ -15,7 +15,7 @@
 3. **收尾自查（每轮必做·write-raw 后）：** 按主 SKILL.md 开篇「场记三问」逐条核对——①痕迹完整：时间/轮次/前情→world_state · CT→conflicts · 出场/退场角色逐一→CHAR_state（退场=位置转焦外）· 道具线索→scene_state · 焦外→pending_actions · 新区域→world_map；②落点=焦点场景目录；③连续性=时间/轮次/存档一致。**validate 通过 ≠ 自查通过**（audit 只查格式违规，查不出「该写的角色没写」这类语义漏痕）。
 4. **回退是低频例外·每轮零额外动作**——回退不走 write-raw（audit 拦截「轮次非单调」）；回退 = `snap.sh load`（快照·主动存档）或手工重建（详见 references/rollback.md）。关键节点（场景切换/剧情转折）主动 `snap.sh save` 一次，比任何自动机制都便宜。
 
-**audit 语义不变量（对应闸门中可代码化的部分）：** 硬性（写入时单字段顶回）——① 角色反应四件套（`驱动:`/`情绪:`/`强度:`/`代价:` 缺一拒绝，`代价:` 后为空拒绝）；② 被争夺资源必须含 `当前载体=`/`当前持有者=`；④ `world_state.轮次` 单调递增；⑤ `scene_state` 落点必须有焦点场景目录。软性（不拦截·validate 汇总）——③ 记忆锚点单条 ≤100 字、写入后总量 ≤3000。
+**audit 语义不变量（对应闸门中可代码化的部分）：** 硬性（写入时单字段顶回）——① 角色反应四件套（`驱动:`/`情绪:`/`强度:`/`代价:` 缺一拒绝，`代价:` 后为空拒绝）；② 被争夺资源必须含 `当前载体=`/`当前持有者=`；④ `world_state.轮次` 单调递增；⑤ `scene_state` 落点必须有焦点场景目录——**落点校验在执行路径（write-raw 写入时）强制**；独立 audit 预检与 gate 仅软提示（场景目录由场记阶段3 init_scene 创建·先于批次写入·见 scene_management.md §场景切换流程）。软性（不拦截·validate 汇总）——③ 记忆锚点单条 ≤100 字、写入后总量 ≤3000。
 
 stdout 回传无需任何处理，直接忽略。不向用户发送消息。静默模式（全局默认）下回复正文同样不输出（见 SKILL.md「输出模式」）——阶段3 写入照常执行，落盘错误（[FAIL]/[ERR]）必须报告，不可静默。
 
@@ -120,13 +120,13 @@ S01
 
 | 文件 | 注册表 key | 兼容写法（自动归一化） |
 |------|-----------|----------------------|
-| conflicts.yaml | `conflicts` | — |
-| 世界目录各 CHAR_state | `CHAR_{全名}_state`（空格/下划线通用） | 缺 `_state` 后缀自动补 |
+| states/conflicts.yaml | `conflicts` | — |
+| states/ 各 CHAR_state | `CHAR_{全名}_state`（空格/下划线通用） | 缺 `_state` 后缀自动补 |
 | 焦点场景 scene_state.yaml | `scene_state` | — |
-| world_state.yaml | `world_state` | — |
-| world_map.yaml | `world_map` | — |
-| off_focus/pending_actions.yaml | `pending_actions` | `off_focus/pending_actions` / `off_focus/pending_actions.yaml` |
-| 世界目录其他 *.yaml | 文件名 stem | 带路径/扩展名写法自动剥离 |
+| states/world_state.yaml | `world_state` | — |
+| states/world_map.yaml | `world_map` | — |
+| states/pending_actions.yaml | `pending_actions` | `states/pending_actions` / `states/pending_actions.yaml` |
+| states/ 其他 *.yaml | 文件名 stem | 带路径/扩展名写法自动剥离 |
 
 > 未知 FILE key 不再静默丢弃——正式写入报 `[ERR]` + 批量收尾 stdout `[FAIL]` 汇总 + exit 1；DRY-RUN 标 `[未知文件]` 并计入失败统计。注册表外 key 会被拒绝。
 >

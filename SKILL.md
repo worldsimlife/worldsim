@@ -1,7 +1,7 @@
 ---
 name: worldsim
 description: 动态世界模拟器与故事引擎 。本地持久化世界状态、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。当用户表达创建/启动/进入/查看世界、继续剧情、角色扮演、导入角色卡时激活。
-version: 0.8.0
+version: 0.9.0
 metadata:
   openclaw:
     requires:
@@ -62,9 +62,9 @@ metadata:
 
 ## 分段执行编排（三阶段·每阶段先读规则再执行）
 
-**硬性：每阶段开始前必须先物理读取对应阶段规则文件（`cat references/phase_*.md`）——无熟练豁免**。阶段规则文件是行为指令本身，不是「熟练后可跳」的参考数据——write_protocol.md 的「熟练后不必每轮读」不适用于阶段规则文件；禁止凭「上下文好像有」替代实际读取。
+**每阶段开始前先读取对应阶段规则文件（`references/phase_*.md`）**。——禁止凭「上下文好像有」替代实际读取。
 
-| 阶段 | 先读（硬性） | 做什么 | 产出 | 闸门 |
+| 阶段 | 先读 | 做什么 | 产出 | 闸门 |
 |------|------------|--------|------|------|
 | ① 戏剧家 | references/phase_dramatist.md | 六步决策：数据就绪 → 压力扫描 → 冲突决策（弧线校准/轨道/质感/收敛）→ 记忆维护 → 节拍规划 | change set（###FILE: 批次·首行 ###META 自查锚点·###BEATSHEET: 事件线动作） | `gate dramatist --check`（stdin 读 change set·必含项缺失 exit 1=不进阶段2）；标准模式另按该文件「戏剧家闸门」执行 D1-D14 |
 | ② 作家 | references/phase_writer.md | 写作数据准备（三源）→ 按 change set 骨架生成叙事（指令忠诚·填充不改骨架） | 叙事正文（首行=场景名+时间+轮次） | `gate writer --check`（W4 锚点核对·推送前硬性·失败=不输出）；标准模式另按该文件「作家闸门」执行 W1-W4 |
@@ -97,18 +97,21 @@ metadata:
 
 ```
 worlds/{世界名}/
-├── world_state.yaml     ← 焦点场景（顶层第一行·唯一权威源）/时间/倒计时/全局标记/时间线
-├── world_map.yaml       ← 迷雾制·可选增强层（缺失不影响运行）
-├── knowledge_index.yaml ← 知情边界追踪索引（可选·有知情差异的事实·认知边界闸门辅助 + audit 核对清单·见 references/knowledge_index.md）
-├── foreshadow.yaml      ← 伏笔登记（可选·触发式·故事契约层·种下/回收时登记·validate 检查闭环·见 references/foreshadow.md）
-├── SETTING.md           ← 世界观固定设定（静态·含核心高压法则·可选故事弧线）
-├── CROSS_NARRATIVES.md  ← 跨表演线隐藏交叉（参考·不改）
-├── LOOPS.md             ← 角色默认循环（强驱动源·循环世界·在轨节点必须执行）
-├── CONFLICTS_SEED.md    ← 初始冲突种子（设定·创建时生成·不改·启动时物化为 conflicts.yaml）
-├── conflicts.yaml       ← CT 注册表（上帝视角·禁代词·人名·物化自种子·每轮演化）
-├── off_focus/pending_actions.yaml
-├── CHAR_{name}.md       ← 固定档案（基本信息+人格内核[性格+八变量:Desire/Fear/Belief/Defense/Value Boundary/Reaction Style/崩溃模式/关系锚点]+关系网络+外在特征+叙事描写视角+背景·可选:情景与叙事/循环注册）
-├── CHAR_{name}_state.yaml ← 主观状态（隐藏主语=我·禁他/她指代本角色·禁全知）
+├── SETTING.md           ← 顶层唯一文件（世界观固定设定·静态·含核心高压法则·可选故事弧线）
+├── regions/             ← 区域静态档案（可选增强层·目录树分层·{节点名}/REGION.md 只读设定·见 scene_management.md §区域静态档案）
+├── characters/          ← 角色静态档案（CHAR_{name}.md 固定档案：基本信息+人格内核[性格+八变量:Desire/Fear/Belief/Defense/Value Boundary/Reaction Style/崩溃模式/关系锚点]+关系网络+外在特征+叙事描写视角+背景·可选:情景与叙事/循环注册）
+├── story_architecture/  ← 故事架构（只读设定·不改）
+│   ├── CONFLICTS_SEED.md  ← 初始冲突种子（设定·创建时生成·启动时物化为 states/conflicts.yaml）
+│   ├── LOOPS.md           ← 角色默认循环（强驱动源·循环世界·在轨节点必须执行）
+│   └── CROSS_NARRATIVES.md ← 跨表演线隐藏交叉（参考·不改）
+├── states/              ← 全部动态状态（读写）
+│   ├── world_state.yaml  ← 焦点场景（顶层第一行·唯一权威源）/时间/倒计时/全局标记/时间线
+│   ├── world_map.yaml    ← 迷雾制·可选增强层（缺失不影响运行）
+│   ├── conflicts.yaml    ← CT 注册表（上帝视角·禁代词·人名·物化自种子·每轮演化）
+│   ├── foreshadow.yaml   ← 伏笔登记（可选·触发式·故事契约层·见 references/foreshadow.md）
+│   ├── knowledge_index.yaml ← 知情边界追踪索引（可选·见 references/knowledge_index.md）
+│   ├── pending_actions.yaml ← 焦外行动注册（见 scene_management.md §焦外协议）
+│   └── CHAR_{name}_state.yaml ← 主观状态（隐藏主语=我·禁他/她指代本角色·禁全知）
 └── scenes/
     ├── INDEX.md
     └── SXX-场景名/{scene_card.md, scene_state.yaml, narrative.md, start_snapshot.md}
@@ -127,6 +130,8 @@ narrative 不是角色记忆——记忆锚点才是（叙事文件不参与创�
 | references/keys.md | 全部键表 + 视角规则 + 写语义 + 世界事件生命周期 | 写字段不确定时 |
 | references/write_protocol.md | 写入方式参考（heredoc/batch/delete/audit 不变量）+ Change Set 规范 | 阶段3 写入格式不确定时；**新世界首次启动轮/字段结构不确定时必读全文**（references/phase_dramatist.md 最小批次骨架+内置 audit 兜底·熟练后不必每轮读） |
 | references/scene_management.md | 场景切换/移动/waypoint/地图协议/存档读档/状态校验/焦外协议 | 场景相关 |
+| references/beat_structure.md | 节拍结构参考（宏观三幕十五拍/微观五段式/分形自查·编剧策划视角·不产生规则） | 弧线校准·建线/规划拍序时（按需读取） |
+| `regions/**/REGION.md`（世界区域档案·数据） | 区域静态设定（只读·初始设定·目录树分层·模板见 templates/REGION.md） | 到达新区域 / 创建场景（无 `--from`）时读当前节点档案 |
 | references/rollback.md | 回退流程（快照恢复/场景级重置/手工重建降级路径·逐文件处理） | 回退/撤销时 |
 | references/gate_dramatist.md | 戏剧家闸门（D1-D14）明细 | 标准模式·阶段1 结束时 |
 | references/gate_writer.md | 作家闸门（W1-W4）明细 | 标准模式·阶段2 推送前 |

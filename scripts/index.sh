@@ -156,7 +156,7 @@ case "$ACTION" in
     }" "$FILEPATH"
 
     # 同步 world_state.焦点场景（唯一权威源）——旧世界无 world_state.yaml 则跳过
-    WS_FILE="$WORLD_DIR/world_state.yaml"
+    WS_FILE="$WORLD_DIR/states/world_state.yaml"
     if [ -f "$WS_FILE" ]; then
       if grep -q "^焦点场景:" "$WS_FILE" 2>/dev/null; then
         sed -i "s/^焦点场景:.*/焦点场景: $SCENE_ID/" "$WS_FILE"

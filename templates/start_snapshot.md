@@ -22,4 +22,4 @@
 - 全局标记：[开场时已成立的世界事实] (恢复时写入 world_state.yaml 的 全局标记.{名})
 
 焦外待揭示（开场时·揭示场景=本场景）：
-- [PA-ID]: [行动 + 当前状态 + 信号] (恢复时写入 off_focus/pending_actions.yaml 的 活跃中.{PA-ID})
+- [PA-ID]: [行动 + 当前状态 + 信号] (恢复时写入 states/pending_actions.yaml 的 活跃中.{PA-ID})

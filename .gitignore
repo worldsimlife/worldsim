@@ -9,7 +9,7 @@ worlds/*
 
 # 保留的世界目录内，仍只跟踪静态 .md，运行时数据一律忽略（所有 yaml = 动态状态）
 worlds/*/scenes/
-worlds/*/off_focus/
+worlds/*/states/
 worlds/*/snaps/
 worlds/*/archive/
 worlds/*/import/

@@ -1,8 +1,8 @@
 #!/bin/sh
 # snap.sh — 状态快照存档（V2）
 # 备份范围（全量）：
-#   - 动态状态: world_state.yaml conflicts.yaml off_focus/pending_actions.yaml world_map.yaml(可选)
-#   - 角色状态: CHAR_*_state.yaml
+#   - 动态状态: states/ 下全部 yaml（world_state/conflicts/world_map/pending_actions·快照内平铺）
+#   - 角色状态: states/CHAR_*_state.yaml
 #   - 场景: scenes/ 全目录（INDEX.md + 每个场景的 scene_state/narrative/scene_card/start_snapshot）
 # 焦点场景唯一权威源 = world_state.yaml 顶层「焦点场景」（不再使用 .active 文件）
 # 用法:
@@ -50,11 +50,11 @@ mkdir -p "$SNAP_DIR"
 
 # 需要备份的动态状态文件（焦点场景在 world_state.yaml 内，无独立 .active）
 # world_map.yaml 为可选增强层——缺失时 copy_if_exists 自动跳过
-STATE_FILES="world_state.yaml conflicts.yaml off_focus/pending_actions.yaml world_map.yaml"
+STATE_FILES="states/world_state.yaml states/conflicts.yaml states/pending_actions.yaml states/world_map.yaml"
 
 # 获取焦点场景短 ID（唯一权威源 = world_state.yaml 顶层「焦点场景」）
 get_focus_scene() {
-  grep -E "^焦点场景:" "$WORLD_DIR/world_state.yaml" 2>/dev/null | head -1 | sed 's/^焦点场景:[[:space:]]*//' | tr -d '[:space:]'
+  grep -E "^焦点场景:" "$WORLD_DIR/states/world_state.yaml" 2>/dev/null | head -1 | sed 's/^焦点场景:[[:space:]]*//' | tr -d '[:space:]'
 }
 
 # 获取焦点场景目录名（短 ID 前缀匹配）
@@ -74,7 +74,7 @@ case "$ACTION" in
     ACTIVE=$(get_focus_scene)
     if [ -z "$SNAPNAME" ]; then
       ACTIVE_NAME="$(get_focus_scene_name)"
-      ROUND=$(grep -E "^轮次:" "$WORLD_DIR/world_state.yaml" 2>/dev/null | head -1 | sed 's/^轮次:[[:space:]]*//' | tr -d "[:space:]'\"")
+      ROUND=$(grep -E "^轮次:" "$WORLD_DIR/states/world_state.yaml" 2>/dev/null | head -1 | sed 's/^轮次:[[:space:]]*//' | tr -d "[:space:]'\"")
       if [ -n "$ROUND" ]; then
         SNAPNAME="r${ROUND}-${ACTIVE_NAME}-$(date +%Y%m%d-%H%M%S)"
       else
@@ -96,7 +96,7 @@ case "$ACTION" in
     done
 
     # 2. 所有角色动态状态
-    for f in "$WORLD_DIR"/CHAR_*_state.yaml; do
+    for f in "$WORLD_DIR"/states/CHAR_*_state.yaml; do
       [ -f "$f" ] || continue
       cp "$f" "$OUTDIR/" && file_count=$((file_count + 1))
     done
@@ -145,7 +145,7 @@ case "$ACTION" in
     for f in $STATE_FILES; do
       copy_if_exists "$WORLD_DIR/$f" "$BAKDIR"
     done
-    for f in "$WORLD_DIR"/CHAR_*_state.yaml; do
+    for f in "$WORLD_DIR"/states/CHAR_*_state.yaml; do
       [ -f "$f" ] && cp "$f" "$BAKDIR/"
     done
     if [ -d "$WORLD_DIR/scenes" ]; then
@@ -167,7 +167,7 @@ case "$ACTION" in
     for f in "$SRCDIR"/CHAR_*_state.yaml; do
       [ -f "$f" ] || continue
       fname=$(basename "$f")
-      cp "$f" "$WORLD_DIR/"
+      cp "$f" "$WORLD_DIR/states/"
       restored=$((restored + 1))
       echo "  恢复: $fname"
     done

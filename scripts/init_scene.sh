@@ -1,8 +1,10 @@
 #!/usr/bin/env sh
 # init_scene.sh — 创建新场景目录及模板文件
-# 用法: init_scene.sh <世界名> <场景ID> <场景名> [--from <旧场景ID>]
+# 用法: init_scene.sh <世界名> <场景ID> <场景名> [--from <旧场景ID>] [--place <档案路径>] [--type <类型>] [--time <时间>] [--cast <出场角色>]
 #   --from <旧场景ID|旧场景目录名>: 继承旧场景 scene_state 的物理锚点/道具清单
 #     （同物理地点切换必用——同一栋建筑的空间元素不因时间区间变化而消失，防止从零重建导致漏继承）
+#   --place <档案路径>: 区域静态档案指针（相对世界目录，如 regions/甜水镇/REGION.md）——无 --from 时
+#     作为 scene_state 物理锚点基线来源（首次到达·初始设定）；只校验存在性，内容由场记读档案生成
 
 WORLD="$1"
 SCENE_ID="$2"
@@ -12,20 +14,23 @@ SCENE_TYPE=""
 SCENE_TIME=""
 SCENE_CAST=""
 INHERIT_FROM=""
+PLACE_ARCHIVE=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --from) INHERIT_FROM="$2"; shift 2 ;;
+    --place) PLACE_ARCHIVE="$2"; shift 2 ;;
     --type) SCENE_TYPE="$2"; shift 2 ;;
     --time) SCENE_TIME="$2"; shift 2 ;;
     --cast) SCENE_CAST="$2"; shift 2 ;;
-    *) echo "[ERR] 未知参数: $1（支持: --from <旧场景ID> / --type <类型> / --time <时间> / --cast <出场角色>）"; exit 1 ;;
+    *) echo "[ERR] 未知参数: $1（支持: --from <旧场景ID> / --place <档案路径> / --type <类型> / --time <时间> / --cast <出场角色>）"; exit 1 ;;
   esac
 done
 
 if [ -z "$WORLD" ] || [ -z "$SCENE_ID" ] || [ -z "$SCENE_NAME" ]; then
-  echo "用法: init_scene.sh <世界名> <场景ID> <场景名> [--from <旧场景ID>] [--type <类型>] [--time <时间>] [--cast <出场角色>]"
+  echo "用法: init_scene.sh <世界名> <场景ID> <场景名> [--from <旧场景ID>] [--place <档案路径>] [--type <类型>] [--time <时间>] [--cast <出场角色>]"
   echo "示例: init_scene.sh 遗弃之地 S07 追踪血迹 --type EXT --time '第3日 09:00' --cast 'Guest, Maeve'"
   echo "示例: init_scene.sh 遗弃之地 S08 追踪血迹 --from S07 --type INT --time '第3日 12:00'"
+  echo "示例: init_scene.sh 遗弃之地 S09 首次入镇 --place regions/甜水镇/REGION.md --type EXT"
   exit 1
 fi
 
@@ -66,6 +71,16 @@ if [ -n "$INHERIT_FROM" ]; then
     echo "[ERR] 源场景 scene_state.yaml 无法解析（$SRC_DIR/scene_state.yaml）——拒绝继承坏格式，请先修复源文件再重跑" >&2
     exit 1
   fi
+fi
+
+# ── --place 预检：档案指针必须存在（相对世界目录·如 regions/甜水镇/REGION.md）──
+if [ -n "$PLACE_ARCHIVE" ]; then
+  PLACE_FP="$WORLD_DIR/$PLACE_ARCHIVE"
+  if [ ! -f "$PLACE_FP" ]; then
+    echo "[ERR] --place 档案不存在（$PLACE_FP）——检查 regions/ 路径或补建档案（模板: templates/REGION.md）" >&2
+    exit 1
+  fi
+  echo "[OK] 物理基线来源: $PLACE_ARCHIVE（场记据档案生成 scene_state 物理锚点·对照全局标记覆盖不可逆变更）"
 fi
 
 mkdir -p "$SCENE_DIR"
@@ -162,7 +177,7 @@ echo "[OK] 场景已创建: $SCENE_DIR"
 echo "[OK] 索引文件已更新: $INDEX_FILE"
 
 # 同步 world_state.焦点场景（唯一权威源，顶层第一行）——旧世界无 world_state.yaml 则跳过
-WS_FILE="$WORLD_DIR/world_state.yaml"
+WS_FILE="$WORLD_DIR/states/world_state.yaml"
 if [ -f "$WS_FILE" ]; then
   if grep -q "^焦点场景:" "$WS_FILE" 2>/dev/null; then
     sed -i "s/^焦点场景:.*/焦点场景: $SCENE_ID/" "$WS_FILE"

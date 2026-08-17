@@ -14,7 +14,7 @@ for d in "$WORLDS_ROOT"/*/; do
   [ "$name" = "snaps" ] && continue
   [ -d "$d/scenes" ] || continue
 
-  focus=$(grep -E "^焦点场景:" "$d/world_state.yaml" 2>/dev/null | head -1 | sed 's/^焦点场景:[[:space:]]*//' | tr -d '[:space:]')
+  focus=$(grep -E "^焦点场景:" "$d/states/world_state.yaml" 2>/dev/null | head -1 | sed 's/^焦点场景:[[:space:]]*//' | tr -d '[:space:]')
   if [ -z "$focus" ] && [ -f "$d/.active" ]; then
     focus="$(cat "$d/.active")（旧格式）"
   fi
@@ -23,8 +23,8 @@ for d in "$WORLDS_ROOT"/*/; do
   else
     echo "⚪ $name"
   fi
-  chars=$(ls "$d"/CHAR_*.md 2>/dev/null | wc -l)
-  states=$(ls "$d"/CHAR_*_state.yaml 2>/dev/null | wc -l)
+  chars=$(ls "$d"/characters/CHAR_*.md 2>/dev/null | wc -l)
+  states=$(ls "$d"/states/CHAR_*_state.yaml 2>/dev/null | wc -l)
   scenes=$(ls -d "$d"/scenes/S*/ 2>/dev/null | wc -l)
   echo "   角色: $chars | 状态文件: $states | 场景: $scenes"
 done

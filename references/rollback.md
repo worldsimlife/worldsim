@@ -30,7 +30,7 @@
 | scenes/{S}/scene_state.yaml | 场景时间线（APPEND）·核心状态/出场摘要/关键信息（覆盖） | 裁剪时间线到目标时间；恢复覆盖字段 |
 | scenes/INDEX.md | 场景状态 ACTIVE/COMPLETED·新场景登记 | 恢复旧状态；删除回退期间创建的场景行 |
 | scenes/{S}/narrative*.md | write_narrative 轮转（narrative.md=最新·旧文件轮转保留） | narrative.md 恢复目标轮叙事（从轮转文件还原）；删除回退期间产生的轮转文件 |
-| off_focus/pending_actions.yaml | 覆盖 | **最易漏**：删除回退期间新增条目；恢复旧条目 |
+| states/pending_actions.yaml | 覆盖 | **最易漏**：删除回退期间新增条目；恢复旧条目 |
 | world_map.yaml | 新区域登记 | 删除回退期间登记 |
 | scenes/{新建场景目录} | init_scene.sh 创建 | 回退到创建前 → 删除整个场景目录 |
 
@@ -40,7 +40,7 @@
 2. **无快照时回退只能靠历史痕迹重建（不保证完整）**：conflicts 当前节拍被覆盖后旧值丢失（从 scene_state 时间线/出场摘要/反应轨迹反推）；CHAR_state 裁剪 APPEND；narrative 从轮转文件还原。**关键节点主动 snap.sh save 可避免降级。**
 3. **yaml 字符串字段禁止行级文本删除**——记忆锚点/反应轨迹/场景时间线是单引号多行字符串，删行会破坏闭合引号 → 整个文件 yaml 解析失败。正确姿势：`yaml.safe_load → 修改 → yaml.safe_dump`（allow_unicode=True, sort_keys=False）。
 4. **写入重定向意识**——write-raw 的 scene_state 落点 = world_state.焦点场景。创建新场景（init_scene.sh）后，后续批次写 scene_state 会**落到新场景**而非你以为的旧场景。回退前先确认内容实际落点，再决定删哪。
-5. **回退后必做残留扫描**——grep 目标轮次之后的时间戳/轮次号/场景ID/被撤销台词关键词；**逐文件核对含 off_focus/pending_actions.yaml**（本次实战即漏在此）。参考扫描面：
+5. **回退后必做残留扫描**——grep 目标轮次之后的时间戳/轮次号/场景ID/被撤销台词关键词；**逐文件核对含 states/pending_actions.yaml**（本次实战即漏在此）。参考扫描面：
    - 时间戳：回退后时段的 `13:54`、`13:56` 等
    - 轮次号：`第32轮`、`第33轮`（CHAR_state 反应轨迹/记忆锚点）
    - 场景ID：`S06`、新场景名
@@ -66,4 +66,4 @@
 - 已有能力：narrative 归档置空 + 场景时间线清空 + 核心状态待填充 + 静态基线保留（物理锚点/道具/关键信息/出场摘要）+ 自动存档 + **world_state 时间/轮次回退至场景开场**（start_snapshot 冻结时间/开场轮次）
 - 用途：场景重开（不撤销世界进度）
 - 注意：CHAR_state（角色记忆/情绪）不因场景重置而清空；若需要角色记忆也重置 → 走 LOOPS 重置机制
-- 重置后必查（脚本不自动处理·LLM 按本文件「涉及文件清单」逐项核对）：conflicts CT 节拍回退（对照 snapshot 开场节拍态）·CHAR_state 快照/记忆（累积字段按开场轮次裁剪·轮N≥开场轮次→删）·world_state 前情/倒计时/标记（前情可重写·倒计时/标记对照 snapshot）·scene_state 核心状态/出场摘要·off_focus/pending_actions 焦外条目（揭示场景=本场景→snapshot 恢复·纯背景→清空重生成·最易漏）·world_map 新登记
+- 重置后必查（脚本不自动处理·LLM 按本文件「涉及文件清单」逐项核对）：conflicts CT 节拍回退（对照 snapshot 开场节拍态）·CHAR_state 快照/记忆（累积字段按开场轮次裁剪·轮N≥开场轮次→删）·world_state 前情/倒计时/标记（前情可重写·倒计时/标记对照 snapshot）·scene_state 核心状态/出场摘要·states/pending_actions 焦外条目（揭示场景=本场景→snapshot 恢复·纯背景→清空重生成·最易漏）·world_map 新登记

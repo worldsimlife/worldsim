@@ -54,10 +54,21 @@ else
   cat > "$TMP_NARRATIVE"
 fi
 
-# 落盘：已存在则改名归档（精确到秒），再写入
+# 落盘：已存在则改名归档（带轮次号·精确到秒），再写入
 if [ -f "$NARRATIVE_FILE" ]; then
   TIMESTAMP=$(date -u +%Y%m%d_%H%M%S)
-  mv "$NARRATIVE_FILE" "$SCENE_DIR/narrative.$TIMESTAMP.md"
+  # 轮次提取三级回退（从被归档的旧 narrative.md 提取——归档名=被归档内容的轮次，非新内容轮次）：
+  # ①旧 narrative.md 首行「轮次 N」→ ②world_state.yaml 顶层 轮次 → ③空（纯时间戳）
+  ROUND=""
+  ROUND=$(sed -n '1p' "$NARRATIVE_FILE" | grep -o '轮次[[:space:]]*[0-9]\+' | grep -o '[0-9]\+' | head -1)
+  if [ -z "$ROUND" ]; then
+    ROUND=$(grep -E '^轮次:' "$WORLDS_ROOT/$WORLD/states/world_state.yaml" 2>/dev/null | head -1 | grep -o '[0-9]\+' | head -1)
+  fi
+  if [ -n "$ROUND" ]; then
+    mv "$NARRATIVE_FILE" "$SCENE_DIR/narrative.r${ROUND}.$TIMESTAMP.md"
+  else
+    mv "$NARRATIVE_FILE" "$SCENE_DIR/narrative.$TIMESTAMP.md"
+  fi
 fi
 mv "$TMP_NARRATIVE" "$NARRATIVE_FILE"
 

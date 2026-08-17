@@ -153,7 +153,7 @@ def process_one(world_dir: Path, png_path: Path, dry_run: bool) -> int:
     import_dir = world_dir / "import"
     json_target = import_dir / f"{name}.card.json"
 
-    target = world_dir / f"CHAR_{name}.md"
+    target = world_dir / "characters" / f"CHAR_{name}.md"
     if target.exists():
         print(f"[SKIP] 已有档案 CHAR_{name}.md——不覆盖（CHAR.md 生成后运行中不修改）。"
               f"如需重新综合生成，先删旧档案再导入", file=sys.stderr)

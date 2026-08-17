@@ -4,7 +4,7 @@
 #   <场景ID> 缺省 = 当前焦点场景（world_state.焦点场景）；支持短 ID（S05）或完整目录名
 # 回退体系：L1 世界级 snap.sh load（快照·主动存档）/ L2 场景级本脚本 / L3 手工重建（详见 references/rollback.md）
 # 破坏性操作（重置前自动存档·可回滚）：
-#   - narrative.md → 轮转归档为 narrative.<时间戳>.md（保留历史叙事），新 narrative.md 置空
+#   - narrative.md → 轮转归档为 narrative.r{轮次}.<时间戳>.md（保留历史叙事·轮次=叙事内容首行或 world_state 顶层轮次·无轮次时纯时间戳），新 narrative.md 置空
 #   - scene_state.yaml：场景时间线 → ''；核心状态 → 待填充占位（按 start_snapshot.md 恢复开场状态）
 #   - 静态基线保留：物理锚点/道具/关键场景信息/出场角色摘要（场景物理定义，不因重置销毁）
 #   - world_state 时间/轮次回退至场景开场（start_snapshot 冻结时间/开场轮次）——「时间只增不减」只约束正常推进·显式重置是主动回退例外
@@ -39,8 +39,8 @@ if [ -n "$SCENE_ID" ]; then
     SCENE_DIR=$(ls -d "$WORLD_DIR/scenes/${SCENE_ID}-"* 2>/dev/null | head -1)
   fi
 else
-  if [ -f "$WORLD_DIR/world_state.yaml" ]; then
-    FOCUS=$(grep -m1 '^焦点场景:' "$WORLD_DIR/world_state.yaml" | sed 's/^焦点场景:[[:space:]]*//')
+  if [ -f "$WORLD_DIR/states/world_state.yaml" ]; then
+    FOCUS=$(grep -m1 '^焦点场景:' "$WORLD_DIR/states/world_state.yaml" | sed 's/^焦点场景:[[:space:]]*//')
     [ -n "$FOCUS" ] && SCENE_DIR=$(ls -d "$WORLD_DIR/scenes/${FOCUS}-"* 2>/dev/null | head -1)
   fi
 fi
@@ -68,8 +68,18 @@ echo "$SNAP_OUTPUT"
 NARR_FILE="$SCENE_DIR/narrative.md"
 if [ -f "$NARR_FILE" ] && [ -s "$NARR_FILE" ]; then
   TIMESTAMP=$(date -u +%Y%m%d_%H%M%S)
-  mv "$NARR_FILE" "$SCENE_DIR/narrative.$TIMESTAMP.md"
-  echo "  归档: narrative.md -> narrative.$TIMESTAMP.md"
+  # 轮次提取：①narrative 首行「轮次 N」→ ②world_state 顶层 轮次 → ③空（纯时间戳）
+  ROUND=$(sed -n '1p' "$NARR_FILE" | grep -o '轮次[[:space:]]*[0-9]\+' | grep -o '[0-9]\+' | head -1)
+  if [ -z "$ROUND" ]; then
+    ROUND=$(grep -E '^轮次:' "$WORLDS_ROOT/$WORLD/states/world_state.yaml" 2>/dev/null | head -1 | grep -o '[0-9]\+' | head -1)
+  fi
+  if [ -n "$ROUND" ]; then
+    mv "$NARR_FILE" "$SCENE_DIR/narrative.r${ROUND}.$TIMESTAMP.md"
+    echo "  归档: narrative.md -> narrative.r${ROUND}.$TIMESTAMP.md"
+  else
+    mv "$NARR_FILE" "$SCENE_DIR/narrative.$TIMESTAMP.md"
+    echo "  归档: narrative.md -> narrative.$TIMESTAMP.md"
+  fi
 fi
 touch "$NARR_FILE"
 echo "  清空: narrative.md"
@@ -112,7 +122,7 @@ else
 fi
 
 # ── 4. world_state 时间/轮次回退至场景开场（重置=场景重开·「时间只增不减」只约束正常推进，不约束显式重置）──
-WS_FILE="$WORLD_DIR/world_state.yaml"
+WS_FILE="$WORLD_DIR/states/world_state.yaml"
 START_TIME=""
 START_ROUND=""
 if [ -f "$SNAP_FILE" ]; then
@@ -148,6 +158,6 @@ echo "  2. CHAR_*_state.yaml     核心状态/情绪/位置恢复开场形态；
 echo "                            （外部者如 Guest 必须裁剪未来记忆·Host 可保留作既视感/碎片素材）"
 echo "  3. world_state.yaml      前情描述/外部倒计时/全局标记（脚本只回退了时间/轮次·其余仍可能是回退前状态）"
 echo "  4. scene_state.yaml      核心状态/出场角色摘要恢复开场形态（脚本只清了时间线·静态基线保留）"
-echo "  5. off_focus/pending_actions.yaml  焦外条目回退（最易漏）"
+echo "  5. states/pending_actions.yaml     焦外条目回退（最易漏）"
 echo "  6. world_map.yaml        回退期间新登记的区域（如有）"
 exit 0

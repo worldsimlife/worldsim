@@ -11,18 +11,18 @@
 **触发：** 用户提出新世界概念（主题/核心设定），且 worlds/ 下无同名世界。SKILL.md 会话首轮硬规则「世界不存在 → 询问是否创建」在此展开。**前置：须先经 references/disclosures.md「进入确认」（声明+询问·会话内一次），用户确认后才创建；未确认不执行本章。**
 
 **脚手架（create_world.sh）：** `sh scripts/create_world.sh <世界名>` —— 只生成 .md 静态骨架，**零 yaml**：
-- `worlds/{世界名}/SETTING.md`（从 templates/ 复制）
-- `worlds/{世界名}/CONFLICTS_SEED.md`（从 templates/ 复制）
-- 创建角色时从 `templates/CHAR_.md` 复制改名 `CHAR_{名字}.md` 填写
+- `worlds/{世界名}/SETTING.md`（从 templates/ 复制·顶层唯一文件）
+- `worlds/{世界名}/story_architecture/CONFLICTS_SEED.md`（从 templates/ 复制）
+- 创建角色时从 `templates/CHAR_.md` 复制改名 `characters/CHAR_{名字}.md` 填写
 
 **创作填充顺序：**
 0. **可选·从角色卡导入角色** —— 用户提供 SillyTavern 角色卡（PNG/JSON）时：① `python scripts/import_card.py <世界名> <角色卡.png...>` 脚本提取全部字段留存 `import/{名}.card.json` ② **LLM 读取素材综合生成**正式 `CHAR_{名}.md`（格式与字段映射见 references/import_cards.md）。**导入产出即最终档案**——LLM 按模板理解分发（description 拆性格/外貌/经历/气质、alternate_greetings→备用开场白、character_book→背景知识、八变量综合提炼），无依据留空，无「待戏剧家精炼」占位（CHAR.md 生成后运行中不修改）；如需补全由用户手工调整
 1. **SETTING.md** —— 世界名称/背景/地理/势力/规则/基调/核心高压法则/故事弧线（可选）；**含成人/性/暴力/胁迫等敏感主题 → 顶部写「内容门」声明（模板已含可选占位）——引擎加载本世界时经「进入确认」向用户声明并询问（见 references/disclosures.md「进入确认」）**
-2. **CHAR_*.md** —— 每角色一个档案：基本信息（姓名/性别/生日/一句话简介）+ 人格内核（性格 + 八变量：Desire/Fear/Belief/Defense/Value Boundary/Reaction Style/崩溃模式/关系锚点）+ 关系网络 + 外在特征 + 叙事描写视角与重点 + 背景（生平概要/关键转折事件/未愈合的旧伤/现状处境）（角色卡导入的草稿在此精炼）；可选：情景与叙事（scenario/first_mes/mes_example/叙事线）· 世界法则·循环注册（仅循环世界）
-3. **CONFLICTS_SEED.md** —— 2-5 条冲突种子（每条核心高压法则至少覆盖一条；只写结构字段：描述/对抗双方/被争夺资源/紧迫度/关联角色；对抗双方禁抽象·抽象方须附显现机制）
-4. **LOOPS.md / CROSS_NARRATIVES.md** —— 可选（循环世界必填 LOOPS：声明循环机制+各角色默认循环；隐藏交叉线可选）
+2. **characters/CHAR_*.md** —— 每角色一个档案（静态档案目录）：基本信息（姓名/性别/生日/一句话简介）+ 人格内核（性格 + 八变量：Desire/Fear/Belief/Defense/Value Boundary/Reaction Style/崩溃模式/关系锚点）+ 关系网络 + 外在特征 + 叙事描写视角与重点 + 背景（生平概要/关键转折事件/未愈合的旧伤/现状处境）（角色卡导入的草稿在此精炼）；可选：情景与叙事（scenario/first_mes/mes_example/叙事线）· 世界法则·循环注册（仅循环世界）
+3. **story_architecture/CONFLICTS_SEED.md** —— 2-5 条冲突种子（每条核心高压法则至少覆盖一条；只写结构字段：描述/对抗双方/被争夺资源/紧迫度/关联角色；对抗双方禁抽象·抽象方须附显现机制）
+4. **story_architecture/LOOPS.md / CROSS_NARRATIVES.md** —— 可选（循环世界必填 LOOPS：声明循环机制+各角色默认循环；隐藏交叉线可选）
 
-**校验（收尾自查）：** SETTING.md 含核心高压法则；CHAR_*.md ≥1；CONFLICTS_SEED.md 可物化（对抗双方能画出对峙图、资源有载体/持有者）。
+**校验（收尾自查）：** SETTING.md 含核心高压法则；characters/CHAR_*.md ≥1；story_architecture/CONFLICTS_SEED.md 可物化（对抗双方能画出对峙图、资源有载体/持有者）。
 
 **收尾：** 提示用户「用『启动世界』进入首次启动」。
 
@@ -35,14 +35,14 @@
 
 **加载序列（按此顺序执行，不跳过不交换）：**
 
-0. **动态文件物化**（缺失时从 templates/ 生成）：
-   - `conflicts.yaml` ← 物化 `CONFLICTS_SEED.md`（复制+头注释）——只落结构字段（描述/对抗双方/被争夺资源/紧迫度/关联角色），`当前节拍`、`下一个节拍` 留空，由戏剧家首轮按首场景填充后正常演化；`节拍表` 由 `worldctl.py <世界> beatsheet` 子命令维护（建线 add·LLM 不直接改）。CONFLICTS_SEED.md 只读不改；conflicts.yaml 自此为唯一权威
-   - `world_state.yaml` ← `templates/world_state.yaml`（初始态模板）
-   - `world_map.yaml` ← `templates/world_map.yaml`（迷雾制·初始为空）
-   - `off_focus/pending_actions.yaml` ← `templates/pending_actions.yaml`
-   - 每个 `CHAR_*.md` 角色 → `CHAR_{name}_state.yaml` ← `templates/CHAR_state.yaml`（干净骨架·已存在跳过；骨架字段由戏剧家首轮 change set 填充；自主性初始值见 CHAR_.md「世界法则·循环注册」——Guest 等外部者角色删除该行）
-1. 批量读取 SETTING.md + 所有 CHAR_*.md + CONFLICTS_SEED.md → 全局静态设定
-2. 批量读取动态文件：所有 *.yaml → 世界、场景、角色等动态状态记录
+0. **动态文件物化**（缺失时从 templates/ 生成·全部落 `states/`·**统一 LF 行尾——python 写入用 `newline=""`·禁止文本模式默认换行（Windows 会引入 CRLF·validate 8d 告警）**）：
+   - `states/conflicts.yaml` ← 物化 `story_architecture/CONFLICTS_SEED.md`（复制+头注释）——只落结构字段（描述/对抗双方/被争夺资源/紧迫度/关联角色），`当前节拍`、`下一个节拍` 留空，由戏剧家首轮按首场景填充后正常演化；`节拍表` 由 `worldctl.py <世界> beatsheet` 子命令维护（建线 add·LLM 不直接改）。CONFLICTS_SEED.md 只读不改；conflicts.yaml 自此为唯一权威
+   - `states/world_state.yaml` ← `templates/world_state.yaml`（初始态模板）
+   - `states/world_map.yaml` ← `templates/world_map.yaml`（迷雾制·初始为空）
+   - `states/pending_actions.yaml` ← `templates/pending_actions.yaml`
+   - 每个 `characters/CHAR_*.md` 角色 → `states/CHAR_{name}_state.yaml` ← `templates/CHAR_state.yaml`（干净骨架·已存在跳过；骨架字段由戏剧家首轮 change set 填充；自主性初始值见 CHAR_.md「世界法则·循环注册」——Guest 等外部者角色删除该行）
+1. 批量读取 SETTING.md + 所有 characters/CHAR_*.md + story_architecture/CONFLICTS_SEED.md → 全局静态设定
+2. 批量读取动态文件：states/ 下所有 *.yaml → 世界、场景、角色等动态状态记录
 3. 执行 scene_management.md §状态校验（validate + 内容核查 + 修复）
 3.5 **循环机制核对（循环世界·会话启动时一次——首次启动与跨 Session 恢复均执行·见第三章 4.6）：** 首次启动若时间未确立（`时间.具体时间=未开始`）→ 重置点核对跳过，周期倒计时登记**延至首轮时间确立后执行**；时间已确立 → 按 4.6 完整核对。
 
@@ -56,10 +56,10 @@
 **触发：** ① 世界已存在时用户要求进入该世界（输入须含「启动/继续/恢复世界」并明确指向某世界名，**不含则不触发**）。**前置：须先经 references/disclosures.md「进入确认」（声明+询问·会话内一次），用户确认后才执行本章加载序列；未确认不加载。**（引擎代际替换豁免——会话内已确认过·见下）**意图判定（硬性）：判定模糊（不确定用户是否要进入模拟）→ 询问用户确认，不默认按恢复处理**；用户确认恢复后：加载→校验→描绘→停住，不推进剧情；用户随后明确要求推进时再进入每轮流程。② **引擎代际替换**（对话进行中·引擎失效换新）——加载序列照走（**不重复进入确认**——会话内已确认过），但**不停住不描绘**：按原用户指令直接进入完整推进（代际替换由编排者指令声明，不依赖世界文件标记）。
 
 **加载序列（分层单一路径·规则驱动）：** 该加载什么由分层规则+当前焦点场景直接判定，与「是否恢复/换代」无关，**不存在全量兜底**——加载 = 规则的确定性输出，不是历史记录的复制：
-0. 静态设定：SETTING.md + **当前焦点场景出场角色**（scene_card/INDEX 出场列）的 CHAR_.md——背景角色档案不预读，进场或需推导反应时按需 `worldctl.py <世界> grep <角色名>` 补读；**CHAR_.md 缺失=禁止推导反应**，先补读
+0. 静态设定：SETTING.md + **当前焦点场景出场角色**（scene_card/INDEX 出场列）的 characters/CHAR_.md——背景角色档案不预读，进场或需推导反应时按需 `worldctl.py <世界> grep <角色名>` 补读；**CHAR_.md 缺失=禁止推导反应**，先补读
 1. 动态核心：world_state / conflicts / world_map / pending_actions + 当前焦点场景出场角色的 CHAR_state（conflicts 关联角色**不驱动**档案加载——conflicts.yaml 照常读作推进依据，但档案只按当前场景出场加载）
 2. **焦点场景目录四件套（scene_card/scene_state/narrative/start_snapshot）必读**——narrative.md 原文用于叙事文本接续（只用于接续，不改变创作依赖）
-3. CROSS_NARRATIVES.md 与 LOOPS.md（有则各读一次）；knowledge_index.yaml（有则读一次·知情边界索引·认知边界闸门辅助·见 references/knowledge_index.md）；CONFLICTS_SEED.md（已有 conflicts.yaml 则只核对不物化）
+3. story_architecture/CROSS_NARRATIVES.md 与 LOOPS.md（有则各读一次）；knowledge_index.yaml（有则读一次·知情边界索引·认知边界闸门辅助·见 references/knowledge_index.md）；CONFLICTS_SEED.md（已有 conflicts.yaml 则只核对不物化）
 4. 执行 scene_management.md §状态校验（validate + 内容核查 + 修复）——validate 报错=修数据，不重读加载
 4.6 **循环机制核对（循环世界·会话启动时一次——首次启动与跨 Session 恢复均执行·非每轮）：** ① 周期倒计时核对——`外部倒计时` 无周期条目（循环/重置/契约/期限类周期机制）→ 按当前时间登记周期倒计时（剩余时间=距下一重置点·**重置类须含 `到期时刻` 精确字段**·字段见 keys.md §倒计时协议；**周期不一定是每日**）；② 重置点核对——当前时间越过周期重置 `到期时刻` 且 循环角色无覆盖当前日期的 `重置记录` → 执行 `worldctl.py reset-cycle`（**脚本自动判定覆盖范围与豁免**）；调用后 LLM 只做：保留候选微调 + 状态按 LOOPS 补写 + CT 节拍核查 + 重置叙事；③ 走表校准——既有周期倒计时剩余时间按当前时间校准（轮间未走表的补齐）。此后每轮重置触发由 **write-raw audit 机械拦截**兜底：写 `时间.具体时间` 越过 `到期时刻` 且无当日 `重置记录` → 字段硬性顶回（见 references/phase_dramatist.md 压力源扫描③b / commands.md）。
 4.5 **有 knowledge_index.yaml → 知情边界核对（独立审计者视角·复用「角色转变声明」）：** 逐条按 `记录` 指针读状态文件 → 比对事实的知情状态与索引是否一致。一致=通过；矛盾=能定位的修复（补写状态文件）/ **循环重置导致的失效条目直接删除**（知情边界已抹平·检查对象不存在）/ 定位不了标记「存疑」留给用户。检查后顺手清理：已公开/已落定/循环重置失效 → 删，仍隐藏/仍在延续 → 留（不确定就留）。细则见 references/knowledge_index.md §检查流程/清理标准

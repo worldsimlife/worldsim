@@ -78,7 +78,7 @@ def get_scene_dir(world_dir: Path) -> Path | None:
 
     兼容旧键：优先读顶层 焦点场景；找不到时回退 地点.焦点场景 / 地点.当前焦点场景。
     """
-    ws_fp = world_dir / "world_state.yaml"
+    ws_fp = world_dir / "states" / "world_state.yaml"
     if not ws_fp.exists():
         return None
     try:
@@ -110,20 +110,20 @@ def discover_files(world_dir: Path, scene_dir: Path | None) -> dict[str, Path]:
     files = {}
     # 固定文件
     for fname in ["world_state.yaml", "conflicts.yaml", "world_map.yaml"]:
-        fp = world_dir / fname
+        fp = world_dir / "states" / fname
         if fp.exists(): files[fp.stem] = fp
     # 角色状态
-    for fp in world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}"):
+    for fp in world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}"):
         files[fp.stem] = fp
     # 场景状态
     if scene_dir:
         ssp = scene_dir / "scene_state.yaml"
         if ssp.exists(): files["scene_state"] = ssp
     # 焦外
-    ofp = world_dir / "off_focus" / "pending_actions.yaml"
+    ofp = world_dir / "states" / "pending_actions.yaml"
     if ofp.exists(): files["pending_actions"] = ofp
     # 伏笔登记（可选·触发式）
-    ffp = world_dir / "foreshadow.yaml"
+    ffp = world_dir / "states" / "foreshadow.yaml"
     if ffp.exists(): files["foreshadow"] = ffp
     return files
 
@@ -144,7 +144,7 @@ def resolve_char_file(existing: dict, key: str, world_dir: Path):
         for v in variants:
             if v in existing:
                 return existing[v], f"[WARN] key '{key}' 与已有文件 '{existing[v].name}' 命名不一致(空格/下划线/_state)，已映射到已有文件，避免产生重复"
-        return world_dir / f"{key}.yaml", None
+        return world_dir / "states" / f"{key}.yaml", None
     return None, None
 
 # ── 深层合并 ──────────────────────────────────────────────────────
@@ -306,13 +306,13 @@ def cmd_convert(world_dir: Path):
 
     # 定义转换映射：{md_path: yaml_path}
     md_to_yaml = {
-        world_dir / "world_state.md":      world_dir / "world_state.yaml",
-        world_dir / "conflicts.md":        world_dir / "conflicts.yaml",
+        world_dir / "world_state.md":      world_dir / "states" / "world_state.yaml",
+        world_dir / "conflicts.md":        world_dir / "states" / "conflicts.yaml",
     }
     # 角色状态
     for fp in world_dir.glob(f"{CHAR_STATE_PREFIX}*_state.md"):
         yaml_name = fp.stem + ".yaml"
-        md_to_yaml[fp] = world_dir / yaml_name
+        md_to_yaml[fp] = world_dir / "states" / yaml_name
     
     # 场景状态
     if scene_dir:
@@ -323,7 +323,7 @@ def cmd_convert(world_dir: Path):
     
     # 焦外
     ofmd = world_dir / "off_focus" / "pending_actions.md"
-    ofym = world_dir / "off_focus" / "pending_actions.yaml"
+    ofym = world_dir / "states" / "pending_actions.yaml"
     if ofmd.exists():
         md_to_yaml[ofmd] = ofym
 
@@ -527,8 +527,10 @@ def parse_batch_entries(lines):
     return ops, errors, meta_lines, beatsheet_lines
 
 
-def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None):
+def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_scene_dir=True):
     """语义不变量检查（change set 草案→硬性违规/软性警告分类）。
+    enforce_scene_dir=False（gate/audit 预检路径）：scene_state 落点检查降级为软提示——
+    场景目录由场记阶段3 init_scene 创建（先于批次写入），预检时目录可能尚不存在，不误拦。
     硬性违规（hard）：结构性/机械性错误——关键字段缺失、载体核验、轮次回归、落点错误。写入时**单字段顶回**。
     软性警告（soft）：内容质量类——记忆锚点超限等。写入时**不拦截**，仅记录（validate 汇总）。
     返回 (hard, soft)，元素为 (op_index, message)。"""
@@ -567,6 +569,22 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None):
         if kind != "write":
             continue
         key_path = key_path_str.split(".")
+
+        # 嵌套记录字段类型校验（2026-08-17 加入·方案B·防复发）：记录类字段（world_state.重置记录.{角色}/时间线.{ID}/外部倒计时.{CD}
+        #   ·world_map.已探索区域.{区域}）内容必须为 YAML 映射——多行字符串会被当字符串写入=读取端（reset-cycle 豁免/④b 覆盖判定/validate 8b）读不到。
+        #   判据与 write_one 实际写入对齐：多行且 safe_load 为 dict → 写入 dict（放行）；单行/列表/解析失败 → 写入字符串（顶回）
+        if len(key_path) == 2 and (
+                (file_key == "world_state" and key_path[0] in ("重置记录", "时间线", "外部倒计时"))
+                or (file_key == "world_map" and key_path[0] == "已探索区域")):
+            _will_be_dict = False
+            if "\n" in content:
+                try:
+                    _parsed_map = yaml.safe_load(content)
+                except Exception:
+                    _parsed_map = None
+                _will_be_dict = isinstance(_parsed_map, dict)
+            if not _will_be_dict:
+                hard.append((idx, f"{file_key}.{key_path_str}: 嵌套映射字段内容必须为 YAML 映射（{key_path[0]}.{key_path[1]} 应为多行键值块·当前单行/列表/字符串=写入后读取端读不到）"))
 
         # 批次整体必含项标记
         if file_key == "conflicts" and key_path and key_path[0].startswith("CT-"):
@@ -677,7 +695,10 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None):
                         day_label = f"第{new_day}日"
                         if isinstance(reset_rec, dict):
                             for rspec in reset_rec.values():
-                                if isinstance(rspec, dict) and str(rspec.get("重置日期", "")) == day_label:
+                                # 豁免记录（触发=豁免）不算全员重置已执行——豁免仅跳过该角色·其他循环角色仍须重置
+                                #   （2026-08-17 加入·防豁免记录误放行全员重置）
+                                if isinstance(rspec, dict) and str(rspec.get("重置日期", "")) == day_label \
+                                        and str(rspec.get("触发", "")) != "豁免":
                                     covered = True
                                     break
                         if not covered:
@@ -686,9 +707,14 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None):
                 pass
 
 
-        # ⑤ scene_state 落点：必须有焦点场景目录（防止写错场景）
+        # ⑤ scene_state 落点：必须有焦点场景目录（防止写错场景）——写入路径硬性拦截；
+        #    gate/audit 预检路径（enforce_scene_dir=False）降为软提示（场景目录由场记阶段3 init_scene 创建·先于批次写入）
         if file_key == "scene_state" and scene_dir is None:
-            hard.append((idx, "scene_state 落点错误: 无法定位当前焦点场景目录——先确认 world_state.焦点场景 后再写入"))
+            msg = "scene_state 落点错误: 无法定位当前焦点场景目录——先确认 world_state.焦点场景 后再写入"
+            if enforce_scene_dir:
+                hard.append((idx, msg))
+            else:
+                soft.append((idx, f"{msg}（预检软提示：场景目录将由场记阶段3 init_scene 创建·写入点仍硬性拦截）"))
 
         # ⑥ 时间线事件写语义提示（软性·不拦截）：world_state.时间线.*.事件 默认 APPEND 追加；
         #    ###KEY 覆盖仅用于 validate 告警后的压缩维护（读旧值+压缩合并+补新）
@@ -728,13 +754,13 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None):
             m = re.match(r"^(?:角色反应:\s*)?([^:：|]+)[:：]", content)
             if m:
                 char_name = m.group(1).strip()
-                md_fp = world_dir / f"CHAR_{char_name}.md"
-                state_fp = world_dir / f"CHAR_{char_name}_state.yaml"
+                md_fp = world_dir / "characters" / f"CHAR_{char_name}.md"
+                state_fp = world_dir / "states" / f"CHAR_{char_name}_state.yaml"
                 if not md_fp.exists() and not state_fp.exists():
                     # 简称→全名映射：扫现有 CHAR_ 档案，找以该简称为前缀/后缀/包含该简称的文件
                     resolved = None
                     try:
-                        for fp in world_dir.glob("CHAR_*.md"):
+                        for fp in world_dir.glob("characters/CHAR_*.md"):
                             full = fp.stem[len("CHAR_"):]
                             if char_name in full or full in char_name or full.replace(" ", "") == char_name.replace(" ", ""):
                                 resolved = full
@@ -796,7 +822,7 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None):
         soft.append((-1, "完整推进轮 change set 应含 ###BEATSHEET: 事件线动作（add/stay N/advance N 拍名/rewrite N/clear N）——查询轮/维护轮豁免"))
 
     # ⑭ 跨叙事提醒（软性——CROSS_NARRATIVES.md 存在时，完整推进轮应核对深匹配）
-    if (world_dir / "CROSS_NARRATIVES.md").exists() and has_ct_op:
+    if (world_dir / "story_architecture" / "CROSS_NARRATIVES.md").exists() and has_ct_op:
         soft.append((-1, "CROSS_NARRATIVES.md 存在——完整推进轮应核对跨叙事深匹配（SKILL ④: 浅匹配=登记不操作；深匹配=注入可写行为偏移；激活=注册新 CT；每轮最多激活一条·同线间隔≥3轮）"))
     # ⑮ 行为偏移落地提醒（软性——change set 含「行为偏移」标记 → 叙事阶段必须落地）
     if any("行为偏移" in content for _, _, _, content, _ in ops):
@@ -845,7 +871,7 @@ def cmd_audit(world_dir):
     硬性违规 → 列出全部并 exit 1（草案不合格）；仅软性警告 → 打印警告，exit 0（可写入）。"""
     raw_stdin = sys.stdin.buffer.read().decode("utf-8")
     ops, parse_errors, meta_lines, beatsheet_lines = parse_batch_entries(raw_stdin.split("\n"))
-    hard, soft = check_batch(ops, world_dir, beatsheet_lines, meta_lines)
+    hard, soft = check_batch(ops, world_dir, beatsheet_lines, meta_lines, enforce_scene_dir=False)
     if beatsheet_lines:
         print(f"[AUDIT] ###BEATSHEET 回显: {beatsheet_lines[0]}", file=sys.stderr)
     if meta_lines:
@@ -854,6 +880,10 @@ def cmd_audit(world_dir):
             soft.append((0, "###META 静默自查锚点缺少 记忆✓ 槽（记忆✓=逐角色同类计数留痕·每出场角色必列·见 SKILL.md §记忆维护）"))
     else:
         soft.append((0, "未检测到 ###META: 静默自查锚点——完整推进轮批次首行必写：###META: 压力扫描 人际✓/增殖✓/轨道✓/跨叙事✓/记忆✓（查询轮/维护轮豁免）"))
+    # scene_state 落点软提示（预检路径·场景目录由场记阶段3 init_scene 创建·先于批次写入）
+    for _idx, _msg in soft:
+        if _idx != -1 and "预检软提示" in _msg:
+            print(f"[AUDIT] 软性提示: {_msg}", file=sys.stderr)
     if hard or parse_errors:
         print(f"[AUDIT] {len(hard) + len(parse_errors)} 个硬性违规——change set 不合格:", file=sys.stderr)
         for e in parse_errors:
@@ -875,7 +905,7 @@ def quick_validate_summary(world_dir):
     try:
         scene_dir = get_scene_dir(world_dir)
         # 记忆锚点（脚本校验线）
-        for cfp in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+        for cfp in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
             try:
                 cdata = yaml.safe_load(cfp.read_text()) or {}
             except Exception:
@@ -896,14 +926,14 @@ def quick_validate_summary(world_dir):
                 if over:
                     warnings.append(f"{cfp.name}: {len(over)} 条记忆锚点超单条 {ANCHOR_LIMIT_ENTRY_VALIDATE} 字上限（宽松校验线·写作线 100）")
         # 焦点场景 ↔ 场景目录
-        ws_fp = world_dir / "world_state.yaml"
+        ws_fp = world_dir / "states" / "world_state.yaml"
         if ws_fp.exists():
             ws = yaml.safe_load(ws_fp.read_text()) or {}
             focus = str(ws.get("焦点场景") or "").strip()
             if focus and scene_dir and not scene_dir.name.startswith(focus):
                 warnings.append(f"焦点场景 '{focus}' 与当前场景目录 '{scene_dir.name}' 不一致")
         # CT 键格式
-        c_fp = world_dir / "conflicts.yaml"
+        c_fp = world_dir / "states" / "conflicts.yaml"
         if c_fp.exists():
             cdata = yaml.safe_load(c_fp.read_text()) or {}
             for k in cdata:
@@ -961,6 +991,10 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
         if note:
             print(note, file=sys.stderr)
 
+        if filepath.name == "world_map.yaml":
+            print("[ERR] world_map 禁用点路径写入（键名可含空格/点·点路径与 shell 分词均不支持）——请用 write 命令（YAML diff 合并·含单字段更新）", file=sys.stderr)
+            return False
+
         if filepath.exists():
             try:
                 data = yaml.safe_load(filepath.read_text()) or {}
@@ -1001,11 +1035,14 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 new_items = [it for it in new_items if isinstance(it, dict)]
 
             existing_val = target.get(leaf, [])
-            if not isinstance(existing_val, list):
-                # 旧字符串格式 → 转换为列表（每条旧锚点保留为「内容」元素）
-                existing_val = [{"轮次": "", "内容": ent.strip()}
-                                for ent in re.split(r"\n\s*(?:·\s*)?(?=\[)", str(existing_val))
-                                if ent.strip()]
+            if isinstance(existing_val, str):
+                # 模板占位残留（templates/CHAR_state.yaml 骨架占位·如 '[我知道哪些地方（去过/被告知/目睹）]'）——视为空·不混入列表
+                if re.fullmatch(r"\s*\[[^\]]*\]\s*", existing_val):
+                    existing_val = []
+                else:
+                    existing_val = [{"轮次": "", "内容": ent.strip()}
+                                    for ent in re.split(r"\n\s*(?:·\s*)?(?=\[)", existing_val)
+                                    if ent.strip()]
             # 重复追加检测：已知地点按元素相等；伏笔按 线索 相等；其余按 轮次+内容 判断
             for item in new_items:
                 dup = False
@@ -1032,12 +1069,15 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
             return True
         if append and leaf in target and isinstance(target[leaf], str) and target[leaf]:
             existing_val = target[leaf]
+            # 模板占位残留（templates/CHAR_state.yaml 骨架占位·如 '[最近5轮动作序列…]'）——视为空·不当前缀
+            if re.fullmatch(r"\s*\[[^\]]*\]\s*", existing_val):
+                existing_val = ""
             # 重复追加检测（硬防护·防同一批次重放/同一内容重复追加）：
             # 批次重放时 content 完全一致，必然作为子串存在于字段值中 → 跳过
-            if content.strip() and content.strip() in existing_val:
+            elif content.strip() and content.strip() in existing_val:
                 print(f"[SKIP] {file_key}.{'.'.join(key_path)} 重复追加已跳过（内容已存在——同一批次只执行一次，禁止重放 write 命令验证）", file=sys.stderr)
                 return True
-            target[leaf] = existing_val.rstrip("\n") + "\n" + content
+            target[leaf] = (existing_val.rstrip("\n") + "\n" if existing_val else "") + content
             # 反应轨迹窗口（🪟）：APPEND 后超 5 轮自动删最旧块——LLM 零操作
             if file_key.startswith(CHAR_STATE_PREFIX) and leaf == "反应轨迹":
                 trimmed = trim_reaction_window(target[leaf])
@@ -1064,6 +1104,16 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
             print(f"[OK] {file_key}.{'.'.join(key_path)} 已覆盖（结构化列表·{len(new_items)} 条）", file=sys.stderr)
             return True
         else:
+            # 映射/列表多行内容自动解析（2026-08-17 加入·方案A）：多行 YAML 块（嵌套映射/列表）解析为 dict/list 再写入——
+            #   修复「嵌套记录字段（重置记录.{角色}/时间线.{ID}/外部倒计时.{CD}/已探索区域.{区域}）被写成字符串·读取端读不到」；
+            #   单行标量保持字符串（防 轮次/时间 等类型漂移）；解析失败/无结构（场景时间线等字符串块）按原字符串
+            if "\n" in content:
+                try:
+                    _parsed = yaml.safe_load(content)
+                except Exception:
+                    _parsed = None
+                if isinstance(_parsed, (dict, list)):
+                    content = _parsed
             target[leaf] = content
 
         write_yaml(filepath, data)
@@ -1152,7 +1202,6 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 except SystemExit as e:
                     print(f"[FAIL] ###BEATSHEET 执行失败: {action}（exit {e.code}）——节拍表未更新·批次拦截·撤回阶段1 修正后重提", file=sys.stderr)
                     sys.exit(1)
-            print("[OK] ###BEATSHEET 已自动执行（节拍表落盘）", file=sys.stderr)
 
         # 逐条写入：顶回违规字段，其余照写
         written_count = 0
@@ -1165,6 +1214,9 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
             if write_one(file_key, key_path_str, content, append=append):
                 written_count += 1
         op = "批量追加" if append_mode else "批量写入"
+        # ###BEATSHEET 落盘结果置于收尾（tail 可见·无需重放批次确认）
+        if beatsheet_lines:
+            print("[OK] ###BEATSHEET 已自动执行（节拍表落盘·本轮事件线动作）", file=sys.stderr)
         if blocked:
             print(f"[OK] {op}完成：{written_count} 个字段写入，{len(blocked)} 个字段被顶回（硬性违规）")
         else:
@@ -1217,6 +1269,10 @@ def cmd_delete(world_dir: Path, extra: list[str]):
         return
     if note:
         print(note, file=sys.stderr)
+
+    if filepath.name == "world_map.yaml":
+        print("[ERR] world_map 禁用点路径删除（键名可含空格/点·点路径与 shell 分词均不支持）——请用 write 命令（YAML diff 合并）", file=sys.stderr)
+        return
 
     if not filepath.exists():
         print(f"[WARN] {file_key} 文件不存在，无需删除", file=sys.stderr)
@@ -1307,8 +1363,8 @@ def cmd_scan(world_dir: Path, extra: list[str], live_only: bool = False):
             # 默认全仓（含历史轮转文件——残留可能藏在旧 narrative）
             pass
         else:
-            # --live: 排除 narrative.<时间戳>.md 与 archive 目录
-            if re.search(r"narrative\.\d{8}_\d{6}\.md$", fp.name):
+            # --live: 排除 narrative 轮转归档（narrative.<时间戳>.md 或 narrative.r{轮次}.<时间戳>.md）与 archive 目录
+            if re.search(r"narrative\.\d{8}_\d{6}\.md$", fp.name) or re.search(r"narrative\.r\d+\.\d{8}_\d{6}\.md$", fp.name):
                 continue
             if "archive" in fp.parts:
                 continue
@@ -1363,7 +1419,7 @@ def _climax_baseline_snapshot(world_dir: Path, n: str) -> dict:
     """快照事件线 n 牵动 CT 的对抗双方 CHAR_state 关键字段（进入顶点拍时记录·顶点拍起点状态）。
     找 conflicts 中 `当前节拍.拍名` 前缀 `{n}-` 的 CT → 对抗双方 → 读双方状态关键字段。
     返回 {角色名: {字段: 基准值}}——无牵动 CT / 无状态文件时返回空 dict（出线时拦）。"""
-    fp = world_dir / "conflicts.yaml"
+    fp = world_dir / "states" / "conflicts.yaml"
     if not fp.exists():
         return {}
     try:
@@ -1438,7 +1494,7 @@ def _check_climax_exit(world_dir: Path, ops, beatsheet_lines) -> tuple[list[str]
         violations.append(f"顶点出线（advance {line_no} 余波）形态 '{form}' 非法（四形态: {'/'.join(CLIMAX_FORMS)}）")
         return violations, checked
     # 2. 读事件线：当前拍=顶点 才核验（非顶点出线不拦截）
-    fp = world_dir / "conflicts.yaml"
+    fp = world_dir / "states" / "conflicts.yaml"
     if not fp.exists():
         return violations, checked
     try:
@@ -1551,7 +1607,7 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
                 print("[GATE] 未提供 change set（stdin 为空）——批次缺失，闸门拦截：不进阶段2", file=sys.stderr)
                 sys.exit(1)
             ops, parse_errors, meta_lines, beatsheet_lines = parse_batch_entries(raw.split("\n"))
-            hard, soft = check_batch(ops, world_dir, beatsheet_lines, meta_lines)
+            hard, soft = check_batch(ops, world_dir, beatsheet_lines, meta_lines, enforce_scene_dir=False)
             # ###BEATSHEET 事件线动作：回显（软性缺失由 batch_required 升级为硬拦）
             if beatsheet_lines:
                 print(f"[GATE] ###BEATSHEET 回显: {beatsheet_lines[0]}", file=sys.stderr)
@@ -1562,11 +1618,15 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
                     print("[GATE] 软性告警: ###META 静默自查锚点缺少 记忆✓ 槽（记忆✓=逐角色同类计数留痕·每出场角色必列·见 SKILL.md §记忆维护）", file=sys.stderr)
             else:
                 print("[GATE] 软性告警: 未检测到 ###META: 静默自查锚点——完整推进轮批次首行必写（查询轮/维护轮豁免）", file=sys.stderr)
+            # scene_state 落点软提示（预检路径·场景目录由场记阶段3 init_scene 创建·先于批次写入）
+            for _idx, _msg in soft:
+                if _idx != -1 and "预检软提示" in _msg:
+                    print(f"[GATE] 软性提示: {_msg}", file=sys.stderr)
             # 批次必含项缺失（soft·op_index=-1 且消息为「完整推进轮 change set 应含」）→ 硬拦 exit 1
             batch_required = [msg for idx, msg in soft if idx == -1 and msg.startswith("完整推进轮 change set 应含")]
             field_violations = [msg for idx, msg in hard if idx != -1]
             # 节拍表空拍检查（软性·先于硬拦打印）：建线应预设完整拍序·推进/换线后空拍仍在=现实与该拍无法承接
-            _c_fp = world_dir / "conflicts.yaml"
+            _c_fp = world_dir / "states" / "conflicts.yaml"
             if _c_fp.exists():
                 try:
                     _cdata = yaml.safe_load(_c_fp.read_text(encoding="utf-8")) or {}
@@ -1687,7 +1747,7 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
             # 规则：每个具名/有台词/有行动的人物必须有 CHAR_.md（新人物二选一：补注册/降级背景剪影）
             # 代码化边界：只能可靠拦截「英文专名型」新人物；描述性称谓（骑马者/长外套）由写作时数据忠诚③人工拦截
             char_md_names = set()
-            for fp in world_dir.glob("CHAR_*.md"):
+            for fp in world_dir.glob("characters/CHAR_*.md"):
                 stem = fp.stem[len("CHAR_"):].strip()
                 if stem:
                     char_md_names.add(stem)
@@ -1763,13 +1823,16 @@ def cmd_validate(world_dir: Path):
             if not fp.exists():
                 continue
         if fp.suffix == ".md" and not fp.name.endswith(".bak"):
-            yaml_fp = fp.with_suffix(".yaml")
+            if fp.parent == world_dir:
+                yaml_fp = world_dir / "states" / (fp.stem + ".yaml")
+            else:
+                yaml_fp = fp.with_suffix(".yaml")
             if not yaml_fp.exists():
                 errors.append(f"{fp.name}: 仍为 .md 格式，未转换为 .yaml")
     # ── 内容级检查（警告，不阻断）──
     warnings = []
     # 1. conflicts.yaml 顶层键应为 CT-XX
-    conflicts_fp = world_dir / "conflicts.yaml"
+    conflicts_fp = world_dir / "states" / "conflicts.yaml"
     if conflicts_fp.exists():
         try:
             cdata = yaml.safe_load(conflicts_fp.read_text())
@@ -1833,7 +1896,7 @@ def cmd_validate(world_dir: Path):
             pass
     # 2. world_state.焦点场景（唯一权威源）↔ INDEX + 场景目录一致性
     index_fp = world_dir / "scenes" / "INDEX.md"
-    ws_fp = world_dir / "world_state.yaml"
+    ws_fp = world_dir / "states" / "world_state.yaml"
     focus_id = ""
     if ws_fp.exists():
         try:
@@ -1867,12 +1930,12 @@ def cmd_validate(world_dir: Path):
         if active_rows:
             warnings.append(f"world_state.焦点场景 为空，但 INDEX 标记 {active_rows} 为 ACTIVE——焦点场景唯一权威源缺失")
     # 3. CHAR_*_state.yaml 应有对应 CHAR_*.md
-    for sf in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
-        md_fp = world_dir / (sf.name[: -len(CHAR_STATE_SUFFIX)] + ".md")
+    for sf in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+        md_fp = world_dir / "characters" / (sf.name[: -len(CHAR_STATE_SUFFIX)] + ".md")
         if not md_fp.exists():
             warnings.append(f"{sf.name}: 无对应 {md_fp.name}")
     # 4. world_state.yaml 必要键
-    ws_fp = world_dir / "world_state.yaml"
+    ws_fp = world_dir / "states" / "world_state.yaml"
     if ws_fp.exists():
         try:
             ws = yaml.safe_load(ws_fp.read_text())
@@ -1923,8 +1986,32 @@ def cmd_validate(world_dir: Path):
                 ss_text = ss_fp.read_text(encoding="utf-8", errors="ignore")
                 if PLACEHOLDER_RE.search(ss_text):
                     warnings.append(f"{d.name}/start_snapshot.md: 角色姿态/道具位置等仍为模板占位（[字段定义]/(例:) 残留）——创建后应已填充，禁止带占位运行")
+    # 4d. 事件触发重置强制校验（loop_machinery §4 触发管道之二）——CHAR_state 当前状态含「重置完成/校准完成」类
+    #     字段但该角色无 重置记录 → 叙事演了重置、文件未执行联动表（补执行: worldctl.py <世界> reset-cycle --asset <角色>）
+    reset_names = set()
+    if ws_fp.exists():
+        try:
+            _ws = yaml.safe_load(ws_fp.read_text())
+            if isinstance(_ws, dict):
+                _rr = _ws.get("重置记录")
+                if isinstance(_rr, dict):
+                    reset_names = {str(k) for k in _rr}
+        except Exception:
+            pass
+    RESET_DONE_RE = re.compile(r"重置完成|校准完成")
+    for sf in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+        try:
+            sd = yaml.safe_load(sf.read_text()) or {}
+        except Exception:
+            continue
+        name = sf.name[len(CHAR_STATE_PREFIX):-len(CHAR_STATE_SUFFIX)]
+        if name in reset_names:
+            continue
+        blob = " ".join(str(sd.get(k, "") or "") for k in ("核心状态", "情绪", "决策状态", "位置"))
+        if RESET_DONE_RE.search(blob):
+            warnings.append(f"{sf.name}: 当前状态含『重置完成/校准完成』但无 重置记录——事件触发重置未执行联动表（补执行: worldctl.py {world_dir.name} reset-cycle --asset {name}）")
     # 5. world_map.yaml（可选增强层·迷雾制·多层嵌套）——缺失时静默跳过，不影响运行
-    wm_fp = world_dir / "world_map.yaml"
+    wm_fp = world_dir / "states" / "world_map.yaml"
     if wm_fp.exists():
         try:
             wm = yaml.safe_load(wm_fp.read_text())
@@ -1932,7 +2019,7 @@ def cmd_validate(world_dir: Path):
                 warnings.append("world_map.yaml: 缺顶层键 已探索区域（迷雾制地图，初始应为 {}）")
             else:
                 scenes_dir = world_dir / "scenes"
-                WM_KEYS = {"类型", "方位", "连接", "发现于", "备注", "子区域"}
+                WM_KEYS = {"类型", "方位", "连接", "发现于", "备注", "子区域", "档案"}
                 def walk_map(node, path):
                     """递归检查 world_map 节点：未知键 / 发现于引用 / 子区域结构"""
                     if not isinstance(node, dict):
@@ -1954,10 +2041,29 @@ def cmd_validate(world_dir: Path):
                                 walk_map(sub, f"{path}.{name}")
                 for name, sub in (wm.get("已探索区域") or {}).items():
                     walk_map(sub, f"已探索区域.{name}")
+                # regions/ 档案对账（可选增强层：有 regions/ 目录才检查）——已登记节点有 档案 指针 →
+                # ① 指针悬空告警 ② 类型与档案不一致告警（单向派生对账·软告警·不是双权威）
+                regions_dir = world_dir / "regions"
+                if regions_dir.is_dir():
+                    def walk_archive(node, path):
+                        arch = str(node.get("档案", "") or "").strip()
+                        if arch:
+                            afp = world_dir / arch
+                            if not afp.is_file():
+                                warnings.append(f"world_map.yaml {path}.档案: 指针悬空（{arch} 不存在——检查 regions/ 路径或补建档案）")
+                            else:
+                                txt = afp.read_text(errors="ignore")
+                                m = re.search(r"^\s*-\s*类型:\s*(\S+)", txt, re.M)
+                                if m and node.get("类型") and m.group(1) != str(node.get("类型")):
+                                    warnings.append(f"world_map.yaml {path}.类型: 与档案 {arch} 不一致（档案={m.group(1)}，map={node.get('类型')}——派生登记应从档案复制）")
+                        for k, sub in (node.get("子区域") or {}).items():
+                            walk_archive(sub, f"{path}.{k}")
+                    for name, sub in (wm.get("已探索区域") or {}).items():
+                        walk_archive(sub, f"已探索区域.{name}")
         except Exception:
             pass
     # 5b. foreshadow.yaml 伏笔闭环检查（可选文件·仅世界有该文件时检查）
-    fs_fp = world_dir / "foreshadow.yaml"
+    fs_fp = world_dir / "states" / "foreshadow.yaml"
     if fs_fp.exists():
         try:
             fdata = yaml.safe_load(fs_fp.read_text())
@@ -2010,7 +2116,7 @@ def cmd_validate(world_dir: Path):
                          "服装", "健康", "随身"}
     RELATION_TIERS = {"稳固", "信任", "中立", "防备", "破裂", "待重建"}
     OMNI_PATTERN = re.compile(r"[他她]不知道")
-    for cfp in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+    for cfp in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
         try:
             cdata = yaml.safe_load(cfp.read_text())
         except Exception:
@@ -2062,7 +2168,7 @@ def cmd_validate(world_dir: Path):
             warnings.append(f"{cname}: 防御有效性={defense} 但 压力水平=低——防御降级缺压力支撑（loop_machinery §3 影响字段: 压力↑→防御↓·先积累压力再降防）")
 
     # 7. world_state.时间线 粗粒度摘要校验（脚本校验线：条目≤10 | 单场景≤3转折点 | 总字数≤2500——超限告警，提示场记执行压缩维护）
-    ws_fp = world_dir / "world_state.yaml"
+    ws_fp = world_dir / "states" / "world_state.yaml"
     if ws_fp.exists():
         try:
             ws = yaml.safe_load(ws_fp.read_text())
@@ -2090,7 +2196,7 @@ def cmd_validate(world_dir: Path):
     # 8. CHAR_state 记忆锚点校验（脚本校验线：单条≤150字宽松校验线 | 总字数≤3000——超限告警，提示戏剧家按 §记忆淘汰 整理；写作线单条≤100 见 audit 写前提醒）
     ANCHOR_LIMIT_TOTAL = 3000
     ANCHOR_LIMIT_ENTRY = ANCHOR_LIMIT_ENTRY_VALIDATE  # 150 宽松校验线（防强制压缩·写作按 100 为准）
-    for cfp in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+    for cfp in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
         try:
             cdata = yaml.safe_load(cfp.read_text())
         except Exception:
@@ -2149,7 +2255,7 @@ def cmd_validate(world_dir: Path):
 
     # 8b. 重置落地校验（触发：world_state.重置记录 登记了角色+档位 → 对照该角色记忆锚点是否按档位压缩）
     try:
-        ws_data = yaml.safe_load((world_dir / "world_state.yaml").read_text()) or {}
+        ws_data = yaml.safe_load((world_dir / "states" / "world_state.yaml").read_text()) or {}
     except Exception:
         ws_data = {}
     # 8b-0. 循环机制完整性软告警（循环世界：SETTING 声明循环/重置关键词 → 周期倒计时应有周期条目）
@@ -2174,8 +2280,11 @@ def cmd_validate(world_dir: Path):
         for rname, rspec in reset_rec.items():
             if not isinstance(rspec, dict):
                 continue
+            # 豁免记录（触发=豁免）不触发压缩校验——豁免=记忆保留·非重置压缩（2026-08-17 加入）
+            if str(rspec.get("触发", "")).strip() == "豁免":
+                continue
             rlvl = str(rspec.get("档位", "")).strip()
-            cfp = world_dir / f"{CHAR_STATE_PREFIX}{rname}{CHAR_STATE_SUFFIX}"
+            cfp = world_dir / "states" / f"{CHAR_STATE_PREFIX}{rname}{CHAR_STATE_SUFFIX}"
             if not cfp.exists():
                 continue
             try:
@@ -2205,7 +2314,7 @@ def cmd_validate(world_dir: Path):
 
     # 8c. 叙事新鲜度（焦点场景 narrative.md mtime vs world_state.yaml——叙事落后=可能未落盘）
     try:
-        ws_fp2 = world_dir / "world_state.yaml"
+        ws_fp2 = world_dir / "states" / "world_state.yaml"
         if ws_fp2.exists():
             ws2 = yaml.safe_load(ws_fp2.read_text()) or {}
             focus_id2 = str(ws2.get("焦点场景", "") or "").strip()
@@ -2358,7 +2467,7 @@ def cmd_beatsheet(world_dir: Path, extra: list[str], stdin_text: str | None = No
     """节拍表维护（conflicts.yaml 顶层 节拍表）——脚本唯一入口·LLM 不直接改。
     结构/枚举校验后机械写入，保证格式正确。stdin_text: write-raw 自动执行时传入
     add/rewrite 的事件线 YAML（None=从 sys.stdin 读·CLI 手动调用）。"""
-    fp = world_dir / "conflicts.yaml"
+    fp = world_dir / "states" / "conflicts.yaml"
     if not fp.exists():
         print("[ERR] conflicts.yaml 不存在", file=sys.stderr)
         sys.exit(1)
@@ -2485,14 +2594,17 @@ def cmd_tmp_clean(world_dir: Path):
     print(f"[OK] tmp 清理完成: 删除 {n} 个文件（{world_dir.name}/tmp/）")
 
 
-def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
-    """循环世界周期重置（循环日终/到期点）——机械重置全员·登记重置记录·重建周期倒计时。
-    触发：write-raw audit ④b 顶回后执行（或恢复序列 4.6②）。脚本做机械部分：
+def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False, asset: str = None):
+    """循环世界重置——周期重置（循环日终/到期点）或事件触发重置（单角色 --asset）。
+    周期（缺省）：机械重置全员·登记重置记录·重建周期倒计时。
+    事件触发（--asset <角色>）：只机械重置指定角色·登记事件触发重置记录·不重建周期倒计时（叙事事件不移动周期重置点）。
+    触发：周期=write-raw audit ④b 顶回后执行（或恢复序列 4.6②）；事件触发=叙事中角色被系统强制重置（loop_machinery §4 触发管道之二）。
+    脚本做机械部分：
     反应轨迹清空 / 记忆锚点按自主性档位压缩（脚本全清·漂移/觉醒压缩+输出保留候选·变质保留）/
     状态字段回基线占位 / 压力防御回默认（觉醒/变质保留防御崩解）/ 人际动态与决策清空（LLM 按 LOOPS 补写）/
-    信念演化与自主性保留 / 自动存档（snap.sh save _before_）/ 登记重置记录 / 重建周期倒计时（到期时刻+1 周期）。
+    信念演化与自主性保留 / 自动存档（snap.sh save _before_）/ 登记重置记录 / 周期模式重建周期倒计时（到期时刻+1 周期）。
     LLM 只做：保留候选确认/微调 + 状态字段按 LOOPS 补写 + CT 节拍核查 + 重置叙事。"""
-    ws_fp = world_dir / "world_state.yaml"
+    ws_fp = world_dir / "states" / "world_state.yaml"
     if not ws_fp.exists():
         print("[ERR] world_state.yaml 不存在", file=sys.stderr)
         return 1
@@ -2521,7 +2633,7 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
     # 0. 自动存档（可回滚）
     import subprocess
     snap_script = Path(__file__).parent / "snap.sh"
-    snap_name = f"_before_reset_cycle_{world_name}_{_ts()}"
+    snap_name = f"_before_reset_{'asset_' + asset if asset else 'cycle_' + world_name}_{_ts()}"
     try:
         r = subprocess.run(["sh", str(snap_script), world_name, "save", snap_name],
                            capture_output=True, text=True, timeout=120)
@@ -2529,10 +2641,17 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
     except Exception as e:
         print(f"[WARN] 自动存档失败（继续执行）: {e}", file=sys.stderr)
 
-    # 机械重置全员（含焦外——机制执行全员化）
+    # 机械重置（周期=全员含焦外·事件触发=单角色 --asset）
     candidates = []          # (角色, 档位, 被压缩条目) 保留候选
     key_anchor_kw = ("承诺", "命名", "关系转折", "决定", "记得", "承诺", "他/她")
-    for cfp in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+    if asset:
+        cfps = [world_dir / "states" / f"{CHAR_STATE_PREFIX}{asset}{CHAR_STATE_SUFFIX}"]
+        if not cfps[0].exists():
+            print(f"[ERR] 未找到角色状态文件: {cfps[0].name}（--asset 用角色名·如 Angela）", file=sys.stderr)
+            return 1
+    else:
+        cfps = sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}"))
+    for cfp in cfps:
         try:
             cdata = yaml.safe_load(cfp.read_text(encoding="utf-8")) or {}
         except Exception as e:
@@ -2543,6 +2662,15 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
         #   = 循环角色（有自主性字段）——周期时刻若活着度过当日，同样按「次日清晨仍按循环日终重置」执行，不豁免
         if "自主性" not in cdata or not str(cdata.get("自主性", "") or "").strip():
             print(f"[SKIP] {cfp.stem}: 无自主性字段（外部者/管理者·豁免周期重置）")
+            continue
+        # 豁免记录（2026-08-17 加入）：重置记录 触发=豁免 且 重置日期=当前重置点日期 → 本轮跳过（园区维护人员按指示跳过该资产）
+        #   豁免一次性：按重置日期精确匹配——只覆盖登记的那一轮·后续重置点不匹配 → 照常重置；豁免角色不登记周期记录（保留豁免标记·validate 8b 跳过）
+        _rname = cfp.stem[len(CHAR_STATE_PREFIX):-len("_state")]
+        _rr = ws.get("重置记录") or {}
+        if isinstance(_rr, dict) and _rname in _rr and isinstance(_rr[_rname], dict) \
+                and str(_rr[_rname].get("触发", "")) == "豁免" \
+                and str(_rr[_rname].get("重置日期", "")) == f"第{cur_day}日":
+            print(f"[SKIP] {cfp.stem}: 本轮豁免（重置记录·触发=豁免·维护人员跳过）")
             continue
         lvl = str(cdata.get("自主性", "") or "").strip()
         old_mem = cdata.get("记忆锚点")
@@ -2612,11 +2740,11 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
             yaml.safe_dump(cdata, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
         print(f"[OK] 重置 {cfp.stem}: 档位={lvl} · 记忆锚点→{len(new_mem) if isinstance(new_mem, list) else 1} 条 · 状态字段回基线")
 
-    # 登记重置记录（{档位/轮次/重置日期}）
+    # 登记重置记录（{档位/轮次/重置日期/触发}——周期=全员循环角色·事件触发=仅 asset）
     reset_rec = ws.get("重置记录") or {}
     if not isinstance(reset_rec, dict):
         reset_rec = {}
-    for cfp in sorted(world_dir.glob(f"{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+    for cfp in cfps:
         try:
             cdata = yaml.safe_load(cfp.read_text(encoding="utf-8")) or {}
         except Exception:
@@ -2625,12 +2753,18 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
         if "自主性" not in cdata or not str(cdata.get("自主性", "") or "").strip():
             continue
         name = cfp.stem[len(CHAR_STATE_PREFIX):-len("_state")]
+        # 本轮豁免角色（重置记录 触发=豁免 且 重置日期=当日）不登记周期记录——保留豁免标记（validate 8b 跳过·豁免过期由后续重置自然覆盖）
+        _rr0 = ws.get("重置记录") or {}
+        if isinstance(_rr0, dict) and name in _rr0 and isinstance(_rr0[name], dict) \
+                and str(_rr0[name].get("触发", "")) == "豁免" \
+                and str(_rr0[name].get("重置日期", "")) == f"第{cur_day}日":
+            continue
         lvl = str(cdata.get("自主性", "") or "").strip()
-        reset_rec[name] = {"档位": lvl, "轮次": cur_round, "重置日期": f"第{cur_day}日"}
+        reset_rec[name] = {"档位": lvl, "轮次": cur_round, "重置日期": f"第{cur_day}日", "触发": "事件触发" if asset else "周期"}
     ws["重置记录"] = reset_rec
 
-    # 重建周期倒计时（到期时刻 +1 周期·同时刻）
-    if cd_id is not None:
+    # 重建周期倒计时（到期时刻 +1 周期·仅周期重置——事件触发不移动周期重置点）
+    if cd_id is not None and asset is None:
         old_due = str(cd_spec.get("到期时刻", "") or "").strip()
         dd, dm = _parse_world_time(old_due)
         if dd is not None:
@@ -2644,7 +2778,7 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False):
         yaml.safe_dump(ws, f, allow_unicode=True, sort_keys=False, default_flow_style=False)
 
     # 保留候选清单 + 提示
-    print("\n【重置完成】")
+    print("\n【重置完成】" + ("（事件触发·单角色）" if asset else "（周期·全员）"))
     print(f"  时间 {cur_time} · 轮次 {cur_round} · 重置记录 {len(reset_rec)} 角色")
     print("【LLM 后续动作（非脚本）】")
     print("  1. 状态字段（核心状态/情绪/决策状态/人际动态/已知地点）按 LOOPS.md 当前时段补写")
@@ -2674,6 +2808,8 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="write-raw/append-raw 预演：解析+audit+对比磁盘差异，不落盘（重跑批次前先对比）")
     parser.add_argument("--check", action="store_true", help="gate 代码化核验模式：从 stdin 读 change set（dramatist）或叙事（writer），运行可代码化检查，不合格 exit 1")
     parser.add_argument("--live", action="store_true", help="scan 仅当前文件（排除历史轮转 narrative.*.md 与 archive）")
+    parser.add_argument("--force", action="store_true", help="reset-cycle: 跳过交互确认（周期/事件触发共用）")
+    parser.add_argument("--asset", help="reset-cycle: 事件触发重置指定角色（单角色模式·登记事件触发重置记录·不重建周期倒计时）")
     parser.add_argument("extra", nargs="*", help="write-raw/append-raw 的额外参数: <文件key> <YAML键路径> [内容]")
     # beatsheet 子命令 help 直达 cmd_beatsheet——argparse 内建 --help 会拦截并打印全局 help（action choices 一行）
     argv = sys.argv[1:]
@@ -2711,8 +2847,7 @@ def main():
     elif args.action == "beatsheet":
         cmd_beatsheet(world_dir, args.extra)
     elif args.action == "reset-cycle":
-        force = any(x == "--force" for x in args.extra)
-        sys.exit(cmd_reset_cycle(world_dir, args.world, force=force))
+        sys.exit(cmd_reset_cycle(world_dir, args.world, force=args.force, asset=args.asset))
     elif args.action == "tmp-clean":
         cmd_tmp_clean(world_dir)
 
