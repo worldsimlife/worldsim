@@ -77,7 +77,7 @@ Every turn, the engine files the narrative into the current scene's `narrative.m
 
 Want to look back? Open the scene directory under `worlds/{world}/scenes/` — the `narrative.md` files together with their rotated archives hold every word. Read it from chapter one to the end.
 
-You can also simply tell WorldSim: "help me turn the story into a novel" — it will read through the full narrative archives and shape the chronicle into a finished manuscript.
+You can also simply tell WorldSim: "help me turn the narrative of XXXX world into a novel" — it will read through the full narrative archives and shape the chronicle into a finished manuscript.
 
 ---
 
@@ -143,7 +143,7 @@ WorldSim can import **SillyTavern-compatible character cards** (`.png` with embe
 - **While creating a world** — say 「create a world <name> and put the character from <card.png> in it」
 - **Any time in an existing world** — say 「import character card <card.png> into <world>」 or `/import-card <card.png...>`
 
-**How it works**: a script mechanically extracts the card's full content (lore, greetings, alternate greetings, knowledge base, etc.) into the material store → the AI reads all of it and synthesizes a proper WorldSim character file (fields left blank when unsupported, overflow info collected in the "Supplementary Settings" section, nothing thrown away) → the original material stays in `{world}/import/` for reference.
+**How it works**: a script mechanically extracts the card's content into the material store → the AI synthesizes a proper WorldSim character file (fields left blank when unsupported, overflow info collected in the "Supplementary Settings" section) → the original material stays in `{world}/import/` for reference.
 
 ### What You'll Discover
 

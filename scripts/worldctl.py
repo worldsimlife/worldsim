@@ -2633,6 +2633,10 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False, asset
     # 0. 自动存档（可回滚）
     import subprocess
     snap_script = Path(__file__).parent / "snap.sh"
+    # 安全加固：world_name 必须为合法世界目录名（禁空/路径分隔符/..·与 snap.sh validate_name 同规则）——防非法名传入外部脚本
+    if not world_name or re.search(r"[\\/]|\.\.", world_name):
+        print(f"[ERR] 非法世界名 '{world_name}'——拒绝调用 snap.sh（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
+        sys.exit(1)
     snap_name = f"_before_reset_{'asset_' + asset if asset else 'cycle_' + world_name}_{_ts()}"
     try:
         r = subprocess.run(["sh", str(snap_script), world_name, "save", snap_name],

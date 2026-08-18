@@ -37,8 +37,8 @@
 
 | 脚本 | 用法 |
 |------|------|
-| write_narrative.sh | `cat <<'EOF' \| sh {skill_dir}/scripts/write_narrative.sh <世界> <场景ID>`（场景ID支持短 ID S05 或完整目录名） |
-| snap.sh save | `sh {skill_dir}/scripts/snap.sh <世界> save [快照名]`（缺省名自动生成「场景ID-场景名-时间戳」） |
+| write_narrative.sh | `cat <<'EOF' \| sh {skill_dir}/scripts/write_narrative.sh <世界> <场景ID>`（场景ID支持短 ID S05 或完整目录名）——⚠ 写入磁盘：叙事正文落盘至焦点场景 narrative.md |
+| snap.sh save | `sh {skill_dir}/scripts/snap.sh <世界> save [快照名]`（缺省名自动生成「场景ID-场景名-时间戳」）——⚠ 写入磁盘：复制当前状态至快照目录 |
 | snap.sh load | `sh {skill_dir}/scripts/snap.sh <世界> load <快照名>` | 破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force` |
 | snap.sh list | `sh {skill_dir}/scripts/snap.sh <世界> list` |
 | snap.sh delete | `sh {skill_dir}/scripts/snap.sh <世界> delete <快照名>` | 破坏性操作（不可恢复）——交互提示确认 / 非交互加 `--force` |
@@ -50,8 +50,8 @@
 | index.sh update | `sh {skill_dir}/scripts/index.sh <世界> update <场景ID> [--type/--time/--cast/--status]`（动作在前 `index.sh update <世界> <场景ID> …` 同样支持） |
 | index.sh remove | `sh {skill_dir}/scripts/index.sh <世界> remove <场景ID>`（动作在前同样支持） |
 | list_worlds.sh | `sh {skill_dir}/scripts/list_worlds.sh` |
-| create_world.sh | `sh {skill_dir}/scripts/create_world.sh <世界名>` | 创建新世界脚手架——只生成 .md 静态骨架（SETTING/CONFLICTS_SEED·零 yaml）；动态文件由首次启动物化（见 session_recovery.md 第一章） |
-| import_card.py | `python {skill_dir}/scripts/import_card.py <世界名> <角色卡.png...>`（支持 .json 卡；`--dry-run` 预览不落盘） | 提取 SillyTavern 角色卡全部字段 → 留存 import/{名}.card.json；正式 CHAR_{名}.md 由 LLM 综合生成（详情见 references/import_cards.md） |
+| create_world.sh | `sh {skill_dir}/scripts/create_world.sh <世界名>` | 创建新世界脚手架——⚠ 写入磁盘：在 `{WORLDS_ROOT}/{世界名}/` 创建目录与模板文件（SETTING/CONFLICTS_SEED·零 yaml）；动态文件由首次启动物化（见 session_recovery.md 第一章） |
+| import_card.py | `python {skill_dir}/scripts/import_card.py <世界名> <角色卡.png...>`（支持 .json 卡；`--dry-run` 预览不落盘） | ⚠ 写入磁盘：提取 SillyTavern 角色卡全部字段 → 留存 import/{名}.card.json；正式 CHAR_{名}.md 由 LLM 综合生成（详情见 references/import_cards.md·含隐私披露） |
 | reset_world.sh | `sh {skill_dir}/scripts/reset_world.sh <世界名> [--force]` | 重置世界到创建完成态（纯 .md·零 yaml）——删 scenes/CHAR_state/全部动态 yaml·重置前自动存档可回滚·重置后走首次启动；破坏性操作——交互提示确认 / 非交互加 `--force` |
 
 ## 用户命令（对话内）

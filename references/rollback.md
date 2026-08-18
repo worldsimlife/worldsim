@@ -36,7 +36,7 @@
 
 ## 硬性规则（经验教训·2026-08 Westworld 回退实战）
 
-1. **回退不走 write-raw**——audit 拦截「轮次非单调」（33→31 会被顶回）。回退 = snap.sh load 或直接文件级操作（绕过 audit 是特性不是绕过安全——回退是显式用户指令）。
+1. **回退不走 write-raw**——audit 拦截「轮次非单调」（33→31 会被顶回）。回退 = snap.sh load 或直接文件级操作——回退豁免的是**正常推进的写前自动拦截**（回退是显式用户指令）；**不豁免事后核验：回退后必做残留扫描 + validate + audit 全通过才算完成**（见本章 4/5 条）。
 2. **无快照时回退只能靠历史痕迹重建（不保证完整）**：conflicts 当前节拍被覆盖后旧值丢失（从 scene_state 时间线/出场摘要/反应轨迹反推）；CHAR_state 裁剪 APPEND；narrative 从轮转文件还原。**关键节点主动 snap.sh save 可避免降级。**
 3. **yaml 字符串字段禁止行级文本删除**——记忆锚点/反应轨迹/场景时间线是单引号多行字符串，删行会破坏闭合引号 → 整个文件 yaml 解析失败。正确姿势：`yaml.safe_load → 修改 → yaml.safe_dump`（allow_unicode=True, sort_keys=False）。
 4. **写入重定向意识**——write-raw 的 scene_state 落点 = world_state.焦点场景。创建新场景（init_scene.sh）后，后续批次写 scene_state 会**落到新场景**而非你以为的旧场景。回退前先确认内容实际落点，再决定删哪。
