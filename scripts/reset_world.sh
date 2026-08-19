@@ -4,7 +4,7 @@
 # 破坏性操作（重置前自动存档·可回滚）：
 #   删除 scenes/ 整个目录、states/ 下全部 yaml
 #   保留 SETTING.md / characters/ / story_architecture/ / regions/ / snaps/
-# 重置后世界回到未启动状态——用『启动世界』重新物化（见 references/session_recovery.md 第二章）
+# 重置后世界回到未启动状态——用『启动世界』走 init-states 重新物化（见 references/session_recovery.md 第二章）
 # 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -58,5 +58,5 @@ done
 
 echo ""
 echo "已重置世界 '$WORLD' 到创建完成态（仅 .md·零 yaml）"
-echo "下一步: 用『启动世界』进入首次启动（重新物化 conflicts/world_state/world_map/pending_actions）"
+echo "下一步: 用『启动世界』进入第二章（init-states 重新物化 conflicts/world_state/world_map/pending_actions）"
 exit 0

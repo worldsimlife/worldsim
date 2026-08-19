@@ -26,6 +26,8 @@ worldctl.py — WorldSim 批量状态管理 V2
   worldctl.py <世界名> beatsheet <子命令> ← 节拍表维护（show/add/stay/advance/rewrite/clear·子命令帮助 beatsheet --help）
   worldctl.py <世界名> reset-cycle [--force]
                                          ← 循环世界周期重置（全员机械重置+登记+重建倒计时）
+  worldctl.py <世界名> init-states      ← 首次启动物化缺失动态文件（幂等·模板+SEED+CHAR_state 骨架·LF·有 regions/ 自动对账）
+  worldctl.py <世界名> map-sync         ← world_map 镜像层对账（regions/ 目录树 → 补缺失节点）
   worldctl.py <世界名> tmp-clean         ← 清理该世界 tmp/ 下过程临时文件（跨会话恢复时自动执行）
 
 文件格式约定:
@@ -38,6 +40,15 @@ worldctl.py — WorldSim 批量状态管理 V2
 """
 import sys, os, yaml, re, shutil, argparse
 from pathlib import Path
+
+# I/O 纪律（硬性）：本脚本读写一律 UTF-8——Windows 缺省 locale（GBK）读中文 yaml 必炸、
+# emoji（🔴等）写 GBK stdout 必炸；所有 open/read_text/write_text 已显式 encoding，此处兜底 stdout/stderr
+for _s in (sys.stdout, sys.stderr):
+    try:
+        if _s and _s.encoding and _s.encoding.lower().replace("-", "") != "utf8":
+            _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
 
 # skill 根 = 脚本自身位置推导（不可被环境变量覆写——SKILL.md/脚本/模板必须同源）
 SKILL_DIR = Path(__file__).resolve().parent.parent
@@ -82,7 +93,7 @@ def get_scene_dir(world_dir: Path) -> Path | None:
     if not ws_fp.exists():
         return None
     try:
-        ws = yaml.safe_load(ws_fp.read_text())
+        ws = yaml.safe_load(ws_fp.read_text(encoding="utf-8"))
     except Exception:
         return None
     if not isinstance(ws, dict):
@@ -95,7 +106,7 @@ def get_scene_dir(world_dir: Path) -> Path | None:
         # 旧格式兼容（ol 型：无 world_state.yaml / 无焦点场景）→ 回退 .active
         active_file = world_dir / ".active"
         if active_file.exists():
-            scene_id = active_file.read_text().strip()
+            scene_id = active_file.read_text(encoding="utf-8").strip()
     if not scene_id:
         return None
     scenes_dir = world_dir / "scenes"
@@ -335,7 +346,7 @@ def cmd_convert(world_dir: Path):
     for src, dst in md_to_yaml.items():
         if not src.exists():
             continue
-        text = src.read_text()
+        text = src.read_text(encoding="utf-8")
         name = src.stem
 
         if name == "conflicts":
@@ -364,7 +375,7 @@ def cmd_read(world_dir: Path, files_filter: list[str] | None = None):
         if files_filter and key not in files_filter:
             continue
         try:
-            with open(fp) as f:
+            with open(fp, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
             results[key] = data if data else {}
         except Exception as e:
@@ -399,7 +410,7 @@ def cmd_write(world_dir: Path, full_replace: bool = False):
 
         if filepath.exists() and not full_replace:
             try:
-                with open(filepath) as f:
+                with open(filepath, encoding="utf-8") as f:
                     existing_data = yaml.safe_load(f) or {}
             except Exception as e:
                 print(f"[ERR] {key} 解析失败，拒绝写入（防止静默清空）: {e}", file=sys.stderr)
@@ -585,7 +596,7 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_s
     current = {}
     for key, fp in existing.items():
         try:
-            current[key] = yaml.safe_load(fp.read_text()) or {}
+            current[key] = yaml.safe_load(fp.read_text(encoding="utf-8")) or {}
         except Exception:
             current[key] = {}
 
@@ -689,7 +700,7 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_s
                 total = len(content)
                 if filepath and filepath.exists():
                     try:
-                        old = (yaml.safe_load(filepath.read_text()) or {}).get("记忆锚点", "")
+                        old = (yaml.safe_load(filepath.read_text(encoding="utf-8")) or {}).get("记忆锚点", "")
                         if isinstance(old, list):
                             total += sum(len(str(it.get("内容", ""))) for it in old if isinstance(it, dict))
                         elif isinstance(old, str) and old:
@@ -979,7 +990,7 @@ def quick_validate_summary(world_dir):
         # 记忆锚点（脚本校验线）
         for cfp in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
             try:
-                cdata = yaml.safe_load(cfp.read_text()) or {}
+                cdata = yaml.safe_load(cfp.read_text(encoding="utf-8")) or {}
             except Exception:
                 continue
             mem = cdata.get("记忆锚点", "")
@@ -1000,14 +1011,14 @@ def quick_validate_summary(world_dir):
         # 焦点场景 ↔ 场景目录
         ws_fp = world_dir / "states" / "world_state.yaml"
         if ws_fp.exists():
-            ws = yaml.safe_load(ws_fp.read_text()) or {}
+            ws = yaml.safe_load(ws_fp.read_text(encoding="utf-8")) or {}
             focus = str(ws.get("焦点场景") or "").strip()
             if focus and scene_dir and not scene_dir.name.startswith(focus):
                 warnings.append(f"焦点场景 '{focus}' 与当前场景目录 '{scene_dir.name}' 不一致")
         # CT 键格式
         c_fp = world_dir / "states" / "conflicts.yaml"
         if c_fp.exists():
-            cdata = yaml.safe_load(c_fp.read_text()) or {}
+            cdata = yaml.safe_load(c_fp.read_text(encoding="utf-8")) or {}
             for k in cdata:
                 if not re.match(r"^CT-\d{2}$", str(k)) and str(k) != BEAT_TOP_KEY:
                     warnings.append(f"conflicts.yaml: 顶层键 '{k}' 不符合 CT-XX 格式")
@@ -1076,7 +1087,7 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
 
         if filepath.exists():
             try:
-                data = yaml.safe_load(filepath.read_text()) or {}
+                data = yaml.safe_load(filepath.read_text(encoding="utf-8")) or {}
             except Exception as e:
                 print(f"[ERR] {file_key} 解析失败，拒绝写入（防止静默清空）: {e}", file=sys.stderr)
                 return False
@@ -1245,7 +1256,7 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 old_val = None
                 if fp.exists():
                     try:
-                        d = yaml.safe_load(fp.read_text()) or {}
+                        d = yaml.safe_load(fp.read_text(encoding="utf-8")) or {}
                         tgt = d
                         for k in key_path_str.split("."):
                             if k in tgt and isinstance(tgt[k], dict):
@@ -1359,7 +1370,7 @@ def cmd_delete(world_dir: Path, extra: list[str]):
         return
 
     try:
-        data = yaml.safe_load(filepath.read_text()) or {}
+        data = yaml.safe_load(filepath.read_text(encoding="utf-8")) or {}
     except Exception as e:
         print(f"[ERR] {file_key} 解析失败: {e}", file=sys.stderr)
         return
@@ -1405,7 +1416,7 @@ def cmd_grep(world_dir: Path, keyword: str):
         if not fp.exists():
             continue
         try:
-            text = fp.read_text(errors="replace")
+            text = fp.read_text(encoding="utf-8", errors="replace")
         except Exception:
             continue
         for i, line in enumerate(text.splitlines(), 1):
@@ -1449,7 +1460,7 @@ def cmd_scan(world_dir: Path, extra: list[str], live_only: bool = False):
             if "archive" in fp.parts:
                 continue
         try:
-            text = fp.read_text(errors="replace")
+            text = fp.read_text(encoding="utf-8", errors="replace")
         except Exception:
             continue
         rel = fp.relative_to(world_dir)
@@ -1785,7 +1796,7 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
                     ssp = sdir / "scene_state.yaml"
                     if ssp.exists():
                         try:
-                            sdata = yaml.safe_load(ssp.read_text())
+                            sdata = yaml.safe_load(ssp.read_text(encoding="utf-8"))
                         except Exception:
                             continue
                         if not isinstance(sdata, dict):
@@ -1893,6 +1904,98 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
 
 
 
+def cmd_init_states(world_dir: Path):
+    """首次启动物化（幂等·缺什么补什么·已存在跳过）——session_recovery.md 第二章 Step 0 的脚本化：
+    - states/conflicts.yaml     ← 物化 story_architecture/CONFLICTS_SEED.md（复制+头注释·只落结构字段）
+    - states/world_state.yaml   ← templates/world_state.yaml（叙事约定为空时提示 LLM 按世界设定填写）
+    - states/world_map.yaml     ← templates/world_map.yaml（有 regions/ 时随后自动 map-sync 对账）
+    - states/pending_actions.yaml ← templates/pending_actions.yaml
+    - states/CHAR_{名}_state.yaml ← templates/CHAR_state.yaml 骨架（自主性初始值解析自 CHAR_.md
+      「世界法则·循环注册」；外部者/管理者角色删除自主性行）
+    全部 LF 行尾（newline=""）。LLM 后续按加载序列继续（读静态/动态→校验→循环核对→描绘）。"""
+    states = world_dir / "states"
+    states.mkdir(parents=True, exist_ok=True)
+    tpl_dir = SKILL_DIR / "templates"
+    created = []
+
+    def write_lf(fp: Path, text: str):
+        with open(fp, "w", encoding="utf-8", newline="") as f:
+            f.write(text)
+
+    # 1. conflicts.yaml ← CONFLICTS_SEED.md（只物化结构字段——种子本身即结构字段；节拍留空由戏剧家首轮填充）
+    conflicts_fp = states / "conflicts.yaml"
+    seed_fp = world_dir / "story_architecture" / "CONFLICTS_SEED.md"
+    if conflicts_fp.exists():
+        print("[SKIP] conflicts.yaml 已存在（唯一权威·不覆盖）")
+    elif not seed_fp.exists():
+        print("[ERR] 缺 story_architecture/CONFLICTS_SEED.md——先按第一章创建世界", file=sys.stderr)
+        return 1
+    else:
+        header = (
+            "# conflicts.yaml — CT 注册表（上帝视角·禁代词·人名）\n"
+            "# 物化自 story_architecture/CONFLICTS_SEED.md（首次启动·init-states）——SEED 只读不改，本文件自此为唯一权威\n"
+            "# 当前节拍/下一个节拍(推荐)由戏剧家首轮按首场景填充；节拍表由 worldctl.py beatsheet 维护（LLM 不直接改 YAML）\n\n"
+        )
+        write_lf(conflicts_fp, header + seed_fp.read_text(encoding="utf-8").rstrip() + "\n")
+        created.append("conflicts.yaml ← CONFLICTS_SEED.md")
+
+    # 2-4. 模板复制（world_state / world_map / pending_actions）
+    for tpl_name in ("world_state.yaml", "world_map.yaml", "pending_actions.yaml"):
+        fp = states / tpl_name
+        if fp.exists():
+            print(f"[SKIP] {tpl_name} 已存在")
+        else:
+            write_lf(fp, (tpl_dir / tpl_name).read_text(encoding="utf-8"))
+            created.append(f"{tpl_name} ← templates/{tpl_name}")
+
+    # 5. CHAR_state 骨架（按 characters/CHAR_*.md）
+    chars_dir = world_dir / "characters"
+    if chars_dir.is_dir():
+        for cmd_fp in sorted(chars_dir.glob("CHAR_*.md")):
+            name = cmd_fp.stem[len("CHAR_"):]
+            if not name:
+                continue
+            cs_fp = states / f"CHAR_{name}_state.yaml"
+            if cs_fp.exists():
+                print(f"[SKIP] CHAR_{name}_state.yaml 已存在")
+                continue
+            tpl_text = (tpl_dir / "CHAR_state.yaml").read_text(encoding="utf-8")
+            md_text = cmd_fp.read_text(encoding="utf-8", errors="ignore")
+            m_type = re.search(r"\*\*角色类型\*\*[:：]\s*(\S+)", md_text)
+            m_auto = re.search(r"\*\*自主性初始值\*\*[:：]\s*(\S+)", md_text)
+            is_loop = bool(m_type and "循环角色" in m_type.group(1))
+            auto_val = m_auto.group(1) if m_auto else ""
+            if is_loop and auto_val in ("脚本", "漂移", "觉醒", "变质"):
+                tpl_text = re.sub(r"^自主性:.*$", f"自主性: {auto_val}", tpl_text, flags=re.M)
+                note = f"自主性={auto_val}"
+            else:
+                tpl_text = re.sub(r"^自主性:.*\n?", "", tpl_text, flags=re.M)
+                note = "外部者（无自主性行）" if not is_loop else f"自主性初始值非法/缺失（{auto_val or '空'}）——已删行，LLM 按档案补判"
+            write_lf(cs_fp, tpl_text)
+            created.append(f"CHAR_{name}_state.yaml ← templates/CHAR_state.yaml（{note}）")
+
+    # 6. 有 regions/ → 镜像层对账（补全目录树节点）
+    cmd_map_sync(world_dir)
+
+    # 7. 叙事约定为空 → 提示 LLM 填写（创作决策·脚本不代填）
+    ws_fp = states / "world_state.yaml"
+    if ws_fp.exists():
+        try:
+            ws = yaml.safe_load(ws_fp.read_text(encoding="utf-8")) or {}
+            if not str(ws.get("叙事约定", "") or "").strip():
+                print("[TODO] world_state.叙事约定 为空——LLM 按世界设定填写（POV 视角/叙事人称/认知边界）")
+        except Exception:
+            pass
+
+    if created:
+        print(f"[OK] init-states 物化 {len(created)} 个文件:")
+        for c in created:
+            print(f"  + {c}")
+    else:
+        print("[OK] init-states: 全部动态文件已存在（幂等·零写入）")
+    return 0
+
+
 def cmd_map_sync(world_dir: Path):
     """world_map 对账补全（镜像层）：遍历 regions/ 目录树 → 缺失节点补入（类型/档案从档案复制·层级镜像目录树）
     有 regions/ 目录时 world_map=镜像层·节点/层级/类型/档案全部由此命令派生；validate 报告缺失时运行本命令。"""
@@ -1904,7 +2007,7 @@ def cmd_map_sync(world_dir: Path):
     wm = {}
     if wm_fp.exists():
         try:
-            wm = yaml.safe_load(wm_fp.read_text()) or {}
+            wm = yaml.safe_load(wm_fp.read_text(encoding="utf-8")) or {}
         except Exception:
             wm = {}
     if not isinstance(wm, dict) or "已探索区域" not in wm:
@@ -1921,7 +2024,7 @@ def cmd_map_sync(world_dir: Path):
         if node is None or not isinstance(node, dict):
             node = {}
             arch = f"regions/{rel_path}/REGION.md"
-            txt = (world_dir / arch).read_text(errors="ignore")
+            txt = (world_dir / arch).read_text(encoding="utf-8", errors="ignore")
             m = re.search(r"^\s*-\s*类型:\s*(\S+)", txt, re.M)
             if m:
                 node["类型"] = m.group(1)
@@ -1947,7 +2050,7 @@ def cmd_map_sync(world_dir: Path):
     walk(regions_dir, None, "")
     if added:
         wm["已探索区域"] = explored
-        wm_fp.write_text(yaml.dump(wm, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8")
+        wm_fp.write_text(yaml.dump(wm, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8", newline="")
         print(f"[OK] world_map 对账补全 {len(added)} 个缺失节点:")
         for a in added:
             print(f"  + {a}")
@@ -1961,7 +2064,7 @@ def cmd_validate(world_dir: Path):
     errors = []
     for key, fp in sorted(files.items()):
         try:
-            data = yaml.safe_load(fp.read_text())
+            data = yaml.safe_load(fp.read_text(encoding="utf-8"))
             if data is None:
                 errors.append(f"{key}: 空文件")
         except yaml.YAMLError as e:
@@ -1992,7 +2095,7 @@ def cmd_validate(world_dir: Path):
     conflicts_fp = world_dir / "states" / "conflicts.yaml"
     if conflicts_fp.exists():
         try:
-            cdata = yaml.safe_load(conflicts_fp.read_text())
+            cdata = yaml.safe_load(conflicts_fp.read_text(encoding="utf-8"))
             if isinstance(cdata, dict):
                 for k in cdata:
                     if not re.match(r"^CT-\d{2}$", str(k)) and str(k) != BEAT_TOP_KEY:
@@ -2057,7 +2160,7 @@ def cmd_validate(world_dir: Path):
     focus_id = ""
     if ws_fp.exists():
         try:
-            ws = yaml.safe_load(ws_fp.read_text())
+            ws = yaml.safe_load(ws_fp.read_text(encoding="utf-8"))
             if isinstance(ws, dict):
                 if ws.get("焦点场景"):
                     focus_id = str(ws["焦点场景"]).strip()
@@ -2076,14 +2179,14 @@ def cmd_validate(world_dir: Path):
         if not dir_ok:
             warnings.append(f"焦点场景 '{focus_id}': 无对应场景目录 scenes/{focus_id}-*")
         if index_fp.exists():
-            index_text = index_fp.read_text()
+            index_text = index_fp.read_text(encoding="utf-8")
             if not re.search(rf"\|[ ]*{re.escape(focus_id)}[ ]*\|", index_text):
                 warnings.append(f"焦点场景 '{focus_id}' 未在 scenes/INDEX.md 的表格行中找到")
             active_rows = re.findall(r"^\|\s*(S\d+)\s*\|.*\|\s*ACTIVE\s*\|", index_text, re.M)
             if active_rows and active_rows != [focus_id]:
                 warnings.append(f"INDEX ACTIVE 行 {active_rows} 与 world_state.焦点场景 '{focus_id}' 不一致")
     elif ws_fp.exists() and index_fp.exists() and not focus_id:
-        active_rows = re.findall(r"^\|\s*(S\d+)\s*\|.*\|\s*ACTIVE\s*\|", index_fp.read_text(), re.M)
+        active_rows = re.findall(r"^\|\s*(S\d+)\s*\|.*\|\s*ACTIVE\s*\|", index_fp.read_text(encoding="utf-8"), re.M)
         if active_rows:
             warnings.append(f"world_state.焦点场景 为空，但 INDEX 标记 {active_rows} 为 ACTIVE——焦点场景唯一权威源缺失")
     # 3. CHAR_*_state.yaml 应有对应 CHAR_*.md
@@ -2095,7 +2198,7 @@ def cmd_validate(world_dir: Path):
     ws_fp = world_dir / "states" / "world_state.yaml"
     if ws_fp.exists():
         try:
-            ws = yaml.safe_load(ws_fp.read_text())
+            ws = yaml.safe_load(ws_fp.read_text(encoding="utf-8"))
             if isinstance(ws, dict):
                 for need in ("焦点场景", "时间", "全局标记"):
                     if need not in ws:
@@ -2105,7 +2208,7 @@ def cmd_validate(world_dir: Path):
     # 4b. world_state 键表外字段（软性警告——无语义定义的漂移字段）
     if ws_fp.exists():
         try:
-            ws = yaml.safe_load(ws_fp.read_text())
+            ws = yaml.safe_load(ws_fp.read_text(encoding="utf-8"))
             if isinstance(ws, dict):
                 WS_TOP_KEYS = {"焦点场景", "轮次", "时间", "外部倒计时", "全局标记", "时间线", "重置记录", "叙事约定"}
                 WS_TIME_KEYS = {"基准时间", "具体时间", "时间流速比", "前情描述"}
@@ -2145,7 +2248,7 @@ def cmd_validate(world_dir: Path):
     regions_dir = world_dir / "regions"
     if regions_dir.is_dir():
         for card in sorted(world_dir.glob("scenes/*/scene_card.md")):
-            txt = card.read_text(errors="ignore")
+            txt = card.read_text(encoding="utf-8", errors="ignore")
             m = re.search(r"^\|\s*区域\s*\|\s*([^|]+?)\s*\|", txt, re.M)
             if not m:
                 warnings.append(f"{card.relative_to(world_dir)}: 缺「区域」行（scene_card 模板必填·完整路径·从 regions/ 目录树引用既有档案）")
@@ -2159,7 +2262,7 @@ def cmd_validate(world_dir: Path):
         tree_paths = [p.parent.relative_to(regions_dir).as_posix() for p in regions_dir.rglob("REGION.md")]
         for sf in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
             try:
-                sd = yaml.safe_load(sf.read_text()) or {}
+                sd = yaml.safe_load(sf.read_text(encoding="utf-8")) or {}
             except Exception:
                 continue
             places = sd.get("已知地点")
@@ -2176,7 +2279,7 @@ def cmd_validate(world_dir: Path):
     reset_names = set()
     if ws_fp.exists():
         try:
-            _ws = yaml.safe_load(ws_fp.read_text())
+            _ws = yaml.safe_load(ws_fp.read_text(encoding="utf-8"))
             if isinstance(_ws, dict):
                 _rr = _ws.get("重置记录")
                 if isinstance(_rr, dict):
@@ -2186,7 +2289,7 @@ def cmd_validate(world_dir: Path):
     RESET_DONE_RE = re.compile(r"重置完成|校准完成")
     for sf in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
         try:
-            sd = yaml.safe_load(sf.read_text()) or {}
+            sd = yaml.safe_load(sf.read_text(encoding="utf-8")) or {}
         except Exception:
             continue
         name = sf.name[len(CHAR_STATE_PREFIX):-len(CHAR_STATE_SUFFIX)]
@@ -2199,7 +2302,7 @@ def cmd_validate(world_dir: Path):
     wm_fp = world_dir / "states" / "world_map.yaml"
     if wm_fp.exists():
         try:
-            wm = yaml.safe_load(wm_fp.read_text())
+            wm = yaml.safe_load(wm_fp.read_text(encoding="utf-8"))
             if not isinstance(wm, dict) or "已探索区域" not in wm:
                 warnings.append("world_map.yaml: 缺顶层键 已探索区域（迷雾制地图，初始应为 {}）")
             else:
@@ -2237,7 +2340,7 @@ def cmd_validate(world_dir: Path):
                             if not afp.is_file():
                                 warnings.append(f"world_map.yaml {path}.档案: 指针悬空（{arch} 不存在——先核对 regions/ 既有档案·指针引用既有路径·确无档案才新建）")
                             else:
-                                txt = afp.read_text(errors="ignore")
+                                txt = afp.read_text(encoding="utf-8", errors="ignore")
                                 m = re.search(r"^\s*-\s*类型:\s*(\S+)", txt, re.M)
                                 if m and node.get("类型") and m.group(1) != str(node.get("类型")):
                                     warnings.append(f"world_map.yaml {path}.类型: 与档案 {arch} 不一致（档案={m.group(1)}，map={node.get('类型')}——派生登记应从档案复制）")
@@ -2281,7 +2384,7 @@ def cmd_validate(world_dir: Path):
     fs_fp = world_dir / "states" / "foreshadow.yaml"
     if fs_fp.exists():
         try:
-            fdata = yaml.safe_load(fs_fp.read_text())
+            fdata = yaml.safe_load(fs_fp.read_text(encoding="utf-8"))
             f_list = fdata.get("伏笔", []) if isinstance(fdata, dict) else None
             if f_list is None:
                 errors.append("foreshadow.yaml: 缺顶层键 伏笔（应为列表）")
@@ -2291,7 +2394,7 @@ def cmd_validate(world_dir: Path):
                 cur_round = 0
                 if ws_fp.exists():
                     try:
-                        ws_cur = yaml.safe_load(ws_fp.read_text())
+                        ws_cur = yaml.safe_load(ws_fp.read_text(encoding="utf-8"))
                         if isinstance(ws_cur, dict):
                             cur_round = int(ws_cur.get("轮次") or 0)
                     except Exception:
@@ -2333,7 +2436,7 @@ def cmd_validate(world_dir: Path):
     OMNI_PATTERN = re.compile(r"[他她]不知道")
     for cfp in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
         try:
-            cdata = yaml.safe_load(cfp.read_text())
+            cdata = yaml.safe_load(cfp.read_text(encoding="utf-8"))
         except Exception:
             continue
         if not isinstance(cdata, dict):
@@ -2386,7 +2489,7 @@ def cmd_validate(world_dir: Path):
     ws_fp = world_dir / "states" / "world_state.yaml"
     if ws_fp.exists():
         try:
-            ws = yaml.safe_load(ws_fp.read_text())
+            ws = yaml.safe_load(ws_fp.read_text(encoding="utf-8"))
             tl = (ws.get("时间线") or {}) if isinstance(ws, dict) else {}
             if tl:
                 if len(tl) > 10:
@@ -2413,7 +2516,7 @@ def cmd_validate(world_dir: Path):
     ANCHOR_LIMIT_ENTRY = ANCHOR_LIMIT_ENTRY_VALIDATE  # 150 宽松校验线（防强制压缩·写作按 100 为准）
     for cfp in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
         try:
-            cdata = yaml.safe_load(cfp.read_text())
+            cdata = yaml.safe_load(cfp.read_text(encoding="utf-8"))
         except Exception:
             continue
         if not isinstance(cdata, dict):
@@ -2470,7 +2573,7 @@ def cmd_validate(world_dir: Path):
 
     # 8b. 重置落地校验（触发：world_state.重置记录 登记了角色+档位 → 对照该角色记忆锚点是否按档位压缩）
     try:
-        ws_data = yaml.safe_load((world_dir / "states" / "world_state.yaml").read_text()) or {}
+        ws_data = yaml.safe_load((world_dir / "states" / "world_state.yaml").read_text(encoding="utf-8")) or {}
     except Exception:
         ws_data = {}
     # 8b-0. 循环机制完整性软告警（循环世界：SETTING 声明循环/重置关键词 → 周期倒计时应有周期条目）
@@ -2487,7 +2590,7 @@ def cmd_validate(world_dir: Path):
                     has_periodic = True
                     break
         if is_loop_world and not has_periodic:
-            warnings.append("循环机制完整性: SETTING 声明循环/重置机制但外部倒计时无周期条目（含空表）——周期倒计时未初始化登记（见 session_recovery.md §第三章循环机制核对）")
+            warnings.append("循环机制完整性: SETTING 声明循环/重置机制但外部倒计时无周期条目（含空表）——周期倒计时未初始化登记（见 session_recovery.md §第二章启动世界·循环机制核对）")
     except Exception:
         pass
     reset_rec = ws_data.get("重置记录") or {}
@@ -2503,7 +2606,7 @@ def cmd_validate(world_dir: Path):
             if not cfp.exists():
                 continue
             try:
-                cdata = yaml.safe_load(cfp.read_text()) or {}
+                cdata = yaml.safe_load(cfp.read_text(encoding="utf-8")) or {}
             except Exception:
                 continue
             mem = cdata.get("记忆锚点", "")
@@ -2531,7 +2634,7 @@ def cmd_validate(world_dir: Path):
     try:
         ws_fp2 = world_dir / "states" / "world_state.yaml"
         if ws_fp2.exists():
-            ws2 = yaml.safe_load(ws_fp2.read_text()) or {}
+            ws2 = yaml.safe_load(ws_fp2.read_text(encoding="utf-8")) or {}
             focus_id2 = str(ws2.get("焦点场景", "") or "").strip()
             if focus_id2 and scene_dir and scene_dir.is_dir():
                 nf = scene_dir / "narrative.md"
@@ -2845,7 +2948,7 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False, asset
                 cd_id, cd_spec = cid, cspec
                 break
     if cd_id is None:
-        print("[WARN] 未找到含 到期时刻 的周期倒计时——重置仍执行（周期倒计时登记见 session_recovery.md §4.6）", file=sys.stderr)
+        print("[WARN] 未找到含 到期时刻 的周期倒计时——重置仍执行（周期倒计时登记见 session_recovery.md §第二章启动世界·循环机制核对）", file=sys.stderr)
 
     # 0. 自动存档（可回滚）
     import subprocess
@@ -3022,7 +3125,7 @@ def _ts():
 def main():
     parser = argparse.ArgumentParser(description="WorldSim 批量状态管理 V2")
     parser.add_argument("world", help="世界名")
-    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "beatsheet", "reset-cycle", "tmp-clean", "map-sync"])
+    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "beatsheet", "reset-cycle", "tmp-clean", "map-sync", "init-states"])
     parser.add_argument("--files", help="read 时限定文件 key 列表，逗号分隔")
     parser.add_argument("--full", action="store_true", help="write 时全量覆写")
     parser.add_argument("--batch", action="store_true", help="write-raw/append-raw 批量模式：stdin 为 ###FILE/###KEY/###APPEND 记录格式（⚠非幂等：APPEND 重复执行会重复追加·同一批次只执行一次·验证用 read/validate/--dry-run）")
@@ -3042,7 +3145,12 @@ def main():
     world_dir = get_world_dir(args.world)
 
     if args.action == "read":
-        files_filter = args.files.split(",") if args.files else None
+        # 文件过滤：--files a,b,c 或位置参数（commands.md：位置参数=文件 key 过滤）
+        files_filter = None
+        if args.files:
+            files_filter = args.files.split(",")
+        elif args.extra:
+            files_filter = [a for a in args.extra if not a.startswith("-")]
         cmd_read(world_dir, files_filter)
     elif args.action == "write":
         cmd_write(world_dir, full_replace=args.full)
@@ -3071,6 +3179,8 @@ def main():
         sys.exit(cmd_reset_cycle(world_dir, args.world, force=args.force, asset=args.asset))
     elif args.action == "map-sync":
         cmd_map_sync(world_dir)
+    elif args.action == "init-states":
+        sys.exit(cmd_init_states(world_dir) or 0)
     elif args.action == "tmp-clean":
         cmd_tmp_clean(world_dir)
 

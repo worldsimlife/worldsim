@@ -23,7 +23,7 @@ world_state：时间.具体时间（旧值+本轮时长·方向只增不减·**�
 **收尾自查（硬性·防漏报）：** validate 输出必须查看完整问题清单——禁止用 grep 过滤截断输出（如只滤「叙事新鲜度|ERROR」会漏掉 `[VALIDATE] N 个问题:` 行·N>0 即失败）；确需过滤时条件必须覆盖 `VALIDATE|ERROR|ERR|FAIL` 全类问题行。
 
 ### 场景切换（物理空间变化 或 时间区间跨越——跨天必切·无豁免）
-> **执行者=场记·阶段3（硬性）**：本流程全部由场记执行——戏剧家阶段1 只输出 change set 决策，不调用脚本、不创建场景文件；场景内容文件（scene_card/start_snapshot/CHAR_state）由场记在阶段3 参考 templates/ 生成。（重置由周期倒计时管道机械触发——write-raw audit 拦截 + `reset-cycle`·与场景切换解耦·见 commands.md）**场景目录先于写入（硬性）：** 任何场景的 scene_state 写入前，该场景目录必须先创建（首轮=init_scene 建 S01·切换轮=旧收尾批后 init_scene 建新场景）；目录缺失时 write-raw 会顶回（写入点硬性拦截·gate/audit 仅软提示）。
+> **执行者=场记·阶段3（硬性）**：本流程全部由场记执行——戏剧家阶段1 只输出 change set 决策，不调用脚本、不创建场景文件；场景内容文件（scene_card/start_snapshot/CHAR_state）由场记在阶段3 参考 templates/ 生成。（重置由周期倒计时管道机械触发——write-raw audit 拦截 + `reset-cycle`·与场景切换解耦·见 commands.md）**场景目录先于写入（硬性）：** 任何场景的 scene_state 写入前，该场景目录必须先创建（初始场景=启动序列入场物化创建·切换轮=旧收尾批后 init_scene 建新场景）；目录缺失时 write-raw 会顶回（写入点硬性拦截·gate/audit 仅软提示）。
 1. **冻结旧场景**（终态入 scene_state+时间线提炼）→ INDEX 旧场景 COMPLETED
 2. **创建新场景**：init_scene.sh（目录/narrative/INDEX ACTIVE/继承——**脚本只建基础设施；scene_state 静态基线随剧情轮元素注册自然累积（继承场景由场记按 `--from` 清单 + 当前时间演进填充）——禁止带模板占位（[字段定义]/(例:) 残留）运行**）
 3. **同物理地点切换继承**（场景名含相同地点词，如 Mariposa-夜→Mariposa-清晨）必须继承旧场景物理锚点/道具清单（`init_scene.sh … --from <旧场景ID>`）——脚本整块继承；**继承场景的道具状态应按当前时间演进**（倒了的酒隔几天会干涸——位置一般不变），禁止从零重建锚点导致漏继承

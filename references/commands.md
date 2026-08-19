@@ -2,6 +2,7 @@
 
 > **本文件 = 全部命令的唯一速查**（worldctl.py 子命令 / shell 脚本 / 用户命令）。命令不会用时来这里查，不需要逐轮执行。
 > 行为指令在 SKILL.md（编排·每轮必读）+ references/phase_*.md（阶段规则·阶段开始前必读）；键表/写语义在 references/keys.md；写入批次格式在 references/write_protocol.md。
+> **Windows 平台（PowerShell）备注：** 下方 heredoc 管道（`cat <<'EOF' \| python3 …`）为 Unix 写法——Windows PowerShell 下直接照搬，UTF-8 中文会经控制台 GBK 码页被破坏（写入内容变 `?`）。替代写法：把批次写入 UTF-8 临时文件，再用 `cmd /c "python3 {skill_dir}/scripts/worldctl.py <世界> … < 临时文件"` 重定向喂 stdin（落点/命名/清理见 references/write_protocol.md「临时文件协议」小节·全局唯一权威）。
 
 ---
 
@@ -20,6 +21,8 @@
 | append-raw（单字段追加） | `python3 {skill_dir}/scripts/worldctl.py <世界> append-raw <文件key> <YAML键> "内容"` |
 | audit（预检） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> audit` | 只校验不落盘；通过 → `AUDIT OK`；硬性违规 → 列出全部 exit 1；仅软性警告 → 打印警告 exit 0 |
 | validate | `python3 {skill_dir}/scripts/worldctl.py <世界> validate` | YAML 格式报错 + 内容级警告（load 后/跨 Session 恢复后必跑；含同物理地点场景元素继承检查） |
+| init-states | `python3 {skill_dir}/scripts/worldctl.py <世界> init-states` | **启动世界动态文件物化（幂等·缺什么补什么·LF）**——conflicts←SEED / 模板三件 / CHAR_state 骨架（自主性解析自 CHAR_.md·外部者无该行）+ regions/ 自动对账；叙事约定为空时提示 LLM 填写（session_recovery.md 第二章 Step 0 唯一入口） |
+| map-sync | `python3 {skill_dir}/scripts/worldctl.py <世界> map-sync` | world_map 镜像层对账（regions/ 目录树→补缺失节点·init-states 自动调用·validate 报缺失时也可单独跑） |
 | grep | `python3 {skill_dir}/scripts/worldctl.py <世界> grep <关键词>` | 全仓（含所有场景 scene_state）搜索元素注册原文——**使用已有元素前核对形态/位置/状态/性质的标准工具（D11/W4 前置·防凭印象改写元素）**；无匹配=未注册=使用即幻觉 |
 | delete | `python3 {skill_dir}/scripts/worldctl.py <世界> delete <文件key> <键路径>` | 删整条 CT / pending 条目；批量流支持 `###DELETE:` |
 | beatsheet show | `python3 {skill_dir}/scripts/worldctl.py <世界> beatsheet show [N]` | 读节拍表（全部 / 指定事件线 N） |
@@ -50,18 +53,18 @@
 | index.sh update | `sh {skill_dir}/scripts/index.sh <世界> update <场景ID> [--type/--time/--cast/--status]`（动作在前 `index.sh update <世界> <场景ID> …` 同样支持） |
 | index.sh remove | `sh {skill_dir}/scripts/index.sh <世界> remove <场景ID>`（动作在前同样支持） |
 | list_worlds.sh | `sh {skill_dir}/scripts/list_worlds.sh` |
-| create_world.sh | `sh {skill_dir}/scripts/create_world.sh <世界名>` | 创建新世界脚手架——⚠ 写入磁盘：在 `{WORLDS_ROOT}/{世界名}/` 创建目录与模板文件（SETTING/CONFLICTS_SEED·零 yaml）；动态文件由首次启动物化（见 session_recovery.md 第一章） |
+| create_world.sh | `sh {skill_dir}/scripts/create_world.sh <世界名>` | 创建新世界脚手架——⚠ 写入磁盘：在 `{WORLDS_ROOT}/{世界名}/` 创建目录与模板文件（SETTING/CONFLICTS_SEED·零 yaml）；动态文件由启动世界 init-states 物化（见 session_recovery.md 第二章） |
 | import_card.py | `python {skill_dir}/scripts/import_card.py <世界名> <角色卡.png...>`（支持 .json 卡；`--dry-run` 预览不落盘） | ⚠ 写入磁盘：提取 SillyTavern 角色卡全部字段 → 留存 import/{名}.card.json；正式 CHAR_{名}.md 由 LLM 综合生成（详情见 references/import_cards.md·含隐私披露） |
-| reset_world.sh | `sh {skill_dir}/scripts/reset_world.sh <世界名> [--force]` | 重置世界到创建完成态（纯 .md·零 yaml）——删 scenes/CHAR_state/全部动态 yaml·重置前自动存档可回滚·重置后走首次启动；破坏性操作——交互提示确认 / 非交互加 `--force` |
+| reset_world.sh | `sh {skill_dir}/scripts/reset_world.sh <世界名> [--force]` | 重置世界到创建完成态（纯 .md·零 yaml）——删 scenes/CHAR_state/全部动态 yaml·重置前自动存档可回滚·重置后走启动世界（首次启动态）；破坏性操作——交互提示确认 / 非交互加 `--force` |
 
 ## 用户命令（对话内）
 
 | 命令 | 作用 |
 |------|------|
-| 「创建世界 <名>」 | 走 session_recovery.md 第一章（create_world.sh 脚手架 + 创作填充→校验→收尾提示首次启动） |
-| 「重置世界」/「/reset」 | reset_world.sh——破坏性操作（自动存档可回滚）·重置后走首次启动 |
+| 「创建世界 <名>」 | 走 session_recovery.md 第一章（create_world.sh 脚手架 + 创作填充→校验→收尾提示启动世界） |
+| 「重置世界」/「/reset」 | reset_world.sh——破坏性操作（自动存档可回滚）·重置后走启动世界（首次启动态） |
 | 「重置场景」/「/reset-scene [场景ID]」 | reset_scene.sh——重置指定场景（缺省=当前焦点场景）到 start_snapshot 状态（自动存档可回滚） |
-| 「启动世界」「继续世界」「恢复」等（会话首轮） | 跨 Session 恢复——走 session_recovery.md：加载→validate→描绘前情→停在当前场景·不推进 |
+| 「启动世界」「继续世界」「恢复」等（会话首轮） | 启动世界统一序列（首次启动/跨 Session 恢复）——走 session_recovery.md 第二章：物化→入场物化→分层加载→validate→循环核对→描绘→停住·不推进 |
 | `/scene <ID>` / `/scene new <名>` | 场景切换 / 新建场景 |
 | `/conflicts` | 查看冲突 |
 | `/status` / `/status --full` | 状态摘要 / 完整状态 |

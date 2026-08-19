@@ -1,6 +1,5 @@
 __pycache__/
 *.pyc
-archive/
 
 # worlds 目录默认忽略，仅保留 westworld 与 malena 两个世界
 worlds/*
@@ -16,7 +15,8 @@ worlds/*/import/
 worlds/*/tmp/
 worlds/*/*.yaml
 
-# 备份/临时文件（sim-up/down.sh 的 rsync 排除项，git 应保持一致）
+# 忽略存档/备份/临时文件
+archive/
 tmp/
 *.bak*
 *.tmp

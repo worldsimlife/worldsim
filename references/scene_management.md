@@ -56,7 +56,7 @@
 - 每区域 ≤80 字备注；不写叙事，写发现所得的空间事实
 - `连接` 写与本节点相邻的可达区域名，可指向**未登记的迷雾区**（地图边缘暗示）
 
-**写入方式：** 登记新区块用 `write`（YAML diff 递归合并，深层路径友好）：
+**写入方式：** 登记新区块用 `write`（YAML diff 递归合并，深层路径友好）——Windows PowerShell 下 heredoc 不可用，改 UTF-8 临时文件 + `cmd /c` 重定向（见 commands.md 顶部备注）：
 
 ```bash
 cat << 'EOF' | python3 {skill_dir}/scripts/worldctl.py {世界名} write
@@ -103,6 +103,8 @@ EOF
 ## 场景切换流程
 
 > **执行者=场记·阶段3（硬性）**：本流程全部由场记执行——戏剧家阶段1 只输出 change set 决策，不调用脚本、不创建场景文件；场景内容文件（scene_card/start_snapshot/CHAR_state）由场记在阶段3 参考 templates/ 生成。
+>
+> **初始场景例外：** 首次启动（无焦点场景）的初始场景创建属**启动序列入场物化**（session_recovery.md 第二章·确定性物化·非本流程）——首轮推进时焦点场景已存在，本流程切换检测不触发。
 
 当叙事焦点的物理空间发生变化 **或时间区间跨越** 时：
 

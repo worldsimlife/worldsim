@@ -58,7 +58,7 @@ python {skill_dir}/scripts/import_card.py <世界名> --dry-run <角色卡.png> 
 
 1. **综合生成即完成**：LLM 生成的档案即为最终档案——结构完整、字段有依据才填、无依据留空。符合 WorldSim「CHAR.md 生成后运行中不修改」原则（动态状态存 CHAR_state.yaml，由首次启动/每轮写入）。
 2. **手工补全（可选·用户决策）**：留空字段如需补全，由用户手工调整档案（同存量档案维护方式）。
-3. **落地**：`CHAR_{名}_state.yaml` 由首次启动（session_recovery.md 第二章）自动物化骨架；`SETTING.md` / `CONFLICTS_SEED.md` 按世界需要补角色关系与冲突种子。
+3. **落地**：`CHAR_{名}_state.yaml` 由启动世界 `worldctl.py <世界> init-states`（session_recovery.md 第二章）自动物化骨架；`SETTING.md` / `CONFLICTS_SEED.md` 按世界需要补角色关系与冲突种子。
 4. **素材回溯**：`import/{名}.card.json` 完整留存原始字段，任何字段需溯源/补全时读取。
 
 ## 注意事项
