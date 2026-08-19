@@ -12,8 +12,15 @@ world_state：时间.具体时间（旧值+本轮时长·方向只增不减·**�
 
 **叙事-状态同批（硬性·防脱钩）：** 状态演进的叙事显影必须同批落对应状态字段——裂缝加深/防御降级→`防御有效性`/`压力水平`、防御重构→`防御形态`/`崩溃表现`/`防御有效性`、关系变化→`人际动态`、抉择落定→`决策状态`：叙事写了「防御当众失效」而防御字段仍=有效 = 脱钩 = 本轮未完成（顶点出线核验即查此类脱钩）。
 
+### 角色覆盖同批（硬性·防漏写）
+阶段1在 `###META` 写出 `角色覆盖: Name=更新,Other=无变化(理由)`；场记不根据叙事猜测或重组角色名单，只原样转交。`更新`角色必须有对应 `CHAR_*_state` 操作；`无变化`必须附理由。审计发现 CT 角色反应与覆盖声明或 CHAR 写入存在差集时，禁止进入叙事写入。
+
 ### 写入方式
 **批次字段级格式首轮/不确定时必读 references/write_protocol.md 全文**（batch 结构·列表字段边界·`write` 与 write-raw 分工·嵌套映射点路径——禁止读源码替代）；熟练后不必每轮读。write-raw --batch（###FILE:/###KEY:/###APPEND:/###DELETE: + **###BEATSHEET: 自动执行节拍表**）——**change set 原样转交**：阶段1 输出的批次即最终写入批次，场记不翻译、不重组，只 stdin 直通 + audit + 写入。**破坏性操作警告（硬性）：** `###DELETE:` 为破坏性操作——删除前确认目标记录与范围，删除后建议 `snap.sh save` 留底。**非幂等警告（硬性）：** write-raw --batch 是副作用命令——`###APPEND:` 重复执行会把累积字段（记忆锚点/场景时间线等）**再追加一遍**。同一批次只允许执行一次。执行后的确认只用只读手段（`read` / `validate` / 重跑 `--dry-run` 对比磁盘差异），**禁止重放 write 命令**做"确认"。**内置 audit**：硬性违规单字段顶回（角色反应四件套缺一/代价后为空/资源载体缺失/轮次非单调/scene_state 无焦点场景落点），其余字段照写；软性警告（记忆锚点超限/必含项缺失）不拦截，validate 汇总。输出不向用户转发；但执行者**必须查看完整输出（stdout+stderr）**——落盘失败会在 stdout 打 `[FAIL]` 且 exit 1，出现 `[FAIL]`/`[ERR]` 必须处理后才能进入收尾自查。narrative 用 write_narrative.sh 写入，旧文件自动轮转。格式详见 references/write_protocol.md。
+
+**状态文件唯一写入通道（硬性）：** 状态文件（scene_state / CHAR_*_state / world_state / conflicts / pending_actions）写入唯一通道 = `worldctl write-raw` / `append-raw`（yaml.dump 序列化兜底——含 `: ` 的值自动加引号）；**禁止 write_file/append_file 直接编辑状态文件**（绕过序列化 = 裸文本 YAML 风险·实例：S06 关键场景信息裸文本致解析失败）。**例外（低频维护·不属每轮写入）：** ① 坏文件修复——worldctl 对无法解析的文件拒绝写入（防静默清空）——此时先直接编辑修复 YAML 引号，修复后回归 write-raw；② 记忆维护/去重——按 references/write_protocol.md「修改/去重数据文件的准则」执行（read 确认闭合引号 → 完整 ID 分组 → audit/validate）。
+
+**收尾自查（硬性·防漏报）：** validate 输出必须查看完整问题清单——禁止用 grep 过滤截断输出（如只滤「叙事新鲜度|ERROR」会漏掉 `[VALIDATE] N 个问题:` 行·N>0 即失败）；确需过滤时条件必须覆盖 `VALIDATE|ERROR|ERR|FAIL` 全类问题行。
 
 ### 场景切换（物理空间变化 或 时间区间跨越——跨天必切·无豁免）
 > **执行者=场记·阶段3（硬性）**：本流程全部由场记执行——戏剧家阶段1 只输出 change set 决策，不调用脚本、不创建场景文件；场景内容文件（scene_card/start_snapshot/CHAR_state）由场记在阶段3 参考 templates/ 生成。（重置由周期倒计时管道机械触发——write-raw audit 拦截 + `reset-cycle`·与场景切换解耦·见 commands.md）**场景目录先于写入（硬性）：** 任何场景的 scene_state 写入前，该场景目录必须先创建（首轮=init_scene 建 S01·切换轮=旧收尾批后 init_scene 建新场景）；目录缺失时 write-raw 会顶回（写入点硬性拦截·gate/audit 仅软提示）。

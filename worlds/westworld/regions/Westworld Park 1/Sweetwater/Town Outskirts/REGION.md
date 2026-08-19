@@ -26,4 +26,4 @@ Sweetwater 周
 镇内外交界：追捕、伏击、离镇远行的必经地带
 
 ## 子区域
-- Chase Grounds → `regions/Westworld Park 1/Sweetwater/Town Outskirts/Chase Grounds/REGION.md`
+- Chase Grounds（镇外开阔地·追猎场）

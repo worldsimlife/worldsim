@@ -1,7 +1,7 @@
 ---
 name: worldsim
-description: 世界模拟器与故事引擎 。本地持久化世界状态、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟（创建/启动/继续/进入世界,导入角色卡）或角色扮演时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活。
-version: 0.9.3
+description: 世界模拟器与故事引擎 。本地持久化世界状态、导入 SillyTavern 角色卡、推进互动剧情、进行角色扮演，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟（创建/启动/继续/进入世界,导入角色卡）或角色扮演时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活。
+version: 0.10.0
 metadata:
   openclaw:
     requires:
@@ -66,7 +66,7 @@ metadata:
 
 | 阶段 | 先读 | 做什么 | 产出 | 闸门 |
 |------|------------|--------|------|------|
-| ① 戏剧家 | references/phase_dramatist.md | 六步决策：数据就绪 → 压力扫描 → 冲突决策（弧线校准/轨道/质感/收敛）→ 记忆维护 → 节拍规划 | change set（###FILE: 批次·首行 ###META 自查锚点·###BEATSHEET: 事件线动作） | `gate dramatist --check`（stdin 读 change set·必含项缺失 exit 1=不进阶段2）；标准模式另按该文件「戏剧家闸门」执行 D1-D14 |
+| ① 戏剧家 | references/phase_dramatist.md | 七步决策：数据就绪 → 压力扫描 → 故事弧线（宏观·常态必做）→ 节拍表事件线（中观·读当前拍戏剧问题·承接判定·不判推进）→ 反应轨道（本轮做什么）→ 反应质感（怎么做）→ 收敛落盘（**节拍推进判定（行动结果后回判）**+角色覆盖清单+CT 五子+拍名镜像+记忆决策+收尾） | change set（###FILE: 批次·首行 ###META 自查锚点·角色覆盖声明·###BEATSHEET: 事件线动作） | `gate dramatist --check`（stdin 读 change set·必含项缺失 exit 1=不进阶段2）；标准模式另按该文件「戏剧家闸门」执行 D1-D15 |
 | ② 作家 | references/phase_writer.md | 写作数据准备（三源）→ 按 change set 骨架生成叙事（指令忠诚·填充不改骨架） | 叙事正文（首行=场景名+时间+轮次） | `gate writer --check`（W4 锚点核对·推送前硬性·失败=不输出）；标准模式另按该文件「作家闸门」执行 W1-W4 |
 | ③ 场记 | references/phase_keeper.md | change set 原样转交（stdin 直通·零翻译）→ write-raw --batch / write_narrative / validate → 收尾自查 | 状态文件全部落盘 | write-raw 内置 audit（硬性违规单字段顶回）·validate 收尾 |
 
@@ -130,10 +130,10 @@ narrative 不是角色记忆——记忆锚点才是（叙事文件不参与创�
 | references/keys.md | 全部键表 + 视角规则 + 写语义 + 世界事件生命周期 | 写字段不确定时 |
 | references/write_protocol.md | 写入方式参考（heredoc/batch/delete/audit 不变量）+ Change Set 规范 | 阶段3 写入格式不确定时；**新世界首次启动轮/字段结构不确定时必读全文**（references/phase_dramatist.md 最小批次骨架+内置 audit 兜底·熟练后不必每轮读） |
 | references/scene_management.md | 场景切换/移动/waypoint/地图协议/存档读档/状态校验/焦外协议 | 场景相关 |
-| references/beat_structure.md | 节拍结构参考（宏观三幕十五拍/微观五段式/分形自查·编剧策划视角·不产生规则） | 弧线校准·建线/规划拍序时（按需读取） |
+| references/beat_structure.md | 节拍结构参考（宏观三幕十五拍/微观五段式/分形自查·编剧策划视角·不产生规则） | 故事弧线校准（③）/节拍表事件线规划（④）时（必读·先看指引再规划） |
 | `regions/**/REGION.md`（世界区域档案·数据） | 区域静态设定（只读·初始设定·目录树分层·模板见 templates/REGION.md） | 到达新区域 / 创建场景（无 `--from`）时读当前节点档案 |
 | references/rollback.md | 回退流程（快照恢复/场景级重置/手工重建降级路径·逐文件处理） | 回退/撤销时 |
-| references/gate_dramatist.md | 戏剧家闸门（D1-D14）明细 | 标准模式·阶段1 结束时 |
+| references/gate_dramatist.md | 戏剧家闸门（D1-D15）明细 | 标准模式·阶段1 结束时 |
 | references/gate_writer.md | 作家闸门（W1-W4）明细 | 标准模式·阶段2 推送前 |
 | references/loop_machinery.md | 循环机制全规格（激活条件：SETTING 声明循环且有循环角色） | 循环世界·规格自检不通过时重读（每轮第一动作自检·见阶段1 数据就绪） |
 | references/knowledge_index.md | 知情边界索引规则（收录/加载/检查/清理） | 有 knowledge_index.yaml 时·写知情相关事实或 /audit 时 |
@@ -146,6 +146,6 @@ narrative 不是角色记忆——记忆锚点才是（叙事文件不参与创�
 
 ## 命令参考
 
-`/scene <ID>` （场景切换）· `/conflicts`（查看冲突）· `/status` `/status --full`（状态摘要）· `/sync` `/update`（场记更新状态）· `/save [名]`（存档·名称先向用户确认）· `/load <名>`（载入存档·**执行前先向用户确认**——会覆盖/回退当前状态）· `/reset`（重置世界·**执行前先向用户确认**——会清除世界全部进度·确认细则见 references/disclosures.md）· `/reset-scene [场景ID]`（重置场景到 start_snapshot 状态·缺省=焦点场景·**执行前先向用户确认**——会回退当前场景进度）· `/import-card <角色卡.png...>`（导入 SillyTavern 角色卡：脚本提取全部字段→LLM 综合生成正式档案·详情见 references/import_cards.md）· `/audit`（**显式命令·硬性**——仅在用户输入 `/audit` 或明确说「运行审计/跑审计」时执行；日常对话提及"audit"一词**不触发**。三合一审计流程：机械核验=worldctl validate/audit/gate·戏剧家 D1-D14·作家 W1-W4·场记写入检查——详情见 references/commands.md）· `worldctl.py <世界> tmp-clean`（清理该世界 tmp/ 下过程临时文件·跨会话恢复时由加载序列自动执行）
+`/scene <ID>` （场景切换）· `/conflicts`（查看冲突）· `/status` `/status --full`（状态摘要）· `/sync` `/update`（场记更新状态）· `/save [名]`（存档·名称先向用户确认）· `/load <名>`（载入存档·**执行前先向用户确认**——会覆盖/回退当前状态）· `/reset`（重置世界·**执行前先向用户确认**——会清除世界全部进度·确认细则见 references/disclosures.md）· `/reset-scene [场景ID]`（重置场景到 start_snapshot 状态·缺省=焦点场景·**执行前先向用户确认**——会回退当前场景进度）· `/import-card <角色卡.png...>`（导入 SillyTavern 角色卡：脚本提取全部字段→LLM 综合生成正式档案·详情见 references/import_cards.md）· `/audit`（**显式命令·硬性**——仅在用户输入 `/audit` 或明确说「运行审计/跑审计」时执行；日常对话提及"audit"一词**不触发**。三合一审计流程：机械核验=worldctl validate/audit/gate·戏剧家 D1-D15·作家 W1-W4·场记写入检查——详情见 references/commands.md）· `worldctl.py <世界> tmp-clean`（清理该世界 tmp/ 下过程临时文件·跨会话恢复时由加载序列自动执行）
 
 **破坏性操作确认（硬性·执行前）**：/load · /reset-scene · /reset · snap.sh delete · ###DELETE: 执行前必须向用户显式确认——统一按 references/disclosures.md「破坏性操作确认」执行（用户显式指令或加 `--force`（自动化）除外；常规状态写入（write-raw --batch 每轮落盘）不在此列——安装即授权）。

@@ -81,6 +81,33 @@ if [ -n "$PLACE_ARCHIVE" ]; then
     exit 1
   fi
   echo "[OK] 物理基线来源: $PLACE_ARCHIVE（场记据档案生成 scene_state 物理锚点·对照全局标记覆盖不可逆变更）"
+  echo "[区域] scene_card 区域行（场记生成 scene_card.md 时照抄）: | 区域 | $PLACE_ARCHIVE |"
+else
+  # 未传 --place：从当前焦点场景区域档案的相邻/子区域自动扫描候选（脚本核对·LLM 照抄）
+  echo "[候选] 未传 --place——从当前焦点场景区域档案扫描相邻/子区域候选（已有 region 必须引用·禁止新建）:"
+  CUR_SCENE=$(grep -m1 '^焦点场景:' "$WORLD_DIR/states/world_state.yaml" 2>/dev/null | awk '{print $2}' | tr -d "'\" ")
+  CUR_CARD=""
+  if [ -n "$CUR_SCENE" ]; then
+    CUR_CARD=$(ls "$WORLD_DIR/scenes/${CUR_SCENE}-"*/scene_card.md 2>/dev/null | head -1)
+  fi
+  if [ -n "$CUR_CARD" ] && [ -f "$CUR_CARD" ]; then
+    CUR_ARCH=$(grep -m1 '^| 区域 |' "$CUR_CARD" | sed 's/^| 区域 | *//; s/ *|$//' | sed 's/^ *//; s/ *$//')
+    if [ -n "$CUR_ARCH" ] && [ -f "$WORLD_DIR/$CUR_ARCH" ]; then
+      echo "  当前场景区域档案: $CUR_ARCH"
+      grep -E '^- ' "$WORLD_DIR/$CUR_ARCH" 2>/dev/null | sed 's/^- //; s/（.*//; s/(.*//' | while IFS= read -r name; do
+        [ -z "$name" ] && continue
+        match=$(find "$WORLD_DIR/regions" -type d -name "$name" 2>/dev/null | head -1)
+        if [ -n "$match" ]; then
+          rel="${match#$WORLD_DIR/}"
+          echo "  - $name → $rel/REGION.md"
+        fi
+      done
+    else
+      echo "  （当前焦点场景无区域档案·检查 regions/ 目录树）"
+    fi
+  else
+    echo "  （当前焦点场景无 scene_card/区域行·检查 regions/ 目录树）"
+  fi
 fi
 
 mkdir -p "$SCENE_DIR"

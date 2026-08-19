@@ -17,6 +17,7 @@ worlds/*/tmp/
 worlds/*/*.yaml
 
 # 备份/临时文件（sim-up/down.sh 的 rsync 排除项，git 应保持一致）
+tmp/
 *.bak*
 *.tmp
 *.swp

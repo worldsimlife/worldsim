@@ -6,6 +6,7 @@
 |------|------|
 | 场景ID | [SXX，递增] (例: S02) |
 | 场景名 | [中文名] (例: 档案室) |
+| 区域 | [regions/ 完整路径·引擎层·目录树同名节点必配] (例: regions/Westworld Park 1/Mesa Hub/Welcome Center/REGION.md) |
 | 类型(INT/EXT) | [INT = 室内 / EXT = 室外] (例: INT) |
 | 基准时间 | [第N日 HH:MM] (例: 第1日 08:00) |
 | 出场角色 | [角色名(PC/状态)，逗号分隔] (例: Guest(PC), Angela) |

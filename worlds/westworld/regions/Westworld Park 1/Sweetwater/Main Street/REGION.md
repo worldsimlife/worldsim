@@ -29,7 +29,7 @@ Sweetwater 东西主轴线·镇中心
 Dolores 每天画画、掉落牛奶罐并与 Teddy 或游客相遇的核心舞台；镇内多数循环剧情的发生带
 
 ## 子区域
-- Mariposa → `regions/Westworld Park 1/Sweetwater/Main Street/Mariposa/REGION.md`
-- General Store → `regions/Westworld Park 1/Sweetwater/Main Street/General Store/REGION.md`
-- Sheriff's Office → `regions/Westworld Park 1/Sweetwater/Main Street/Sheriff's Office/REGION.md`
-- Stables → `regions/Westworld Park 1/Sweetwater/Main Street/Stables/REGION.md`
+- Mariposa（主街中段北侧·门楣挂「Mariposa」招牌·钢琴声传出）
+- General Store（主街中段南侧·杂货与日用品）
+- Sheriff's Office（主街西段·治安官驻地·巡逻起点）
+- Stables（主街东段·马厩）

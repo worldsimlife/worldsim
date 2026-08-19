@@ -30,6 +30,6 @@ Park 1 中心区域·蒸汽列车（Train No. 39）入园的第一站
 游客"新手村"与叙事枢纽（Narrative Hub）；Dolores 每天画画、掉落牛奶罐并与 Teddy 或游客相遇的核心舞台
 
 ## 子区域
-- Train Station → `regions/Westworld Park 1/Sweetwater/Train Station/REGION.md`
-- Main Street → `regions/Westworld Park 1/Sweetwater/Main Street/REGION.md`
-- Town Outskirts → `regions/Westworld Park 1/Sweetwater/Town Outskirts/REGION.md`
+- Train Station（镇西端·刷白漆木屋·檐下风铃与手写时刻表·木头月台）
+- Main Street（东西主轴线·木质建筑·金边招牌·尘土阳光）
+- Town Outskirts（镇周·土路通往镇外）

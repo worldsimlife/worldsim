@@ -55,7 +55,7 @@ CLIMAX_FORMS = ("死局两难被逼出选择", "防御当众失效", "关系不�
 CLIMAX_KEY_FIELDS = ("压力水平", "防御有效性", "核心状态", "决策状态", "人际动态", "记忆锚点", "信念演化")
 CLIMAX_LIST_FIELDS = ("记忆锚点", "信念演化")
 CLIMAX_BASELINE_KEY = "基准值"
-# 出线形态-字段族联动：声明形态对应字段族至少一字段须发生实质变化（收束证明）
+# 出线形态-字段族联动：落盘一致性兜底（形态可带可不带·不参与出线硬性判定·硬性底线=双方关键状态有实质变化）
 CLIMAX_FORM_FIELDS = {
     "死局两难被逼出选择": ("决策状态",),
     "防御当众失效": ("防御有效性", "核心状态"),
@@ -527,13 +527,55 @@ def parse_batch_entries(lines):
     return ops, errors, meta_lines, beatsheet_lines
 
 
+def _parse_role_coverage(meta_lines):
+    """解析 ###META 中的结构化角色覆盖声明。
+
+    格式：角色覆盖: Name=更新,Other=无变化(理由)
+    返回 {规范化角色名: 状态}；角色名允许用下划线代替空格。
+    """
+    coverage = {}
+    for line in meta_lines or []:
+        match = re.search(r"角色覆盖\s*[:：]\s*(.+)$", line)
+        if not match:
+            continue
+        for item in match.group(1).split(","):
+            item = item.strip()
+            if "=" not in item:
+                continue
+            role, status = item.split("=", 1)
+            role = role.strip().replace("_", " ")
+            status = status.strip()
+            if role:
+                coverage[role] = status
+    return coverage
+
+
+def _char_roles_in_reaction_ops(ops, world_dir):
+    """收集 CT 当前节拍角色反应字段中的角色全名。"""
+    roles = set()
+    for kind, file_key, key_path, content, _append in ops:
+        if kind != "write" or file_key != "conflicts":
+            continue
+        path = key_path.split(".")
+        if len(path) < 3 or not path[0].startswith("CT-") or path[1] != "当前节拍" or path[2] != "角色反应":
+            continue
+        for line in str(content).splitlines():
+            match = re.match(r"^\s*([^:|]+):", line)
+            if match:
+                role = match.group(1).strip()
+                if role:
+                    roles.add(role)
+    return roles
+
+
 def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_scene_dir=True):
     """语义不变量检查（change set 草案→硬性违规/软性警告分类）。
     enforce_scene_dir=False（gate/audit 预检路径）：scene_state 落点检查降级为软提示——
     场景目录由场记阶段3 init_scene 创建（先于批次写入），预检时目录可能尚不存在，不误拦。
-    硬性违规（hard）：结构性/机械性错误——关键字段缺失、载体核验、轮次回归、落点错误。写入时**单字段顶回**。
+    硬性违规（hard）：结构性/机械性错误——关键字段缺失、载体核验、轮次单调、落点错误。写入时**单字段顶回**。
     软性警告（soft）：内容质量类——记忆锚点超限等。写入时**不拦截**，仅记录（validate 汇总）。
     返回 (hard, soft)，元素为 (op_index, message)。"""
+
     hard = []
     soft = []
     scene_dir = get_scene_dir(world_dir)
@@ -707,10 +749,13 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_s
                 pass
 
 
-        # ⑤ scene_state 落点：必须有焦点场景目录（防止写错场景）——写入路径硬性拦截；
+        # ⑤ scene_state 落点：必须有真实存在的焦点场景目录（防止写错场景 / init_scene 未执行时静默 mkdir 残缺场景）——写入路径硬性拦截；
         #    gate/audit 预检路径（enforce_scene_dir=False）降为软提示（场景目录由场记阶段3 init_scene 创建·先于批次写入）
-        if file_key == "scene_state" and scene_dir is None:
-            msg = "scene_state 落点错误: 无法定位当前焦点场景目录——先确认 world_state.焦点场景 后再写入"
+        if file_key == "scene_state" and (scene_dir is None or not scene_dir.is_dir()):
+            if scene_dir is None:
+                msg = "scene_state 落点错误: 无法定位当前焦点场景目录——先确认 world_state.焦点场景 后再写入"
+            else:
+                msg = f"scene_state 落点错误: 焦点场景目录不存在（{scene_dir}）——先执行 init_scene 创建场景（scene_card/start_snapshot/INDEX ACTIVE）后再写入"
             if enforce_scene_dir:
                 hard.append((idx, msg))
             else:
@@ -724,15 +769,14 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_s
 
         # ⑦ world_state 键表外字段（软性警告——无语义定义的漂移字段）
         if file_key == "world_state" and key_path:
-            WS_TOP_KEYS = {"焦点场景", "轮次", "时间", "地点", "外部倒计时", "全局标记", "时间线", "重置记录", "叙事约定"}
+            WS_TOP_KEYS = {"焦点场景", "轮次", "时间", "外部倒计时", "全局标记", "时间线", "重置记录", "叙事约定"}
             WS_TIME_KEYS = {"基准时间", "具体时间", "时间流速比", "前情描述"}
-            WS_LOC_KEYS = {"当前区域", "已探索区域"}
             if key_path[0] not in WS_TOP_KEYS:
-                soft.append((idx, f"world_state.{key_path_str}: 未知顶层键（键表: 焦点场景/轮次/时间/地点/外部倒计时/全局标记/时间线/重置记录/叙事约定）"))
+                soft.append((idx, f"world_state.{key_path_str}: 未知顶层键（键表: 焦点场景/轮次/时间/外部倒计时/全局标记/时间线/重置记录/叙事约定）"))
             elif len(key_path) >= 2 and key_path[0] == "时间" and key_path[1] not in WS_TIME_KEYS:
                 soft.append((idx, f"world_state.{key_path_str}: 未知时间子键（键表: 基准时间/具体时间/时间流速比/前情描述）"))
-            elif len(key_path) >= 2 and key_path[0] == "地点" and key_path[1] not in WS_LOC_KEYS:
-                soft.append((idx, f"world_state.{key_path_str}: 未知地点子键（键表: 当前区域/已探索区域）"))
+            elif len(key_path) >= 2 and key_path[0] == "地点":
+                soft.append((idx, f"world_state.{key_path_str}: 地点字段已废弃（当前区域→scene 区域关联·已探索区域→world_map 镜像·请勿再写）"))
 
         # ⑧ 自主性枚举 + 升级路径（硬性：非法枚举；软性：非标准路径——唯一入口=§变质判定/§记忆提炼管道B）
         if file_key.startswith(CHAR_STATE_PREFIX) and key_path == ["自主性"]:
@@ -817,7 +861,35 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_s
         if not has_scene_timeline:
             soft.append((-1, "完整推进轮 change set 应含 scene_state.场景时间线 追加（查询轮豁免）"))
 
-    # ⑬c 节拍表事件线动作（软性——完整推进轮必含；gate --check 将其升级为硬性拦截）
+    # ⑬c 角色覆盖声明（硬性——完整推进轮必须显式说明 CT 角色是否落到 CHAR_state）
+    # 只检查结构化 change set，不从 narrative 自然语言抽取角色名，避免语义误报。
+    if has_ct_op:
+        coverage = _parse_role_coverage(meta_lines)
+        reaction_roles = _char_roles_in_reaction_ops(ops, world_dir)
+        submitted_roles = set()
+        for _kind, _file_key, _key_path, _content, _append in ops:
+            if _kind != "write" or not _file_key.startswith(CHAR_STATE_PREFIX) or not _file_key.endswith("_state"):
+                continue
+            _fp, _ = resolve_char_file(existing, _file_key, world_dir)
+            if _fp is not None:
+                submitted_roles.add(_fp.stem[len(CHAR_STATE_PREFIX):-len("_state")])
+        if not coverage:
+            hard.append((-1, "###META 缺少角色覆盖声明：完整推进轮必须写 `角色覆盖: Name=更新,Other=无变化(理由)`"))
+        else:
+            for role in sorted(reaction_roles):
+                normalized = role.replace("_", " ")
+                status = coverage.get(normalized)
+                if status is None:
+                    hard.append((-1, f"角色覆盖声明缺少 CT 反应角色: {role}"))
+                elif status.startswith("更新") and normalized not in submitted_roles:
+                    hard.append((-1, f"角色覆盖声明标记 {role}=更新，但批次缺 CHAR_state 写入"))
+                elif status.startswith("无变化") and "(" not in status:
+                    hard.append((-1, f"角色覆盖声明 {role}=无变化 必须附理由"))
+            for role in sorted(submitted_roles):
+                if role not in {r.replace("_", " ") for r in coverage}:
+                    hard.append((-1, f"CHAR_state 已写入但角色覆盖声明缺少: {role}"))
+
+    # ⑬d 节拍表事件线动作（软性——完整推进轮必含；gate --check 将其升级为硬性拦截）
     if has_ct_op and has_ws_time and has_ws_round and has_ws_summary and has_scene_timeline and not has_beatsheet:
         soft.append((-1, "完整推进轮 change set 应含 ###BEATSHEET: 事件线动作（add/stay N/advance N 拍名/rewrite N/clear N）——查询轮/维护轮豁免"))
 
@@ -986,7 +1058,14 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
 
         filepath, note = resolve_char_file(existing, file_key, world_dir)
         if filepath is None:
-            print(f"[ERR] 未知文件 key: {file_key}", file=sys.stderr)
+            # scene_state 解析失败：准确诊断焦点场景目录/文件状态（避免「未知文件 key」误导为 FILE key 写错）
+            if file_key == "scene_state":
+                if scene_dir is None:
+                    print("[ERR] scene_state 落点错误: 无法定位当前焦点场景目录——先确认 world_state.焦点场景 后再写入", file=sys.stderr)
+                else:
+                    print(f"[ERR] scene_state 落点错误: 焦点场景目录/文件不存在（{scene_dir}）——先执行 init_scene 创建场景（scene_card/start_snapshot/INDEX ACTIVE）后再写入", file=sys.stderr)
+            else:
+                print(f"[ERR] 未知文件 key: {file_key}", file=sys.stderr)
             return False
         if note:
             print(note, file=sys.stderr)
@@ -1245,7 +1324,8 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
         print(f"[ERR] 空值覆盖已拒绝: {file_key}.{key_path_str}（write-raw 值不能为空；追加请用 append-raw）", file=sys.stderr)
         sys.exit(1)
 
-    write_one(file_key, key_path_str, content, append=append_mode)
+    if not write_one(file_key, key_path_str, content, append=append_mode):
+        sys.exit(1)
 
 # ── DELETE ───────────────────────────────────────────────────────
 def cmd_delete(world_dir: Path, extra: list[str]):
@@ -1415,9 +1495,11 @@ def _char_state_field_value(state: dict, field: str):
     return str(v)
 
 
-def _climax_baseline_snapshot(world_dir: Path, n: str) -> dict:
-    """快照事件线 n 牵动 CT 的对抗双方 CHAR_state 关键字段（进入顶点拍时记录·顶点拍起点状态）。
-    找 conflicts 中 `当前节拍.拍名` 前缀 `{n}-` 的 CT → 对抗双方 → 读双方状态关键字段。
+def _climax_baseline_snapshot(world_dir: Path, n: str, line: dict | None = None) -> dict:
+    """快照事件线 n 牵动 CT 的对抗双方 + 顶点落点.NPC爆破 角色的 CHAR_state 关键字段
+    （进入顶点拍时记录·顶点拍起点状态）。
+    找 conflicts 中 `当前节拍.拍名` 前缀 `{n}-` 的 CT → 对抗双方；并加入 顶点落点.NPC爆破 角色
+    （防死锁结构·NPC 自主爆破项同样需要基准值·出线时比较）。
     返回 {角色名: {字段: 基准值}}——无牵动 CT / 无状态文件时返回空 dict（出线时拦）。"""
     fp = world_dir / "states" / "conflicts.yaml"
     if not fp.exists():
@@ -1438,6 +1520,16 @@ def _climax_baseline_snapshot(world_dir: Path, n: str) -> dict:
             for s in _ct_sides(str(ct.get("对抗双方", "") or "")):
                 if s not in sides:
                     sides.append(s)
+    # 顶点落点.NPC爆破 角色（2026-08-19 加入·防死锁结构的关联实现）：NPC 爆破项同样需要基准值
+    if line and isinstance(line, dict):
+        for b in (line.get("拍序") or []):
+            if isinstance(b, dict) and str(b.get("拍名", "") or "").strip() == "顶点" and isinstance(b.get("顶点落点"), dict):
+                for item in (b["顶点落点"].get("NPC爆破") or []):
+                    if isinstance(item, dict):
+                        role = str(item.get("角色", "") or "").strip()
+                        if role and role not in sides:
+                            sides.append(role)
+                break
     existing = discover_files(world_dir, get_scene_dir(world_dir))
     snap: dict[str, dict] = {}
     for s in sides:
@@ -1460,15 +1552,16 @@ def _snapshot_climax_baseline(line: dict, world_dir: Path, n: str) -> None:
     自动快照该线牵动 CT 对抗双方的 CHAR_state 关键字段为 顶点落点.基准值（脚本自动·LLM 不填）。"""
     for b in (line.get("拍序") or []):
         if isinstance(b, dict) and str(b.get("拍名", "") or "").strip() == "顶点" and isinstance(b.get("顶点落点"), dict):
-            b["顶点落点"][CLIMAX_BASELINE_KEY] = _climax_baseline_snapshot(world_dir, n)
+            b["顶点落点"][CLIMAX_BASELINE_KEY] = _climax_baseline_snapshot(world_dir, n, line)
             return
 
 
 def _check_climax_exit(world_dir: Path, ops, beatsheet_lines) -> tuple[list[str], bool]:
     """顶点出线核验（硬性·gate dramatist --check 调用·收束需要证明）：
-    批次声明 `advance N 余波 形态:XXX` 且该线当前拍=顶点 时——
-    ① 形态∈四形态枚举（缺/非法=拦）；② 声明形态对应字段族至少一字段发生实质变化
-    （≠顶点落点.基准值·当前文件+批次写 op 预演）；③ 双方全无变化=顶点未落地（拦·撤回阶段1）。
+    批次声明 `advance N 余波`（形态可带可不带）且该线当前拍=顶点 时——
+    ① 顶点落点齐备（缺/空=拦）；② 基准值存在（顶点拍起点快照·缺=拦）；
+    ③ 冲突双方关键字段任一实质变化（≠顶点落点.基准值·当前文件+批次写 op 预演）——双方全无变化=顶点未落地（拦·撤回阶段1）。
+    形态指认与字段族匹配（CLIMAX_FORM_FIELDS）降级为落盘一致性兜底（软性·不参与硬性判定）。
     返回 (违规消息列表, 是否执行了核验)。"""
     violations: list[str] = []
     checked = False
@@ -1486,12 +1579,13 @@ def _check_climax_exit(world_dir: Path, ops, beatsheet_lines) -> tuple[list[str]
     if line_no is None:
         return violations, checked
     checked = True
-    # 1b. 形态指认（收束证明·缺/非法=拦）
-    if not form:
-        violations.append(f"顶点出线（advance {line_no} 余波）缺 爆破形态 指认——出线行须带 形态:四形态之一（收束需要证明·展开不需要）·留顶点 stay {line_no} 或补形态重提")
-        return violations, checked
-    if form not in CLIMAX_FORMS:
-        violations.append(f"顶点出线（advance {line_no} 余波）形态 '{form}' 非法（四形态: {'/'.join(CLIMAX_FORMS)}）")
+    # 1b. 形态指认（可带可不带·缺=跳过·非法=软性提示·不参与硬性判定）
+    if form and form not in CLIMAX_FORMS:
+        print(
+            f"[GATE] 顶点出线提示：形态 '{form}' 非法（四形态: {'/'.join(CLIMAX_FORMS)}）——形态已降级为落盘一致性参考·不参与硬性判定",
+            file=sys.stderr,
+        )
+        form = ""
         return violations, checked
     # 2. 读事件线：当前拍=顶点 才核验（非顶点出线不拦截）
     fp = world_dir / "states" / "conflicts.yaml"
@@ -1560,12 +1654,13 @@ def _check_climax_exit(world_dir: Path, ops, beatsheet_lines) -> tuple[list[str]
         violations.append(
             f"顶点未落地——事件线 {line_no} 顶点拍展开期间 冲突双方关键状态均无实质变化（顶点落点.基准值 全部字段未变）·留顶点（beatsheet stay {line_no}）或 rewrite 更新 顶点落点 重声明"
         )
-    elif not (changed_fields & set(CLIMAX_FORM_FIELDS[form])):
-        violations.append(
-            f"顶点出线（advance {line_no} 余波）形态-字段不匹配：声明形态 '{form}' 对应字段族（{'/'.join(CLIMAX_FORM_FIELDS[form])}）均无实质变化（变化在: {'/'.join(sorted(changed_fields))}）——收束需要证明·留顶点 stay {line_no} 或 rewrite 更新 顶点落点 重声明"
+    elif form and not (changed_fields & set(CLIMAX_FORM_FIELDS[form])):
+        print(
+            f"[GATE] 顶点出线提示：声明形态 '{form}' 对应字段族（{'/'.join(CLIMAX_FORM_FIELDS[form])}）无实质变化（变化在: {'/'.join(sorted(changed_fields))}）——形态为落盘一致性参考·不参与硬性判定·请确认拍序顶点事件问题已兑现",
+            file=sys.stderr,
         )
     else:
-        print(f"[GATE] 顶点出线核验通过（形态 '{form}'·字段族变化 {len(detail)} 处·收束证明成立）", file=sys.stderr)
+        print(f"[GATE] 顶点出线核验通过（形态 '{form or '未声明'}'·字段族变化 {len(detail)} 处·收束证明成立）", file=sys.stderr)
         for d in detail[:3]:
             print(f"  · {d}", file=sys.stderr)
     return violations, checked
@@ -1798,6 +1893,68 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
 
 
 
+def cmd_map_sync(world_dir: Path):
+    """world_map 对账补全（镜像层）：遍历 regions/ 目录树 → 缺失节点补入（类型/档案从档案复制·层级镜像目录树）
+    有 regions/ 目录时 world_map=镜像层·节点/层级/类型/档案全部由此命令派生；validate 报告缺失时运行本命令。"""
+    wm_fp = world_dir / "states" / "world_map.yaml"
+    regions_dir = world_dir / "regions"
+    if not regions_dir.is_dir():
+        print("[SKIP] 无 regions/ 目录——world_map 走迷雾制·无需对账")
+        return
+    wm = {}
+    if wm_fp.exists():
+        try:
+            wm = yaml.safe_load(wm_fp.read_text()) or {}
+        except Exception:
+            wm = {}
+    if not isinstance(wm, dict) or "已探索区域" not in wm:
+        wm = {"已探索区域": {}}
+    explored = wm["已探索区域"]
+    added = []
+
+    def ensure_node(parent, name, rel_path):
+        """在 parent dict 中找/建节点；parent=None 表示顶层 explored"""
+        if parent is None:
+            node = explored.get(name)
+        else:
+            node = (parent.get("子区域") or {}).get(name)
+        if node is None or not isinstance(node, dict):
+            node = {}
+            arch = f"regions/{rel_path}/REGION.md"
+            txt = (world_dir / arch).read_text(errors="ignore")
+            m = re.search(r"^\s*-\s*类型:\s*(\S+)", txt, re.M)
+            if m:
+                node["类型"] = m.group(1)
+            node["档案"] = arch
+            if parent is None:
+                explored[name] = node
+            else:
+                parent.setdefault("子区域", {})[name] = node
+            added.append(f"已探索区域.{rel_path}")
+        return node
+
+    def walk(d, parent, rel):
+        for sub in sorted(d.iterdir()):
+            if not sub.is_dir():
+                continue
+            name = sub.name
+            sub_rel = f"{rel}/{name}" if rel else name
+            if not (sub / "REGION.md").is_file():
+                continue
+            node = ensure_node(parent, name, sub_rel)
+            walk(sub, node, sub_rel)
+
+    walk(regions_dir, None, "")
+    if added:
+        wm["已探索区域"] = explored
+        wm_fp.write_text(yaml.dump(wm, allow_unicode=True, sort_keys=False, default_flow_style=False), encoding="utf-8")
+        print(f"[OK] world_map 对账补全 {len(added)} 个缺失节点:")
+        for a in added:
+            print(f"  + {a}")
+    else:
+        print("[OK] world_map 已与 regions/ 目录树同步（无缺失节点）")
+
+
 def cmd_validate(world_dir: Path):
     scene_dir = get_scene_dir(world_dir)
     files = discover_files(world_dir, scene_dir)
@@ -1808,7 +1965,7 @@ def cmd_validate(world_dir: Path):
             if data is None:
                 errors.append(f"{key}: 空文件")
         except yaml.YAMLError as e:
-            errors.append(f"{key}: YAML 解析错误: {e}")
+            errors.append(f"{key}: YAML 解析错误: {e}——修复提示: 字段值含半角冒号+空格（': '）或列表语法时需用引号包裹（对齐同字段正常写法·如 scene_state 关键场景信息参考 S05 的 '区域档案: ...' 单引号格式）；坏文件无法被 write-raw 解析时会拒绝写入——先用编辑器直接修复引号后再走 write-raw")
         except Exception as e:
             errors.append(f"{key}: {e}")
     # 检查未转换的 .md 文件（仅检查状态文件，排除角色设定文件和世界观文件）
@@ -1843,7 +2000,7 @@ def cmd_validate(world_dir: Path):
                     else:
                         cv = cdata[k]
                         if isinstance(cv, dict) and cv.get("当前节拍") and not cv.get("下一个节拍(推荐)"):
-                            warnings.append(f"conflicts.yaml: {k} 有当前节拍但缺「下一个节拍(推荐)」（推进轮必写·多候选·方向灵活）")
+                            warnings.append(f"conflicts.yaml: {k} 有当前节拍但缺「下一个节拍(推荐)」（推进轮必写·未决戏剧问题+收敛方向·禁角色推荐行动）")
                 # 1b. 节拍表 CT 对齐（软性）——牵动 CT 的 当前节拍.拍名 应为某事件线 当前拍 的镜像
                 beats = cdata.get(BEAT_TOP_KEY)
                 if isinstance(beats, dict) and beats:
@@ -1940,7 +2097,7 @@ def cmd_validate(world_dir: Path):
         try:
             ws = yaml.safe_load(ws_fp.read_text())
             if isinstance(ws, dict):
-                for need in ("焦点场景", "时间", "地点", "全局标记"):
+                for need in ("焦点场景", "时间", "全局标记"):
                     if need not in ws:
                         warnings.append(f"world_state.yaml: 缺顶层键 {need}")
         except Exception:
@@ -1950,12 +2107,11 @@ def cmd_validate(world_dir: Path):
         try:
             ws = yaml.safe_load(ws_fp.read_text())
             if isinstance(ws, dict):
-                WS_TOP_KEYS = {"焦点场景", "轮次", "时间", "地点", "外部倒计时", "全局标记", "时间线", "重置记录", "叙事约定"}
+                WS_TOP_KEYS = {"焦点场景", "轮次", "时间", "外部倒计时", "全局标记", "时间线", "重置记录", "叙事约定"}
                 WS_TIME_KEYS = {"基准时间", "具体时间", "时间流速比", "前情描述"}
-                WS_LOC_KEYS = {"当前区域", "已探索区域"}
                 for k in ws:
                     if k not in WS_TOP_KEYS:
-                        warnings.append(f"world_state.yaml: 未知顶层键 '{k}'（键表: 焦点场景/轮次/时间/地点/外部倒计时/全局标记/时间线/重置记录/叙事约定）")
+                        warnings.append(f"world_state.yaml: 未知顶层键 '{k}'（键表: 焦点场景/轮次/时间/外部倒计时/全局标记/时间线/重置记录/叙事约定）")
                 t = ws.get("时间")
                 if isinstance(t, dict):
                     for k in t:
@@ -1964,8 +2120,7 @@ def cmd_validate(world_dir: Path):
                 loc = ws.get("地点")
                 if isinstance(loc, dict):
                     for k in loc:
-                        if k not in WS_LOC_KEYS:
-                            warnings.append(f"world_state.yaml: 未知地点子键 '{k}'（键表: 当前区域/已探索区域）")
+                        warnings.append(f"world_state.yaml: 地点.{k} 已废弃（当前区域→scene 区域关联·已探索区域→world_map 镜像·请删除该字段）")
         except Exception:
             pass
     # 4c. 场景骨架占位检查（scene_card 目标/钩子/焦外、start_snapshot 姿态/道具——创建后禁止带模板占位运行）
@@ -1986,6 +2141,36 @@ def cmd_validate(world_dir: Path):
                 ss_text = ss_fp.read_text(encoding="utf-8", errors="ignore")
                 if PLACEHOLDER_RE.search(ss_text):
                     warnings.append(f"{d.name}/start_snapshot.md: 角色姿态/道具位置等仍为模板占位（[字段定义]/(例:) 残留）——创建后应已填充，禁止带占位运行")
+    # 4c2. scene_card 区域关联检查（镜像层：区域行 ∈ regions/ 目录树·必填）
+    regions_dir = world_dir / "regions"
+    if regions_dir.is_dir():
+        for card in sorted(world_dir.glob("scenes/*/scene_card.md")):
+            txt = card.read_text(errors="ignore")
+            m = re.search(r"^\|\s*区域\s*\|\s*([^|]+?)\s*\|", txt, re.M)
+            if not m:
+                warnings.append(f"{card.relative_to(world_dir)}: 缺「区域」行（scene_card 模板必填·完整路径·从 regions/ 目录树引用既有档案）")
+            else:
+                arch = m.group(1).strip()
+                if not (world_dir / arch).is_file():
+                    warnings.append(f"{card.relative_to(world_dir)}: 区域指针悬空（{arch} 不存在——先核对 regions/ 既有档案·指针引用既有路径·确无档案才新建）")
+    # 4e. 已知地点后缀匹配（镜像层：条目 ∈ regions/ 目录树某节点路径的后缀——角色认知根开始·如 Sweetwater/Main Street）
+    regions_dir = world_dir / "regions"
+    if regions_dir.is_dir():
+        tree_paths = [p.parent.relative_to(regions_dir).as_posix() for p in regions_dir.rglob("REGION.md")]
+        for sf in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
+            try:
+                sd = yaml.safe_load(sf.read_text()) or {}
+            except Exception:
+                continue
+            places = sd.get("已知地点")
+            if not isinstance(places, list):
+                continue
+            for pl in places:
+                s = str(pl or "").strip()
+                if not s:
+                    continue
+                if not any(p == s or p.endswith("/" + s) for p in tree_paths):
+                    warnings.append(f"{sf.name}: 已知地点 '{s}' 不在 regions/ 目录树（后缀路径应从目录节点名·角色认知根开始·如 Sweetwater/Main Street）")
     # 4d. 事件触发重置强制校验（loop_machinery §4 触发管道之二）——CHAR_state 当前状态含「重置完成/校准完成」类
     #     字段但该角色无 重置记录 → 叙事演了重置、文件未执行联动表（补执行: worldctl.py <世界> reset-cycle --asset <角色>）
     reset_names = set()
@@ -2050,7 +2235,7 @@ def cmd_validate(world_dir: Path):
                         if arch:
                             afp = world_dir / arch
                             if not afp.is_file():
-                                warnings.append(f"world_map.yaml {path}.档案: 指针悬空（{arch} 不存在——检查 regions/ 路径或补建档案）")
+                                warnings.append(f"world_map.yaml {path}.档案: 指针悬空（{arch} 不存在——先核对 regions/ 既有档案·指针引用既有路径·确无档案才新建）")
                             else:
                                 txt = afp.read_text(errors="ignore")
                                 m = re.search(r"^\s*-\s*类型:\s*(\S+)", txt, re.M)
@@ -2060,6 +2245,36 @@ def cmd_validate(world_dir: Path):
                             walk_archive(sub, f"{path}.{k}")
                     for name, sub in (wm.get("已探索区域") or {}).items():
                         walk_archive(sub, f"已探索区域.{name}")
+                    # 缺失节点报告（镜像层）：目录树节点不在 world_map → 提示运行 map-sync 对账补全
+                    def _node_exists(node, parts):
+                        cur = node
+                        for p in parts:
+                            if not isinstance(cur, dict):
+                                return False
+                            nxt = cur.get(p)
+                            if nxt is None:
+                                kids = cur.get("子区域") or {}
+                                nxt = kids.get(p)
+                                if nxt is None:
+                                    return False
+                            cur = nxt
+                        return True
+                    missing = []
+                    def walk_tree(d, rel):
+                        for sub in sorted(d.iterdir()):
+                            if not sub.is_dir():
+                                continue
+                            name = sub.name
+                            sub_rel = f"{rel}/{name}" if rel else name
+                            if not (sub / "REGION.md").is_file():
+                                continue
+                            if not _node_exists(wm.get("已探索区域") or {}, sub_rel.split("/")):
+                                missing.append(sub_rel)
+                            walk_tree(sub, sub_rel)
+                    walk_tree(regions_dir, "")
+                    if missing:
+                        shown = ", ".join(missing[:5]) + ("..." if len(missing) > 5 else "")
+                        warnings.append(f"world_map.yaml: {len(missing)} 个目录树节点缺失——运行 `worldctl.py {world_dir.name} map-sync` 对账补全（镜像层·节点从目录树派生·禁止手写）: {shown}")
         except Exception:
             pass
     # 5b. foreshadow.yaml 伏笔闭环检查（可选文件·仅世界有该文件时检查）
@@ -2361,7 +2576,7 @@ def _beatsheet_usage():
     print("用法: worldctl.py <世界> beatsheet <子命令> [参数]", file=sys.stderr)
     print("  show [N]          读节拍表（全部 / 指定事件线 N）", file=sys.stderr)
     print("  add               stdin YAML 建线（追加事件线 N·N 自动递增）", file=sys.stderr)
-    print("  stay N            停留当前拍（当前拍内容未完成·拍序保持原样·下轮继续）", file=sys.stderr)
+    print("  stay N            停留当前拍（本拍戏剧问题未兑现·随批写明本轮兑现进展·无进展=重做）", file=sys.stderr)
     print("  advance N 拍名    推进事件线 N 到指定拍（写 当前拍）", file=sys.stderr)
     print("  rewrite N         stdin YAML 换线（现实不承接·判线仍有继续价值时重写事件线 N）", file=sys.stderr)
     print("  clear N           清线（当前拍=余波 或 现实与当前拍不承接时·清空保留字段名）", file=sys.stderr)
@@ -2402,8 +2617,10 @@ def _validate_storyline(line) -> str | None:
             return f"拍名 '{nm}' 重复"
         names.append(nm)
         ev = str(b.get("事件", "")).strip()
-        if ev and "→" not in ev:
-            return f"拍名 '{nm}' 的事件未含 '→'（事件=双方互动·主谓宾齐全·禁止独角戏）"
+        if not ev:
+            return f"拍名 '{nm}' 缺事件戏剧问题（必须可回答·禁止空值）"
+        if any(word in ev for word in ("加剧", "深化", "持续", "不断")) and not any(mark in ev for mark in ("？", "?")):
+            return f"拍名 '{nm}' 的事件是无界持续描述（改写为可回答的戏剧问题）"
     if cur not in names:
         return f"当前拍 '{cur}' 不在拍序拍名中（{names}）"
     return None
@@ -2805,7 +3022,7 @@ def _ts():
 def main():
     parser = argparse.ArgumentParser(description="WorldSim 批量状态管理 V2")
     parser.add_argument("world", help="世界名")
-    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "beatsheet", "reset-cycle", "tmp-clean"])
+    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "beatsheet", "reset-cycle", "tmp-clean", "map-sync"])
     parser.add_argument("--files", help="read 时限定文件 key 列表，逗号分隔")
     parser.add_argument("--full", action="store_true", help="write 时全量覆写")
     parser.add_argument("--batch", action="store_true", help="write-raw/append-raw 批量模式：stdin 为 ###FILE/###KEY/###APPEND 记录格式（⚠非幂等：APPEND 重复执行会重复追加·同一批次只执行一次·验证用 read/validate/--dry-run）")
@@ -2852,6 +3069,8 @@ def main():
         cmd_beatsheet(world_dir, args.extra)
     elif args.action == "reset-cycle":
         sys.exit(cmd_reset_cycle(world_dir, args.world, force=args.force, asset=args.asset))
+    elif args.action == "map-sync":
+        cmd_map_sync(world_dir)
     elif args.action == "tmp-clean":
         cmd_tmp_clean(world_dir)
 

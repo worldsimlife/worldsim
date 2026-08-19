@@ -22,4 +22,4 @@
 世界容器根节点：承载 Delos 主题乐园综合体；子区域=Westworld Park 1（当前唯一开放公园·本世界全部舞台）
 
 ## 子区域
-- Westworld Park 1 → `regions/Westworld Park 1/REGION.md`
+- Westworld Park 1（园区主公园·含 Mesa Hub/Sweetwater 等大区）

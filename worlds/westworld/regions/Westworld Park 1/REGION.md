@@ -23,10 +23,10 @@
 游客入园第一站为 Welcome Center（经 Mesa Hub）；Sweetwater 是新手村与叙事枢纽；高难度区（Pariah/荒野/遗址）是深层剧情舞台
 
 ## 子区域
-- Mesa Hub → `regions/Westworld Park 1/Mesa Hub/REGION.md`
-- Sweetwater → `regions/Westworld Park 1/Sweetwater/REGION.md`
-- Abernathy Ranch → `regions/Westworld Park 1/Abernathy Ranch/REGION.md`
-- Pariah → `regions/Westworld Park 1/Pariah/REGION.md`
-- The Valley Beyond → `regions/Westworld Park 1/The Valley Beyond/REGION.md`
-- Ghost Nation Territory → `regions/Westworld Park 1/Ghost Nation Territory/REGION.md`
-- Escalante → `regions/Westworld Park 1/Escalante/REGION.md`
+- Mesa Hub（园区中枢·地下层·列车与修复设施）
+- Sweetwater（公园第一站·蒸汽列车入园即达）
+- Abernathy Ranch（Sweetwater 东端外·约1英里）
+- Pariah（偏远小镇·法与秩序的边缘）
+- The Valley Beyond（峡谷深处·未开放纵深）
+- Ghost Nation Territory（幽灵国度领地·危险区）
+- Escalante（被掩埋的旧镇·地图外遗迹）
