@@ -1,4 +1,4 @@
-# WorldSim.Life — Where Worlds Come to Life
+# WorldSim — Where Worlds Come to Life
 
 > World Simulation · Narrative Engine · Roleplay
 

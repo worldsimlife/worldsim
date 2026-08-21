@@ -14,8 +14,8 @@
 
 | 优先级 | 通道 | 命令 | 说明 |
 |--------|------|------|------|
-| 1 | 快照恢复 | `sh scripts/snap.sh <世界> load <快照名>` | 最可靠。snap.sh save 是**主动存档**（关键节点/剧情转折/重置前手动执行·自动命名带 r<轮次> 前缀便于识别），不是每轮自动。load 为破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force` |
-| 2 | 场景级重置 | `sh scripts/reset_scene.sh <世界> [<场景ID>] [--force]` | 重置场景到 start_snapshot 开场（世界时间/轮次回退至场景开场·CHAR_state 记忆保留）。破坏性操作——交互提示确认 / 非交互加 `--force` |
+| 1 | 快照恢复 | `python3 scripts/snap.py <世界> load <快照名>` | 最可靠。snap.py save 是**主动存档**（关键节点/剧情转折/重置前手动执行·自动命名带 r<轮次> 前缀便于识别），不是每轮自动。load 为破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force` |
+| 2 | 场景级重置 | `python3 scripts/reset_scene.py <世界> [<场景ID>] [--force]` | 重置场景到 start_snapshot 开场（世界时间/轮次回退至场景开场·CHAR_state 记忆保留）。破坏性操作——交互提示确认 / 非交互加 `--force` |
 | 3 | 手工重建 | 见下方「降级路径」 | 无快照时从历史痕迹反推目标状态（不保证完整） |
 
 **为什么没有每轮自动机制：** 快照（全量）和 undo 日志（增量）都会给每轮高频流程加负担——而回退是低频操作。正确权衡：**负担放在回退发生时**（主动存档一次 / 手工重建一次），不放每轮。
@@ -26,27 +26,27 @@
 |------|-------------|---------|
 | world_state.yaml | 轮次/时间/前情/外部倒计时/时间线/焦点场景（覆盖） | 快照恢复；手工重建时：焦点场景/轮次/时间/前情/倒计时逐项回退 |
 | conflicts.yaml | CT 当前节拍（覆盖）·新 CT（注册） | 恢复旧节拍；删除回退期间注册的 CT |
-| CHAR_{X}_state.yaml | 核心状态/情绪/位置（覆盖）·记忆锚点/反应轨迹/偏离登记（APPEND 累积） | 恢复覆盖字段；裁剪 APPEND 条目到目标轮；**yaml 字符串字段必须用 yaml 库改，禁止行级文本删除** |
+| CHAR_{X}_state.yaml | 核心状态/情绪/位置（覆盖）·记忆锚点/反应轨迹/偏离登记（APPEND 累积） | 恢复覆盖字段；裁剪 APPEND 条目到目标轮；**yaml 字符串字段一律用 `write-raw --batch --force` 覆盖** |
 | scenes/{S}/scene_state.yaml | 场景时间线（APPEND）·核心状态/出场摘要/关键信息（覆盖） | 裁剪时间线到目标时间；恢复覆盖字段 |
 | scenes/INDEX.md | 场景状态 ACTIVE/COMPLETED·新场景登记 | 恢复旧状态；删除回退期间创建的场景行 |
 | scenes/{S}/narrative*.md | write_narrative 轮转（narrative.md=最新·旧文件轮转保留） | narrative.md 恢复目标轮叙事（从轮转文件还原）；删除回退期间产生的轮转文件 |
 | states/pending_actions.yaml | 覆盖 | **最易漏**：删除回退期间新增条目；恢复旧条目 |
 | world_map.yaml | 新区域登记 | 删除回退期间登记 |
-| scenes/{新建场景目录} | init_scene.sh 创建 | 回退到创建前 → 删除整个场景目录 |
+| scenes/{新建场景目录} | init_scene.py 创建 | 回退到创建前 → 删除整个场景目录 |
 
 ## 硬性规则（经验教训·2026-08 Westworld 回退实战）
 
-1. **回退不走 write-raw**——audit 拦截「轮次非单调」（33→31 会被顶回）。回退 = snap.sh load 或直接文件级操作——回退豁免的是**正常推进的写前自动拦截**（回退是显式用户指令）；**不豁免事后核验：回退后必做残留扫描 + validate + audit 全通过才算完成**（见本章 4/5 条）。
-2. **无快照时回退只能靠历史痕迹重建（不保证完整）**：conflicts 当前节拍被覆盖后旧值丢失（从 scene_state 时间线/出场摘要/反应轨迹反推）；CHAR_state 裁剪 APPEND；narrative 从轮转文件还原。**关键节点主动 snap.sh save 可避免降级。**
-3. **yaml 字符串字段禁止行级文本删除**——记忆锚点/反应轨迹/场景时间线是单引号多行字符串，删行会破坏闭合引号 → 整个文件 yaml 解析失败。正确姿势：`yaml.safe_load → 修改 → yaml.safe_dump`（allow_unicode=True, sort_keys=False）。
-4. **写入重定向意识**——write-raw 的 scene_state 落点 = world_state.焦点场景。创建新场景（init_scene.sh）后，后续批次写 scene_state 会**落到新场景**而非你以为的旧场景。回退前先确认内容实际落点，再决定删哪。
+1. **回退优先 snap.py load / reset_scene.py（脚本·最可靠）**；无快照手工重建走 **`write-raw --batch --force`**（显式回退·绕过 audit ④ 轮次单调/⑬b 反应轨迹覆盖写·其余硬性检查照常）——**不加 `--force` 的 write-raw 会被 audit 顶回**（防误操作·正合意图）；回退豁免的是**正常推进的写前自动拦截**（回退是显式用户指令）；**不豁免事后核验：回退后必做残留扫描 + validate + audit 全通过才算完成**（见本章 4/5 条）。
+2. **无快照时回退只能靠历史痕迹重建（不保证完整）**：conflicts 当前节拍被覆盖后旧值丢失（从 scene_state 时间线/出场摘要/反应轨迹反推）；CHAR_state 裁剪 APPEND；narrative 从轮转文件还原。**关键节点主动 snap.py save 可避免降级。**
+3. **回退字段修改（脚本·硬性）：** 一律 **`write-raw --batch --force`**（显式回退·绕过 ④ 轮次单调/⑬b 反应轨迹覆盖写·yaml.dump 序列化·无闭合引号破坏风险）——记忆锚点/信念演化/偏离登记（yaml 列表）`###KEY:` 覆盖为裁剪后列表·场景时间线/反应轨迹（字符串）`###KEY:` 覆盖为裁剪后文本。**yaml 库不再用于回退**（仅坏文件修复例外·见 phase_keeper.md 例外①·脚本对无法解析的文件拒绝写入时直接修引号后回归脚本）；回退后必须过 validate。
+4. **写入重定向意识**——write-raw 的 scene_state 落点 = world_state.焦点场景。创建新场景（init_scene.py）后，后续批次写 scene_state 会**落到新场景**而非你以为的旧场景。回退前先确认内容实际落点，再决定删哪。
 5. **回退后必做残留扫描**——grep 目标轮次之后的时间戳/轮次号/场景ID/被撤销台词关键词；**逐文件核对含 states/pending_actions.yaml**（本次实战即漏在此）。参考扫描面：
    - 时间戳：回退后时段的 `13:54`、`13:56` 等
    - 轮次号：`第32轮`、`第33轮`（CHAR_state 反应轨迹/记忆锚点）
    - 场景ID：`S06`、新场景名
    - 台词/设定：被撤销的台词关键词（如「演了这么多年」「回收借口」）
 6. **回退后必跑 validate**——`python3 scripts/worldctl.py <世界> validate` 全部文件通过才算完成。历史 ASCII 引号污染会让 yaml 解析静默失败（worldctl 容错返回空）——validate 是唯一防线。
-7. **修改前自动备份**——snap.sh load / reset_scene.sh 内置 `_before_` 备份；手工文件级回退前先 `snap.sh save`。
+7. **修改前自动备份**——snap.py load / reset_scene.py 内置 `_before_` 备份；手工文件级回退前先 `snap.py save`。
 
 ## 手工文件级回退的兜底顺序（快照缺失时）
 
@@ -56,12 +56,12 @@
 2. **world_state**：焦点场景/轮次/时间/前情/外部倒计时
 3. **conflicts**：当前节拍（按 scene_state 时间线+出场摘要反推）
 4. **scene_state**：时间线裁剪 + 核心状态/出场摘要恢复
-5. **CHAR_state**：核心状态/情绪/位置恢复 + 记忆锚点/反应轨迹裁剪（yaml 库操作）
+5. **CHAR_state**：核心状态/情绪/位置恢复 + 记忆锚点/反应轨迹裁剪（`write-raw --batch --force` 覆盖）
 6. **pending_actions**：条目回退（最易漏）
 7. **narrative**：主叙事恢复目标轮
 8. **残留扫描 + validate**：全仓 grep + worldctl validate
 
-## 场景级重置（reset_scene.sh）
+## 场景级重置（reset_scene.py）
 
 - 已有能力：narrative 归档置空 + 场景时间线清空 + 核心状态待填充 + 静态基线保留（物理锚点/道具/关键信息/出场摘要）+ 自动存档 + **world_state 时间/轮次回退至场景开场**（start_snapshot 冻结时间/开场轮次）
 - 用途：场景重开（不撤销世界进度）

@@ -15,9 +15,10 @@
 | read（全量） | `python3 {skill_dir}/scripts/worldctl.py <世界> read --all` | 调试用全量（23 文件） |
 | write（增量合并） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write` |
 | write（全量覆写） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write --full` |
-| write-raw（单字段） | `python3 {skill_dir}/scripts/worldctl.py <世界> write-raw <文件key> <YAML键> "内容"` |
+| write-raw（单字段） | `python3 {skill_dir}/scripts/worldctl.py <世界> write-raw <文件key> <YAML键> "内容"` | 仅限短 ASCII 值；**中文/多行内容一律用 `--batch`**（stdin 直通·唯一编码安全通道·CLI 参数传中文随 locale 解码会损坏文件） |
 | write-raw（批量·推荐） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch` | **change set 写入通道**——内置 audit 语义检查（硬性违规单字段顶回·软性警告 validate 汇总）+ 写入后自动轻量校验 |
 | write-raw（批量·预演） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --dry-run` | 解析+audit+对比磁盘差异（新增/覆盖/无变化/顶回），**不落盘**——重跑批次/脚本改过 change set 后先跑这个 |
+| write-raw（批量·回退） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --force` | **显式回退专用**——绕过 audit ④ 轮次单调/⑬b 反应轨迹覆盖写（无快照手工重建时用·见 rollback.md）；其余硬性检查照常·非幂等同前·回退后必做残留扫描+validate |
 | append-raw（单字段追加） | `python3 {skill_dir}/scripts/worldctl.py <世界> append-raw <文件key> <YAML键> "内容"` |
 | audit（预检） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> audit` | 只校验不落盘；通过 → `AUDIT OK`；硬性违规 → 列出全部 exit 1；仅软性警告 → 打印警告 exit 0 |
 | validate | `python3 {skill_dir}/scripts/worldctl.py <世界> validate` | YAML 格式报错 + 内容级警告（load 后/跨 Session 恢复后必跑；含同物理地点场景元素继承检查） |
@@ -34,36 +35,36 @@
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |
 
 > **批次自动执行（硬性）：** change set 中的 `###BEATSHEET:` 由 write-raw --batch 自动执行对应子命令落盘节拍表（`add`/`rewrite` 后直接跟事件线 YAML 块直到下一个 `###` 行·失败=批次拦截 exit 1）——**LLM 不手动调用 beatsheet 写命令**；下表命令保留用于查询（show）与维护。
-> **每轮触发（硬性·完整推进轮·承接判定在④·推进判定在⑦收敛·行动结果后回判）：** 余波→`beatsheet clear N`（不用等余波事件完成·清后建）·空表/新线→`beatsheet add`（顶点拍预填 顶点落点·戏剧目标声明·用户角色为落点必须同时预填 ≥1 个 NPC 爆破项·缺则拒绝）·现实不承接→**默认 `beatsheet clear N` 清线**（低阻力出口·复用余波清线语义·新内核可清后建）·判线仍有继续价值→`beatsheet rewrite N` 重规划（当前拍按现实落位·顶点拍同步重填 顶点落点）·**承接不符时 advance 不参与判定**·承接成立后（⑦·按本轮行动结果回判）：本拍戏剧问题未兑现且本轮行动有兑现进展→`beatsheet stay N`（拍序保持原样·无进展=当前轮设计作废·退回重做）·问题已兑现→`beatsheet advance N 下一拍`（顶点=advance N 余波·受 gate 收束核验）。戏剧家在 change set 中以 `###BEATSHEET:` 声明（write-raw 自动执行）；查询轮/维护轮豁免。
+> **每轮触发（硬性·完整推进轮·承接判定在④·推进判定在⑦收敛·行动结果后回判）：** 余波→`beatsheet clear N`（不用等余波事件完成·清后建）·空表/新线→`beatsheet add`（顶点拍预填 顶点落点·戏剧目标声明·用户角色为落点必须同时预填 ≥1 个 NPC 爆破项·缺则拒绝）·现实不承接→**默认 `beatsheet clear N` 清线**（低阻力出口·复用余波清线语义·新内核可清后建）·判线仍有继续价值→`beatsheet rewrite N` 重规划（当前拍按现实落位·顶点拍同步重填 顶点落点）·**承接不符时 advance 不参与判定**·承接成立后（⑦·按本轮行动结果回判）：本拍戏剧问题未兑现且本轮行动有兑现进展→`beatsheet stay N`（拍序保持原样·无进展=当前轮设计作废·退回重做）·问题已兑现→`beatsheet advance N 拍名（下一拍）`（顶点=advance N 余波·受 gate 收束核验）。戏剧家在 change set 中以 `###BEATSHEET:` 声明（write-raw 自动执行）；查询轮/维护轮豁免。
 
 ## Shell 脚本
 
 | 脚本 | 用法 |
 |------|------|
-| write_narrative.sh | `cat <<'EOF' \| sh {skill_dir}/scripts/write_narrative.sh <世界> <场景ID>`（场景ID支持短 ID S05 或完整目录名）——⚠ 写入磁盘：叙事正文落盘至焦点场景 narrative.md |
-| snap.sh save | `sh {skill_dir}/scripts/snap.sh <世界> save [快照名]`（缺省名自动生成「场景ID-场景名-时间戳」）——⚠ 写入磁盘：复制当前状态至快照目录 |
-| snap.sh load | `sh {skill_dir}/scripts/snap.sh <世界> load <快照名>` | 破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force` |
-| snap.sh list | `sh {skill_dir}/scripts/snap.sh <世界> list` |
-| snap.sh delete | `sh {skill_dir}/scripts/snap.sh <世界> delete <快照名>` | 破坏性操作（不可恢复）——交互提示确认 / 非交互加 `--force` |
-| init_scene.sh | `sh {skill_dir}/scripts/init_scene.sh <世界> <场景ID> <场景名> [--from <旧场景ID>] [--type <类型>] [--time <时间>] [--cast <出场角色>]`（--from：继承旧场景 scene_state 的物理锚点/道具清单——**同物理地点切换必用**，防止漏继承；--type/--time/--cast 自动填充 scene_card 与 INDEX 行，缺省标「待填」） |
-| reset_scene.sh | `sh {skill_dir}/scripts/reset_scene.sh <世界> [<场景ID>] [--force]` | **重置场景到 start_snapshot 状态**——清空场景内动态叙事（narrative 轮转归档 + scene_state 场景时间线/核心状态重置），静态基线（物理锚点/道具/关键场景信息）保留；场景ID 缺省=当前焦点场景；破坏性操作（重置前自动存档可回滚）——交互提示确认 / 非交互加 `--force` |
+| write_narrative.py | `cat <<'EOF' \| python3 {skill_dir}/scripts/write_narrative.py <世界> <场景ID>`（场景ID支持短 ID S05 或完整目录名）——⚠ 写入磁盘：叙事正文落盘至焦点场景 narrative.md |
+| snap.py save | `python3 {skill_dir}/scripts/snap.py <世界> save [快照名]`（缺省名自动生成「场景ID-场景名-时间戳」）——⚠ 写入磁盘：复制当前状态至快照目录 |
+| snap.py load | `python3 {skill_dir}/scripts/snap.py <世界> load <快照名>` | 破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force` |
+| snap.py list | `python3 {skill_dir}/scripts/snap.py <世界> list` |
+| snap.py delete | `python3 {skill_dir}/scripts/snap.py <世界> delete <快照名>` | 破坏性操作（不可恢复）——交互提示确认 / 非交互加 `--force` |
+| init_scene.py | `python3 {skill_dir}/scripts/init_scene.py <世界> <场景ID> <场景名> [--from <旧场景ID>] [--type <类型>] [--time <时间>] [--cast <出场角色>]`（--from：继承旧场景 scene_state 的物理锚点/道具清单——**同物理地点切换必用**，防止漏继承；--type/--time/--cast 自动填充 scene_card 与 INDEX 行，缺省标「待填」） |
+| reset_scene.py | `python3 {skill_dir}/scripts/reset_scene.py <世界> [<场景ID>] [--force]` | **重置场景到 start_snapshot 状态**——清空场景内动态叙事（narrative 轮转归档 + scene_state 场景时间线/核心状态重置），静态基线（物理锚点/道具/关键场景信息）保留；场景ID 缺省=当前焦点场景；破坏性操作（重置前自动存档可回滚）——交互提示确认 / 非交互加 `--force` |
 | reset-cycle | `python3 {skill_dir}/scripts/worldctl.py <世界> reset-cycle [--asset <角色名>]` | 循环世界重置一键命令——**周期重置（缺省）**：全员重置+登记重置记录+重建周期倒计时（write-raw ④b 顶回后调用·豁免判定含于其中·无需前置确认）；**事件触发重置（`--asset <角色名>`）**：叙事中角色被系统强制重置（回收/死亡修复/「校准」）时调用——只重置指定角色+登记事件触发重置记录+**不重建周期倒计时**（叙事事件不移动周期重置点）。两者都：脚本自动存档+联动表压缩/清空/回基线+行为轨道回归占位。**单角色豁免（2026-08-17 加入）：** 预先在 `world_state.重置记录.{角色}` 写 `触发: 豁免` + `重置日期: 第N日` → 该角色在登记的重置点被跳过（园区维护人员按指示跳过该资产·loop_machinery §4）——豁免一次性（按重置日期精确匹配·后续重置点照常重置·由后续重置登记自然覆盖）；豁免角色不登记周期记录（保留豁免标记·validate 8b 跳过）；audit ④b 覆盖判定排除豁免记录（豁免不算全员重置已执行·其他循环角色仍须重置）。调用后 LLM：保留候选微调 / 状态按 LOOPS 补写 / CT 节拍核查 / 重置叙事。幂等（当日已重置则重跑无害） |
-| index.sh add | `sh {skill_dir}/scripts/index.sh <世界> add <ID> <名> [类型] [时间] [出场] [状态]`（动作在前 `index.sh add <世界> …` 同样支持） |
-| index.sh activate | `sh {skill_dir}/scripts/index.sh <世界> activate <场景ID>`（动作在前同样支持） |
-| index.sh update | `sh {skill_dir}/scripts/index.sh <世界> update <场景ID> [--type/--time/--cast/--status]`（动作在前 `index.sh update <世界> <场景ID> …` 同样支持） |
-| index.sh remove | `sh {skill_dir}/scripts/index.sh <世界> remove <场景ID>`（动作在前同样支持） |
-| list_worlds.sh | `sh {skill_dir}/scripts/list_worlds.sh` |
-| create_world.sh | `sh {skill_dir}/scripts/create_world.sh <世界名>` | 创建新世界脚手架——⚠ 写入磁盘：在 `{WORLDS_ROOT}/{世界名}/` 创建目录与模板文件（SETTING/CONFLICTS_SEED·零 yaml）；动态文件由启动世界 init-states 物化（见 session_recovery.md 第二章） |
+| index.py add | `python3 {skill_dir}/scripts/index.py <世界> add <ID> <名> [类型] [时间] [出场] [状态]`（动作在前 `index.py add <世界> …` 同样支持） |
+| index.py activate | `python3 {skill_dir}/scripts/index.py <世界> activate <场景ID>`（动作在前同样支持） |
+| index.py update | `python3 {skill_dir}/scripts/index.py <世界> update <场景ID> [--type/--time/--cast/--status]`（动作在前 `index.py update <世界> <场景ID> …` 同样支持） |
+| index.py remove | `python3 {skill_dir}/scripts/index.py <世界> remove <场景ID>`（动作在前同样支持） |
+| list_worlds.py | `python3 {skill_dir}/scripts/list_worlds.py` |
+| create_world.py | `python3 {skill_dir}/scripts/create_world.py <世界名>` | 创建新世界脚手架——⚠ 写入磁盘：在 `{WORLDS_ROOT}/{世界名}/` 创建目录与模板文件（SETTING/CONFLICTS_SEED·零 yaml）；动态文件由启动世界 init-states 物化（见 session_recovery.md 第二章） |
 | import_card.py | `python {skill_dir}/scripts/import_card.py <世界名> <角色卡.png...>`（支持 .json 卡；`--dry-run` 预览不落盘） | ⚠ 写入磁盘：提取 SillyTavern 角色卡全部字段 → 留存 import/{名}.card.json；正式 CHAR_{名}.md 由 LLM 综合生成（详情见 references/import_cards.md·含隐私披露） |
-| reset_world.sh | `sh {skill_dir}/scripts/reset_world.sh <世界名> [--force]` | 重置世界到创建完成态（纯 .md·零 yaml）——删 scenes/CHAR_state/全部动态 yaml·重置前自动存档可回滚·重置后走启动世界（首次启动态）；破坏性操作——交互提示确认 / 非交互加 `--force` |
+| reset_world.py | `python3 {skill_dir}/scripts/reset_world.py <世界名> [--force]` | 重置世界到创建完成态（纯 .md·零 yaml）——删 scenes/CHAR_state/全部动态 yaml·重置前自动存档可回滚·重置后走启动世界（首次启动态）；破坏性操作——交互提示确认 / 非交互加 `--force` |
 
 ## 用户命令（对话内）
 
 | 命令 | 作用 |
 |------|------|
-| 「创建世界 <名>」 | 走 session_recovery.md 第一章（create_world.sh 脚手架 + 创作填充→校验→收尾提示启动世界） |
-| 「重置世界」/「/reset」 | reset_world.sh——破坏性操作（自动存档可回滚）·重置后走启动世界（首次启动态） |
-| 「重置场景」/「/reset-scene [场景ID]」 | reset_scene.sh——重置指定场景（缺省=当前焦点场景）到 start_snapshot 状态（自动存档可回滚） |
+| 「创建世界 <名>」 | 走 session_recovery.md 第一章（create_world.py 脚手架 + 创作填充→校验→收尾提示启动世界） |
+| 「重置世界」/「/reset」 | reset_world.py——破坏性操作（自动存档可回滚）·重置后走启动世界（首次启动态） |
+| 「重置场景」/「/reset-scene [场景ID]」 | reset_scene.py——重置指定场景（缺省=当前焦点场景）到 start_snapshot 状态（自动存档可回滚） |
 | 「启动世界」「继续世界」「恢复」等（会话首轮） | 启动世界统一序列（首次启动/跨 Session 恢复）——走 session_recovery.md 第二章：物化→入场物化→分层加载→validate→循环核对→描绘→停住·不推进 |
 | `/scene <ID>` / `/scene new <名>` | 场景切换 / 新建场景 |
 | `/conflicts` | 查看冲突 |
@@ -78,8 +79,8 @@
 
 ## 执行频率分类
 
-- **每轮执行：** write_narrative.sh + worldctl.py（write-raw --batch——**change set 原样转交 + 内置 audit + 写入后自动校验**）
-- **场景切换时：** init_scene.sh + worldctl.py 更新 world_state 顶层字段（**焦点场景** 唯一权威源·必须同步 INDEX ACTIVE 行）
-- **存档管理：** snap.sh save / snap.sh load
+- **每轮执行：** write_narrative.py + worldctl.py（write-raw --batch——**change set 原样转交 + 内置 audit + 写入后自动校验**）
+- **场景切换时：** init_scene.py + worldctl.py 更新 world_state 顶层字段（**焦点场景** 唯一权威源·必须同步 INDEX ACTIVE 行）
+- **存档管理：** snap.py save / snap.py load
 - **跨 Session：** worldctl.py read
 - **清理：** worldctl.py delete（CT 归档 / pending 条目移除）

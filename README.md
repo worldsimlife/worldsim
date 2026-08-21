@@ -1,4 +1,4 @@
-# WorldSim.Life — Where Worlds Come to Life
+# WorldSim — Where Worlds Come to Life
 
 > 世界模拟器 · 故事引擎 · 角色扮演
 

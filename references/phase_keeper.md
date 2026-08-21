@@ -1,5 +1,7 @@
 # 阶段3 · 场记（阶段规则·阶段3 开始前必读）
 
+> 全局铁律=SKILL.md「通用约束」（三角色共用·硬性）——本文件为阶段规则，与全局铁律冲突时全局铁律优先。
+
 > **落盘契约：** 每轮叙事与状态写入 = 进入确认（references/disclosures.md）已向用户声明的会话契约（读写本地世界文件）；覆盖型操作（重置/删除/快照载入）执行前单独向用户确认。
 
 ### 写语义三分
@@ -13,24 +15,24 @@ world_state：时间.具体时间（旧值+本轮时长·方向只增不减·**�
 **叙事-状态同批（硬性·防脱钩）：** 状态演进的叙事显影必须同批落对应状态字段——裂缝加深/防御降级→`防御有效性`/`压力水平`、防御重构→`防御形态`/`崩溃表现`/`防御有效性`、关系变化→`人际动态`、抉择落定→`决策状态`：叙事写了「防御当众失效」而防御字段仍=有效 = 脱钩 = 本轮未完成（顶点出线核验即查此类脱钩）。
 
 ### 角色覆盖同批（硬性·防漏写）
-阶段1在 `###META` 写出 `角色覆盖: Name=更新,Other=无变化(理由)`；场记不根据叙事猜测或重组角色名单，只原样转交。`更新`角色必须有对应 `CHAR_*_state` 操作；`无变化`必须附理由。审计发现 CT 角色反应与覆盖声明或 CHAR 写入存在差集时，禁止进入叙事写入。
+阶段1在 `###META` 写出 `角色覆盖: Name=更新,Other=无变化(理由)`；场记不根据叙事猜测或重组角色名单，只原样转交。`更新`角色必须有对应 `CHAR_*_state` 操作；`无变化`必须附理由。审计发现 CT 角色反应与覆盖声明或 CHAR 写入存在差集 → 差集清零后才进入叙事写入。
 
 ### 写入方式
-**批次字段级格式首轮/不确定时必读 references/write_protocol.md 全文**（batch 结构·列表字段边界·`write` 与 write-raw 分工·嵌套映射点路径——禁止读源码替代）；熟练后不必每轮读。write-raw --batch（###FILE:/###KEY:/###APPEND:/###DELETE: + **###BEATSHEET: 自动执行节拍表**）——**change set 原样转交**：阶段1 输出的批次即最终写入批次，场记不翻译、不重组，只 stdin 直通 + audit + 写入。**破坏性操作警告（硬性）：** `###DELETE:` 为破坏性操作——删除前确认目标记录与范围，删除后建议 `snap.sh save` 留底。**非幂等警告（硬性）：** write-raw --batch 是副作用命令——`###APPEND:` 重复执行会把累积字段（记忆锚点/场景时间线等）**再追加一遍**。同一批次只允许执行一次。执行后的确认只用只读手段（`read` / `validate` / 重跑 `--dry-run` 对比磁盘差异），**禁止重放 write 命令**做"确认"。**内置 audit**：硬性违规单字段顶回（角色反应四件套缺一/代价后为空/资源载体缺失/轮次非单调/scene_state 无焦点场景落点），其余字段照写；软性警告（记忆锚点超限/必含项缺失）不拦截，validate 汇总。输出不向用户转发；但执行者**必须查看完整输出（stdout+stderr）**——落盘失败会在 stdout 打 `[FAIL]` 且 exit 1，出现 `[FAIL]`/`[ERR]` 必须处理后才能进入收尾自查。narrative 用 write_narrative.sh 写入，旧文件自动轮转。格式详见 references/write_protocol.md。
+**批次字段级格式首轮/不确定时必读 references/write_protocol.md 全文**（batch 结构·列表字段边界·`write` 与 write-raw 分工·嵌套映射点路径——格式疑问以本文件原文为准，源码不作为格式依据）；熟练后不必每轮读。write-raw --batch（###FILE:/###KEY:/###APPEND:/###DELETE: + **###BEATSHEET: 自动执行节拍表**）——**change set 原样转交**：阶段1 输出的批次即最终写入批次，场记不翻译、不重组，只 stdin 直通 + audit + 写入。**破坏性操作警告（硬性）：** `###DELETE:` 为破坏性操作——删除前确认目标记录与范围，删除后建议 `snap.py save` 留底。**非幂等警告（硬性）：** write-raw --batch 是副作用命令——`###APPEND:` 重复执行会把累积字段（记忆锚点/场景时间线等）**再追加一遍**。同一批次只允许执行一次。执行后的确认只用只读手段（`read` / `validate` / 重跑 `--dry-run` 对比磁盘差异），**禁止重放 write 命令**做"确认"。**内置 audit**：硬性违规单字段顶回（角色反应四件套缺一/代价后为空/资源载体缺失/轮次非单调/scene_state 无焦点场景落点），其余字段照写；软性警告（记忆锚点超限/必含项缺失）不拦截，validate 汇总。输出不向用户转发；但执行者**必须查看完整输出（stdout+stderr）**——落盘失败会在 stdout 打 `[FAIL]` 且 exit 1，出现 `[FAIL]`/`[ERR]` 必须处理后才能进入收尾自查。narrative 用 write_narrative.py 写入，旧文件自动轮转。格式详见 references/write_protocol.md。
 
-**状态文件唯一写入通道（硬性）：** 状态文件（scene_state / CHAR_*_state / world_state / conflicts / pending_actions）写入唯一通道 = `worldctl write-raw` / `append-raw`（yaml.dump 序列化兜底——含 `: ` 的值自动加引号）；**禁止 write_file/append_file 直接编辑状态文件**（绕过序列化 = 裸文本 YAML 风险·实例：S06 关键场景信息裸文本致解析失败）。**例外（低频维护·不属每轮写入）：** ① 坏文件修复——worldctl 对无法解析的文件拒绝写入（防静默清空）——此时先直接编辑修复 YAML 引号，修复后回归 write-raw；② 记忆维护/去重——按 references/write_protocol.md「修改/去重数据文件的准则」执行（read 确认闭合引号 → 完整 ID 分组 → audit/validate）。
+**状态文件唯一写入通道（硬性）：** 状态文件（scene_state / CHAR_*_state / world_state / conflicts / pending_actions）修改**唯一通道 = `worldctl` 脚本子命令**（write-raw / append-raw / write / delete·yaml.dump 序列化兜底——含 `: ` 的值自动加引号）；**禁止用 edit/write 等文件编辑工具直接改写状态 YAML**（绕过脚本序列化 = 裸文本/格式破坏风险·实例：S06 关键场景信息裸文本致解析失败）。**例外（低频·不属每轮写入）：** ① **坏文件修复（唯一直接编辑例外）**——worldctl 对无法解析的文件拒绝写入（防静默清空）——此时先直接编辑修复 YAML 引号，修复后回归 write-raw；② 记忆维护/去重——**一律走脚本**（同类融合/淘汰/压缩/去重 = `###KEY: 记忆锚点` 覆盖为处理后完整列表·新增 = `###APPEND:`·详见 references/write_protocol.md「修改/去重数据文件的准则」）；③ 回退手工重建——一律走脚本：`write-raw --batch --force`（显式回退·绕过 ④ 轮次单调/⑬b 反应轨迹覆盖写·见 references/rollback.md）。
 
-**收尾自查（硬性·防漏报）：** validate 输出必须查看完整问题清单——禁止用 grep 过滤截断输出（如只滤「叙事新鲜度|ERROR」会漏掉 `[VALIDATE] N 个问题:` 行·N>0 即失败）；确需过滤时条件必须覆盖 `VALIDATE|ERROR|ERR|FAIL` 全类问题行。
+**收尾自查（硬性·防漏报）：** validate 输出必须查看完整问题清单——过滤条件必须覆盖 `VALIDATE|ERROR|ERR|FAIL` 全类问题行（只滤「叙事新鲜度|ERROR」会漏掉 `[VALIDATE] N 个问题:` 行·N>0 即失败）。
 
 ### 场景切换（物理空间变化 或 时间区间跨越——跨天必切·无豁免）
-> **执行者=场记·阶段3（硬性）**：本流程全部由场记执行——戏剧家阶段1 只输出 change set 决策，不调用脚本、不创建场景文件；场景内容文件（scene_card/start_snapshot/CHAR_state）由场记在阶段3 参考 templates/ 生成。（重置由周期倒计时管道机械触发——write-raw audit 拦截 + `reset-cycle`·与场景切换解耦·见 commands.md）**场景目录先于写入（硬性）：** 任何场景的 scene_state 写入前，该场景目录必须先创建（初始场景=启动序列入场物化创建·切换轮=旧收尾批后 init_scene 建新场景）；目录缺失时 write-raw 会顶回（写入点硬性拦截·gate/audit 仅软提示）。
+> **执行者=场记·阶段3（硬性）**：本流程全部由场记执行——戏剧家阶段1 只输出 change set 决策；脚本调用与场景内容文件（scene_card/start_snapshot/CHAR_state）创建由场记在阶段3 执行（参考 templates/）。（重置由周期倒计时管道机械触发——write-raw audit 拦截 + `reset-cycle`·与场景切换解耦·见 commands.md）**场景目录先于写入（硬性）：** 任何场景的 scene_state 写入前，该场景目录必须先创建（初始场景=启动序列入场物化创建·切换轮=旧收尾批后 init_scene 建新场景）；目录缺失时 write-raw 会顶回（写入点硬性拦截·gate/audit 仅软提示）。
 1. **冻结旧场景**（终态入 scene_state+时间线提炼）→ INDEX 旧场景 COMPLETED
-2. **创建新场景**：init_scene.sh（目录/narrative/INDEX ACTIVE/继承——**脚本只建基础设施；scene_state 静态基线随剧情轮元素注册自然累积（继承场景由场记按 `--from` 清单 + 当前时间演进填充）——禁止带模板占位（[字段定义]/(例:) 残留）运行**）
-3. **同物理地点切换继承**（场景名含相同地点词，如 Mariposa-夜→Mariposa-清晨）必须继承旧场景物理锚点/道具清单（`init_scene.sh … --from <旧场景ID>`）——脚本整块继承；**继承场景的道具状态应按当前时间演进**（倒了的酒隔几天会干涸——位置一般不变），禁止从零重建锚点导致漏继承
+2. **创建新场景**：init_scene.py（目录/narrative/INDEX ACTIVE/继承——**脚本只建基础设施；scene_state 静态基线随剧情轮元素注册自然累积（继承场景由场记按 `--from` 清单 + 当前时间演进填充）——模板占位（[字段定义]/(例:)）清零后才运行**）
+3. **同物理地点切换继承**（场景名含相同地点词，如 Mariposa-夜→Mariposa-清晨）必须继承旧场景物理锚点/道具清单（`init_scene.py … --from <旧场景ID>`）——脚本整块继承；**继承场景的道具状态应按当前时间演进**（倒了的酒隔几天会干涸——位置一般不变），锚点清单=旧场景继承（--from）
 4. **登记**：world_state 顶层 `焦点场景` 更新（唯一权威源）→ 出场角色核查（缺 CHAR 文件即补）→ 连续性核查（服装/道具/伤口一致）→ world_map 登记
 5. **scene_state 创建边界（硬性）**：scene_state 元素（物理锚点/道具/核心状态/关键场景信息/出场角色摘要）随剧情轮元素注册自然累积（入场帧已涉及的元素随 change set 正常记录）——`场景时间线` 留空，剧情事件一律由每轮 change set `###APPEND:` 追加（预写=把计划当记录·双写=重复）
-6. **时间线压缩时机（硬性·场景 COMPLETE 时做）**：把该场景 scene_state.场景时间线（细粒度）提炼压缩为 world_state.时间线.{旧场景ID} 粗粒度摘要（≤3 转折点·每条≤120字·事件内部禁止用「·」）——**压缩在 COMPLETE 时主动执行，不留给 validate 告警**
-7. **跨场景轮落盘顺序（硬性·场记·防落点错位）**：① **旧场景收尾先写**（焦点场景=旧场景，`###FILE: scene_state` 落在旧场景）——旧场景收尾条目（scene_state/CHAR_state/conflicts）→ **INDEX 旧场景 COMPLETED + world_state 时间线压缩** → 旧场景收尾叙事 `write_narrative.sh` 写入旧场景 narrative.md；② 再 init_scene 创建新场景（焦点切换）；③ **新场景入场帧**（焦点已切）——入场帧元素写入新场景 scene_state → 入场帧叙事 `write_narrative.sh` 写入新场景 narrative.md；④ validate。**禁止在焦点切换后再写旧场景条目/叙事**（scene_state 落点=焦点场景目录·已重定向）。**批次拆分（硬性·同 scene_management §9）：** 阶段1 的 change set 按落点拆为**两个 write-raw 批次各执行一次**——旧场景收尾批次（焦点=旧场景）→ init_scene（焦点切换）→ 新场景入场帧批次（焦点=新场景）；**禁止整批一次执行**（批次落点=焦点场景目录·不拆批则新场景条目全部落进旧场景）。
+6. **时间线压缩时机（硬性·场景 COMPLETE 时做）**：把该场景 scene_state.场景时间线（细粒度）提炼压缩为 world_state.时间线.{旧场景ID} 粗粒度摘要（≤3 转折点·每条≤120字·事件内部用「，」/「→」分隔）——**压缩在 COMPLETE 时主动执行，不留给 validate 告警**
+7. **跨场景轮落盘顺序（硬性·场记·防落点错位）**：① **旧场景收尾先写**（焦点场景=旧场景，`###FILE: scene_state` 落在旧场景）——旧场景收尾条目（scene_state/CHAR_state/conflicts）→ **INDEX 旧场景 COMPLETED + world_state 时间线压缩** → 旧场景收尾叙事 `write_narrative.py` 写入旧场景 narrative.md；② 再 init_scene 创建新场景（焦点切换）；③ **新场景入场帧**（焦点已切）——入场帧元素写入新场景 scene_state → 入场帧叙事 `write_narrative.py` 写入新场景 narrative.md；④ validate。**焦点切换后只写新场景条目**（scene_state 落点=焦点场景目录·已重定向）。**批次拆分（硬性·同 scene_management §9）：** 阶段1 的 change set 按落点拆为**两个 write-raw 批次各执行一次**——旧场景收尾批次（焦点=旧场景）→ init_scene（焦点切换）→ 新场景入场帧批次（焦点=新场景）；**批次按落点拆分执行**（批次落点=焦点场景目录·不拆批则新场景条目全部落进旧场景）。
 8. **输出**：一条正文按时间顺序合并（旧场景收尾 → 新场景入场帧）·保持「输出=回合终点」单一性
 细则详见 references/scene_management.md（含移动场景协议/waypoint/存档读档/状态校验/焦外协议）。
 
@@ -38,16 +40,16 @@ world_state：时间.具体时间（旧值+本轮时长·方向只增不减·**�
 **原则：回退是低频操作——正常每轮零额外动作。成本只在回退发生时承担。**
 
 **通道（按可用性优先）：**
-1. **快照恢复（最可靠）**：`sh scripts/snap.sh <世界> load <快照名>`——snap.sh save 是**主动存档/关键节点存档**（自动命名带 r<轮次> 前缀），不是每轮自动；用户或引擎在关键节点（场景切换/剧情转折）主动存。load 为破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force`
-2. **场景级重置**：`sh scripts/reset_scene.sh <世界> [<场景ID>] [--force]`——重置场景到 start_snapshot 开场（**世界时间/轮次回退至场景开场**·静态基线保留·CHAR_state 记忆保留·**累积字段按开场轮次裁剪：记忆锚点/信念演化/偏离登记中 轮N≥开场轮次 的条目删除**）。破坏性操作——交互提示确认 / 非交互加 `--force`
+1. **快照恢复（最可靠）**：`python3 scripts/snap.py <世界> load <快照名>`——snap.py save 是**主动存档/关键节点存档**（自动命名带 r<轮次> 前缀），不是每轮自动；用户或引擎在关键节点（场景切换/剧情转折）主动存。load 为破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force`
+2. **场景级重置**：`python3 scripts/reset_scene.py <世界> [<场景ID>] [--force]`——重置场景到 start_snapshot 开场（**世界时间/轮次回退至场景开场**·静态基线保留·CHAR_state 记忆保留·**累积字段按开场轮次裁剪：记忆锚点/信念演化/偏离登记中 轮N≥开场轮次 的条目删除**）。破坏性操作——交互提示确认 / 非交互加 `--force`
 3. **手工重建（无快照时）**：按 `references/rollback.md` 的降级路径逐文件处理——从 scene_state 时间线/CHAR_state 反应轨迹（保留最近5轮）/narrative 轮转文件反推目标状态
 
 **硬性规则（实战教训）：**
-1. **回退不走 write-raw**——audit 拦截「轮次非单调」；回退 = snap load 或直接文件级操作
-2. **yaml 字符串字段（反应轨迹/场景时间线）禁止行级文本删除**——单引号多行字符串删行会破坏闭合引号→整文件解析失败；必须 yaml 库修改（`yaml.safe_load → 修改 → yaml.safe_dump`）。**记忆锚点/信念演化/偏离登记为 yaml 列表——按元素操作（删除元素/改字段），不碰其他元素**
+1. **回退优先 snap.py load / reset_scene.py（脚本·最可靠）**；无快照手工重建走 **`write-raw --batch --force`**（显式回退·绕过 ④ 轮次单调/⑬b 反应轨迹覆盖写）——不加 `--force` 的 write-raw 会被 audit 顶回（防误操作·正合意图）
+2. **回退字段修改（脚本·硬性）**：一律 **`write-raw --batch --force`**（显式回退·绕过 ④ 轮次单调/⑬b 反应轨迹覆盖写·yaml.dump 序列化·无闭合引号破坏风险）——记忆锚点/信念演化/偏离登记（yaml 列表）`###KEY:` 覆盖为裁剪后列表·场景时间线/反应轨迹（字符串）`###KEY:` 覆盖为裁剪后文本。**yaml 库仅坏文件修复例外**（见上例外①·直接修引号后回归脚本）；回退后必须过 validate。
 3. **写入重定向意识**——write-raw 的 scene_state 落点=焦点场景；init_scene 创建新场景后批次会落到新场景，回退前先确认内容实际落点
 4. **回退后必做残留扫描**（grep 回退后时间戳/轮次/场景ID/台词·含 states/pending_actions——最易漏）+ **validate** 全通过才算完成
-5. 修改前自动备份（snap load / reset_scene 内置 _before_ 快照）；手工回退前先 `snap.sh save`
+5. 修改前自动备份（snap load / reset_scene 内置 _before_ 快照）；手工回退前先 `snap.py save`
 
 涉及文件清单与逐文件处理方式、无快照降级路径详见 `references/rollback.md`。
 

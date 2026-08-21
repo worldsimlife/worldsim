@@ -28,6 +28,8 @@ worldctl.py — WorldSim 批量状态管理 V2
                                          ← 循环世界周期重置（全员机械重置+登记+重建倒计时）
   worldctl.py <世界名> init-states      ← 首次启动物化缺失动态文件（幂等·模板+SEED+CHAR_state 骨架·LF·有 regions/ 自动对账）
   worldctl.py <世界名> map-sync         ← world_map 镜像层对账（regions/ 目录树 → 补缺失节点）
+  worldctl.py <世界名> lint              ← 规范化检查：报告 YAML 引号/类型问题（只读，不修改）
+  worldctl.py <世界名> fix               ← 规范化重写：修复引号/类型问题（snap 自动备份 + validate）
   worldctl.py <世界名> tmp-clean         ← 清理该世界 tmp/ 下过程临时文件（跨会话恢复时自动执行）
 
 文件格式约定:
@@ -139,9 +141,24 @@ def discover_files(world_dir: Path, scene_dir: Path | None) -> dict[str, Path]:
     return files
 
 # ── CHAR key 命名归一化 ──────────────────────────────────────────
+def _normalize_file_key(key: str) -> str:
+    """文件 key 归一化（对齐 write_protocol「FILE key 注册表·兼容写法自动剥离」承诺）：
+    剥 .yaml/.yml 后缀、剥 states/ 或任意路径前缀（含反斜杠）——使
+    `world_state.yaml` / `states/pending_actions.yaml` / `scenes/S01-xx/scene_state.yaml` 等写法
+    均归一到注册表 stem（world_state/pending_actions/scene_state…）。"""
+    k = (key or "").strip().replace("\\", "/")
+    if k.endswith(".yaml"):
+        k = k[:-5]
+    elif k.endswith(".yml"):
+        k = k[:-4]
+    k = k.split("/")[-1]
+    return k
+
+
 def resolve_char_file(existing: dict, key: str, world_dir: Path):
     """解析 CHAR_* 写入目标。已存在→直接映射；不存在→检查空格/下划线互换及缺失 _state 后缀的相似 key，
     命中则映射到已有文件并警告（杜绝同一角色产生两份状态文件）；否则→按 key 新建。"""
+    key = _normalize_file_key(key)
     if key in existing:
         return existing[key], None
     if key.startswith(CHAR_STATE_PREFIX):
@@ -579,7 +596,7 @@ def _char_roles_in_reaction_ops(ops, world_dir):
     return roles
 
 
-def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_scene_dir=True):
+def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_scene_dir=True, force=False):
     """语义不变量检查（change set 草案→硬性违规/软性警告分类）。
     enforce_scene_dir=False（gate/audit 预检路径）：scene_state 落点检查降级为软提示——
     场景目录由场记阶段3 init_scene 创建（先于批次写入），预检时目录可能尚不存在，不误拦。
@@ -713,13 +730,13 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_s
                 if len(content) > ANCHOR_LIMIT_TOTAL:
                     soft.append((idx, f"{file_key}.记忆锚点: 覆盖写入总量 {len(content)} 字 > {ANCHOR_LIMIT_TOTAL} 校验线"))
 
-        # ④ 轮次单调（时间只增不减）
+        # ④ 轮次单调（时间只增不减）——显式回退（--force）豁免：轮次可回退，但必须仍为整数
         if file_key == "world_state" and key_path == ["轮次"]:
             try:
                 new_val = int(content.strip())
                 old_val = int((current.get("world_state", {}).get("轮次") or 0))
-                if new_val <= old_val:
-                    hard.append((idx, f"world_state.轮次: {new_val} 必须 > 当前值 {old_val}（时间只增不减）"))
+                if new_val <= old_val and not force:
+                    hard.append((idx, f"world_state.轮次: {new_val} 必须 > 当前值 {old_val}（时间只增不减·显式回退用 write-raw --batch --force）"))
             except ValueError:
                 hard.append((idx, f"world_state.轮次: 非整数 '{content.strip()}'"))
 
@@ -843,7 +860,7 @@ def check_batch(ops, world_dir, beatsheet_lines=None, meta_lines=None, enforce_s
 
         # ⑬b 反应轨迹覆盖写检测（硬性——防覆盖写丢失历史：覆盖写必须保留旧值首末轮次标记·窗口由脚本自动裁剪·禁止手动删块）
         # 重置豁免：该角色已登记重置（world_state.重置记录.{角色}）→ 按 loop_machinery §4 联动表清空/压缩重建，不拦
-        if (file_key.startswith(CHAR_STATE_PREFIX) and key_path == ["反应轨迹"] and not append):
+        if (file_key.startswith(CHAR_STATE_PREFIX) and key_path == ["反应轨迹"] and not append and not force):
             _fp_r, _ = resolve_char_file(existing, file_key, world_dir)
             if _fp_r is not None:
                 _stem = _fp_r.stem[len(CHAR_STATE_PREFIX):]
@@ -1032,7 +1049,7 @@ def quick_validate_summary(world_dir):
             print(f"  …等 {len(warnings) - 5} 条", file=sys.stderr)
 
 
-def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append_mode: bool = False, dry_run: bool = False):
+def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append_mode: bool = False, dry_run: bool = False, force: bool = False):
     """
     write-raw: 直接写原始文本到指定字段，绕过 YAML 输入解析。
     append-raw: 追加到指定字段末尾（累积字段专用：记忆锚点/信念演化/场景时间线/关键场景信息）。
@@ -1056,6 +1073,8 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
     注意: write-raw --batch 非幂等——###APPEND: 重复执行会把累积字段（记忆锚点/场景时间线等）重复追加。
     同一批次只执行一次；执行后的确认用 read / validate / 重跑 --dry-run（只读），禁止重放 write 命令做验证。
     脚本内置重复追加检测：APPEND 内容已存在于字段中 → 自动跳过并打印 [SKIP]。
+    --force（显式回退专用·仅 --batch）：绕过 audit ④ 轮次单调 与 ⑬b 反应轨迹覆盖写——回退手工重建（无快照）时用；
+    其余数据完整性硬性检查（① 角色反应四件套/② 载体/⑤ scene_state 落点）照常拦截。回退后必做残留扫描 + validate。
     """
 
     def write_one(file_key: str, key_path_str: str, content: str, append: bool = False):
@@ -1219,7 +1238,7 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
 
         # 解析 + 语义不变量检查（audit）——硬性违规 → 单字段顶回（不整批拒绝）
         ops, parse_errors, meta_lines, beatsheet_lines = parse_batch_entries(lines)
-        hard, soft = check_batch(ops, world_dir, beatsheet_lines, meta_lines)
+        hard, soft = check_batch(ops, world_dir, beatsheet_lines, meta_lines, force=force)
         blocked = {idx for idx, _ in hard}
         if beatsheet_lines:
             print(f"[AUDIT] ###BEATSHEET 回显: {beatsheet_lines[0][0]}", file=sys.stderr)
@@ -1319,7 +1338,20 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
     existing = discover_files(world_dir, scene_dir)
 
     if len(extra) < 2:
-        print(f"[ERR] 用法: worldctl.py <世界> {'append-raw' if append_mode else 'write-raw'} <文件key> <YAML键路径> [内容]", file=sys.stderr)
+        hint = ""
+        try:
+            raw = sys.stdin.buffer.read()
+            if raw.strip():
+                if b"###FILE:" in raw or b"###KEY:" in raw:
+                    hint = "检测到 ###FILE:/###KEY: 记录格式——记录式批量请用 write-raw --batch（stdin 直通·中文编码安全）"
+                else:
+                    hint = "检测到整份 YAML 输入——整份覆盖请用 write --full（stdin YAML）；增量合并用 write"
+        except Exception:
+            hint = ""
+        msg = f"[ERR] 用法: worldctl.py <世界> {'append-raw' if append_mode else 'write-raw'} <文件key> <YAML键路径> [内容]"
+        if hint:
+            msg += "\n       " + hint
+        print(msg, file=sys.stderr)
         sys.exit(1)
 
     file_key = extra[0]
@@ -1787,7 +1819,7 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
             if not raw.strip():
                 print("[GATE] 未提供叙事（stdin 为空）——W1/W3 无法代码化核验，请人工逐项作答", file=sys.stderr)
                 return
-            # W4 可代码化部分（与 write_narrative.sh 同一套逻辑）：叙事「」内专名若命中锚点词，
+            # W4 可代码化部分（与 write_narrative.py 同一套逻辑）：叙事「」内专名若命中锚点词，
             # 必须与注册名有完整包含关系；位置型锚点核对叙事同语境无矛盾位置词
             registered = {}
             scenes_dir = world_dir / "scenes"
@@ -2640,7 +2672,7 @@ def cmd_validate(world_dir: Path):
                 nf = scene_dir / "narrative.md"
                 if nf.exists():
                     if nf.stat().st_mtime < ws_fp2.stat().st_mtime - 300:  # 早于 world_state 5 分钟以上
-                        warnings.append(f"叙事新鲜度: {scene_dir.name}/narrative.md 修改时间早于 world_state.yaml——叙事可能未落盘（每轮阶段2 叙事应经 write_narrative.sh 写入，缺失=连续性断裂）")
+                        warnings.append(f"叙事新鲜度: {scene_dir.name}/narrative.md 修改时间早于 world_state.yaml——叙事可能未落盘（每轮阶段2 叙事应经 write_narrative.py 写入，缺失=连续性断裂）")
                 else:
                     warnings.append(f"叙事新鲜度: {scene_dir.name}/narrative.md 不存在（焦点场景叙事文件缺失）")
     except Exception:
@@ -2914,6 +2946,312 @@ def cmd_tmp_clean(world_dir: Path):
     print(f"[OK] tmp 清理完成: 删除 {n} 个文件（{world_dir.name}/tmp/）")
 
 
+# ── LINT / FIX 引号/类型规范化 ────────────────────────────────────
+_LEADING_SPECIAL = re.compile(r"^[\s]*(- |[\-\[\{\"#&*!|>%@`,? ])")
+_YAML_BOOL_NULL = re.compile(r"^(yes|no|on|off|true|false|~|null)$", re.IGNORECASE)
+_NUM_RE = re.compile(r"^(0[xXoO][0-9a-fA-F]+|\d+([.]\d*)?([eE][+-]?\d+)?|[+-]?\d+([.]\d*)?([eE][+-]?\d+)?)$")
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}([ T]\d{2}:\d{2}(:\d{2})?)?$")
+
+
+def _strip_yaml_inline_comment(raw: str) -> str:
+    """从 raw 值中剥离尾部 YAML 行内注释（# ...），保留引号包裹的实际值。
+    处理：'...' # comment / "..." # comment / 无引号值尾部 # comment。"""
+    raw_s = raw.rstrip()
+    if not raw_s:
+        return raw_s
+    if raw_s.startswith("'"):
+        i = 1
+        while i < len(raw_s):
+            if raw_s[i] == "'":
+                if i + 1 < len(raw_s) and raw_s[i + 1] == "'":
+                    i += 2
+                else:
+                    rest = raw_s[i + 1:].strip()
+                    if not rest or rest.startswith("#"):
+                        return raw_s[:i + 1]
+                    return raw_s
+            i += 1
+    elif raw_s.startswith('"'):
+        i = 1
+        while i < len(raw_s):
+            if raw_s[i] == "\\":
+                i += 2
+            elif raw_s[i] == '"':
+                rest = raw_s[i + 1:].strip()
+                if not rest or rest.startswith("#"):
+                    return raw_s[:i + 1]
+                return raw_s
+            i += 1
+    else:
+        # 无引号值：剥离尾部 ` #...` 注释（YAML 规范：# 前须有空白才起注释）
+        m = re.search(r"\s+#", raw_s)
+        if m:
+            candidate = raw_s[:m.start()].rstrip()
+            if candidate:
+                return candidate
+    return raw_s
+
+
+def _check_raw_needs_quoting(raw: str) -> tuple[bool, str]:
+    """判断裸值是否需要引号包裹。返回 (needs_quote, reason)。"""
+    if not raw:
+        return False, ""
+    # 先剥离注释再判断——注释不影响引号/类型安全
+    clean = _strip_yaml_inline_comment(raw)
+    # 已有引号包裹（单引号/双引号）→ 值安全，不需额外引号
+    if (clean.startswith("'") and clean.endswith("'") and len(clean) >= 2) or \
+       (clean.startswith('"') and clean.endswith('"') and len(clean) >= 2):
+        return False, ""
+    # 空容器 / block scalar 标记（去注释后）
+    if clean in ("{}", "[]", "|", ">"):
+        return False, ""
+    # 以特殊字符开头 → 需引号
+    if _LEADING_SPECIAL.match(clean):
+        return True, "以特殊字符开头"
+    # 含半角冒号+空格（YAML key: value 分隔符）→ 需引号
+    if ":" in clean:
+        for m in re.finditer(r":\s", clean):
+            if m.start() > 0:
+                return True, "含半角冒号+空格"
+    # 隐式类型
+    if _YAML_BOOL_NULL.match(clean):
+        return True, "隐式类型(bool/null)"
+    if _NUM_RE.match(clean) and not clean.startswith("0x") and not clean.startswith("0o"):
+        return True, "隐式类型(数字)"
+    if _DATE_RE.match(clean):
+        return True, "隐式类型(日期)"
+    return False, ""
+
+
+def _to_single_quoted(val: str) -> str:
+    escaped = val.replace("'", "''")
+    return f"'{escaped}'"
+
+
+def _detect_raw_needs_quoting(file_text: str) -> list[dict]:
+    """逐行扫描原始 YAML 文本，报告需要引号包裹的值。"""
+    issues = []
+    in_block = False
+    block_indent = 0
+    in_multiline_quote = False  # 多行引号值（'...' 跨行）
+    for lineno, line in enumerate(file_text.splitlines(), 1):
+        if in_block:
+            stripped = line.lstrip()
+            if stripped and not stripped.startswith("#"):
+                cur_indent = len(line) - len(stripped)
+                if cur_indent <= block_indent:
+                    in_block = False
+                else:
+                    continue
+            elif not stripped:
+                continue
+            else:
+                continue
+        if in_multiline_quote:
+            # 多行引号值：寻找闭合引号
+            if "'" in line or '"' in line:
+                # 简化检测：如果本行有闭合引号，退出多行模式
+                for q in ("'", '"'):
+                    if q in line:
+                        # 检查是否有不被转义的闭合引号
+                        count = line.count(q) - line.count(q * 2)
+                        if count % 2 == 1:
+                            in_multiline_quote = False
+                            break
+            continue
+        if not line.strip() or line.strip().startswith("#"):
+            continue
+        m = re.match(r"^(\s*)(- )?(\S.*?)(:)(\s+.+)?$", line)
+        if not m:
+            continue
+        indent, dash, key, colon, raw_part = m.groups()
+        raw = (raw_part or "").strip() if raw_part else ""
+        if raw in ("|", ">"):
+            in_block = True
+            block_indent = len(indent) + (2 if dash else 0) + len(key) + 1
+            continue
+        if not raw:
+            continue
+        if raw.startswith("[") and raw.endswith("]"):
+            continue
+        if raw.startswith("{") and raw.endswith("}"):
+            continue
+        # 检测多行引号值（起始引号但本行无闭合引号）
+        if (raw.startswith("'") and not raw.endswith("'")) or \
+           (raw.startswith('"') and not raw.endswith('"')):
+            in_multiline_quote = True
+            continue
+        needs, reason = _check_raw_needs_quoting(raw)
+        if needs:
+            issues.append({"line": lineno, "key": key.strip(), "raw": raw, "reason": reason})
+    return issues
+
+
+def _fix_yaml_text(data: dict | list | None, original_text: str) -> str:
+    """规范化 YAML：修复所有字符串值的引号/类型，保留 key 顺序、注释、block scalar。"""
+    lines = original_text.splitlines(keepends=True)
+    result = []
+    in_block = False
+    block_indent = 0
+    in_multiline_quote = False
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.lstrip()
+        if in_block:
+            cur_indent = len(line) - len(stripped) if stripped else 999
+            if stripped and not stripped.startswith("#"):
+                if cur_indent <= block_indent:
+                    in_block = False
+                else:
+                    result.append(line)
+                    i += 1
+                    continue
+            elif not stripped:
+                result.append(line)
+                i += 1
+                continue
+            else:
+                result.append(line)
+                i += 1
+                continue
+        if in_multiline_quote:
+            # 多行引号值：等待闭合引号
+            result.append(line)
+            if ("'" in line or '"' in line):
+                for q in ("'", '"'):
+                    if q in line:
+                        count = line.count(q) - line.count(q * 2)
+                        if count % 2 == 1:
+                            in_multiline_quote = False
+                            break
+            i += 1
+            continue
+        if not stripped or stripped.startswith("#"):
+            result.append(line)
+            i += 1
+            continue
+        m = re.match(r"^(\s*)(- )?(\S.*?)(:)(\s+.+)?$", line.rstrip("\n"))
+        if not m:
+            result.append(line)
+            i += 1
+            continue
+        indent, dash, key, colon, raw_part = m.groups()
+        raw = (raw_part or "").strip() if raw_part else ""
+        if raw in ("|", ">"):
+            in_block = True
+            block_indent = len(indent) + (2 if dash else 0) + len(key) + 1
+            result.append(line)
+            i += 1
+            continue
+        if not raw or (raw.startswith("[") and raw.endswith("]")) or (raw.startswith("{") and raw.endswith("}")):
+            result.append(line)
+            i += 1
+            continue
+        # 检测多行引号值（起始引号但本行无闭合引号）
+        if (raw.startswith("'") and not raw.endswith("'")) or \
+           (raw.startswith('"') and not raw.endswith('"')):
+            in_multiline_quote = True
+            result.append(line)
+            i += 1
+            continue
+        already_quoted = (raw.startswith("'") and raw.endswith("'") and len(raw) >= 2) or \
+                         (raw.startswith('"') and raw.endswith('"') and len(raw) >= 2)
+        if already_quoted:
+            inner = raw[1:-1]
+            expected = _to_single_quoted(inner)
+            if raw != expected:
+                prefix = f"{indent}{dash or ''}{key}{colon} "
+                result.append(f"{prefix}{expected}\n")
+                i += 1
+                continue
+            result.append(line)
+            i += 1
+            continue
+        needs_q, _ = _check_raw_needs_quoting(raw)
+        if needs_q:
+            prefix = f"{indent}{dash or ''}{key}{colon} "
+            result.append(f"{prefix}{_to_single_quoted(raw)}\n")
+            i += 1
+            continue
+        result.append(line)
+        i += 1
+    return "".join(result)
+
+
+def cmd_lint(world_dir: Path):
+    """lint: 逐文件报告 YAML 引号/类型问题（只读）。"""
+    scene_dir = get_scene_dir(world_dir)
+    files = discover_files(world_dir, scene_dir)
+    total_issues = 0
+    broken_files = 0
+    for key in sorted(files):
+        fp = files[key]
+        try:
+            text = fp.read_text(encoding="utf-8")
+        except Exception as e:
+            print(f"[ERR] {key}: 读取失败: {e}")
+            continue
+        try:
+            yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            print(f"[BROKEN] {key}: YAML 解析错误: {e}")
+            broken_files += 1
+            continue
+        issues = _detect_raw_needs_quoting(text)
+        if issues:
+            for iss in issues:
+                print(f"  L{iss['line']:3d}  {iss['key']}:  {iss['raw'][:40]}  → {iss['reason']}")
+            total_issues += len(issues)
+            print(f"[WARN] {key}: {len(issues)} 个值需要引号/类型修复")
+        else:
+            print(f"[OK] {key}: 无问题")
+    print(f"\n汇总: {len(files)} 个文件, {broken_files} 个坏文件（需手动修复）, {total_issues} 个值需要引号/类型修复")
+    if broken_files:
+        print("坏文件无法被 write-raw 解析·拒绝写入——先用编辑器直接修复引号后再走 write-raw")
+
+
+def cmd_fix(world_dir: Path):
+    """fix: 规范化重写所有 YAML 状态文件（snap 自动备份 + validate）。"""
+    scene_dir = get_scene_dir(world_dir)
+    files = discover_files(world_dir, scene_dir)
+    fixed = 0
+    skipped = 0
+    broken = 0
+    for key in sorted(files):
+        fp = files[key]
+        try:
+            text = fp.read_text(encoding="utf-8")
+        except Exception as e:
+            print(f"[ERR] {key}: 读取失败: {e}")
+            continue
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            print(f"[SKIP] {key}: YAML 解析错误（坏文件·需手动修复）: {e}")
+            broken += 1
+            continue
+        if data is None:
+            print(f"[SKIP] {key}: 空文件")
+            skipped += 1
+            continue
+        fixed_text = _fix_yaml_text(data, text)
+        if fixed_text == text:
+            skipped += 1
+            continue
+        bak = fp.with_suffix(".yaml.fix.bak")
+        bak.write_text(text, encoding="utf-8")
+        fp.write_text(fixed_text, encoding="utf-8", newline="")
+        print(f"[FIX] {key}: 已修复（备份 → {bak.name}）")
+        fixed += 1
+    if fixed:
+        print(f"\n已修复 {fixed} 个文件，跳过 {skipped} 个，坏文件 {broken} 个")
+        print("正在 validate...")
+        cmd_validate(world_dir)
+    else:
+        print(f"\n无需修复（{skipped} 个文件已是最新，坏文件 {broken} 个）")
+
+
 def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False, asset: str = None):
     """循环世界重置——周期重置（循环日终/到期点）或事件触发重置（单角色 --asset）。
     周期（缺省）：机械重置全员·登记重置记录·重建周期倒计时。
@@ -2922,7 +3260,7 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False, asset
     脚本做机械部分：
     反应轨迹清空 / 记忆锚点按自主性档位压缩（脚本全清·漂移/觉醒压缩+输出保留候选·变质保留）/
     状态字段回基线占位 / 压力防御回默认（觉醒/变质保留防御崩解）/ 人际动态与决策清空（LLM 按 LOOPS 补写）/
-    信念演化与自主性保留 / 自动存档（snap.sh save _before_）/ 登记重置记录 / 周期模式重建周期倒计时（到期时刻+1 周期）。
+    信念演化与自主性保留 / 自动存档（snap.py save _before_）/ 登记重置记录 / 周期模式重建周期倒计时（到期时刻+1 周期）。
     LLM 只做：保留候选确认/微调 + 状态字段按 LOOPS 补写 + CT 节拍核查 + 重置叙事。"""
     ws_fp = world_dir / "states" / "world_state.yaml"
     if not ws_fp.exists():
@@ -2952,16 +3290,16 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False, asset
 
     # 0. 自动存档（可回滚）
     import subprocess
-    snap_script = Path(__file__).parent / "snap.sh"
-    # 安全加固：world_name 必须为合法世界目录名（禁空/路径分隔符/..·与 snap.sh validate_name 同规则）——防非法名传入外部脚本
+    snap_script = Path(__file__).parent / "snap.py"
+    # 安全加固：world_name 必须为合法世界目录名（禁空/路径分隔符/..·与 snap.py validate_name 同规则）——防非法名传入外部脚本
     if not world_name or re.search(r"[\\/]|\.\.", world_name):
-        print(f"[ERR] 非法世界名 '{world_name}'——拒绝调用 snap.sh（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
+        print(f"[ERR] 非法世界名 '{world_name}'——拒绝调用 snap.py（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
         sys.exit(1)
     snap_name = f"_before_reset_{'asset_' + asset if asset else 'cycle_' + world_name}_{_ts()}"
     try:
-        r = subprocess.run(["sh", str(snap_script), world_name, "save", snap_name],
+        r = subprocess.run([sys.executable, str(snap_script), world_name, "save", snap_name],
                            capture_output=True, text=True, timeout=120)
-        print(f"[OK] 自动存档: {snap_name}（{r.stdout.strip()[:200] if r.stdout.strip() else 'snap.sh 输出为空'}）")
+        print(f"[OK] 自动存档: {snap_name}（{r.stdout.strip()[:200] if r.stdout.strip() else 'snap.py 输出为空'}）")
     except Exception as e:
         print(f"[WARN] 自动存档失败（继续执行）: {e}", file=sys.stderr)
 
@@ -3105,7 +3443,7 @@ def cmd_reset_cycle(world_dir: Path, world_name: str, force: bool = False, asset
     print("\n【重置完成】" + ("（事件触发·单角色）" if asset else "（周期·全员）"))
     print(f"  时间 {cur_time} · 轮次 {cur_round} · 重置记录 {len(reset_rec)} 角色")
     print("【LLM 后续动作（非脚本）】")
-    print("  1. 状态字段（核心状态/情绪/决策状态/人际动态/已知地点）按 LOOPS.md 当前时段补写")
+    print("  1. 状态字段（核心状态/情绪/决策状态/人际动态/已知地点）按该角色 CHAR_ 默认循环时间线当前时段补写")
     print("  2. 觉醒/漂移档保留候选确认——压缩掉的条目：")
     if candidates:
         for role, lvl, content in candidates[:20]:
@@ -3125,14 +3463,14 @@ def _ts():
 def main():
     parser = argparse.ArgumentParser(description="WorldSim 批量状态管理 V2")
     parser.add_argument("world", help="世界名")
-    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "beatsheet", "reset-cycle", "tmp-clean", "map-sync", "init-states"])
+    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "beatsheet", "reset-cycle", "tmp-clean", "map-sync", "init-states", "lint", "fix"])
     parser.add_argument("--files", help="read 时限定文件 key 列表，逗号分隔")
     parser.add_argument("--full", action="store_true", help="write 时全量覆写")
     parser.add_argument("--batch", action="store_true", help="write-raw/append-raw 批量模式：stdin 为 ###FILE/###KEY/###APPEND 记录格式（⚠非幂等：APPEND 重复执行会重复追加·同一批次只执行一次·验证用 read/validate/--dry-run）")
     parser.add_argument("--dry-run", action="store_true", help="write-raw/append-raw 预演：解析+audit+对比磁盘差异，不落盘（重跑批次前先对比）")
     parser.add_argument("--check", action="store_true", help="gate 代码化核验模式：从 stdin 读 change set（dramatist）或叙事（writer），运行可代码化检查，不合格 exit 1")
     parser.add_argument("--live", action="store_true", help="scan 仅当前文件（排除历史轮转 narrative.*.md 与 archive）")
-    parser.add_argument("--force", action="store_true", help="reset-cycle: 跳过交互确认（周期/事件触发共用）")
+    parser.add_argument("--force", action="store_true", help="reset-cycle: 跳过交互确认（周期/事件触发共用）；write-raw/append-raw --batch: 显式回退轮·绕过 audit ④ 轮次单调/⑬b 反应轨迹覆盖写（其余硬性检查照常·回退后必做残留扫描+validate）")
     parser.add_argument("--asset", help="reset-cycle: 事件触发重置指定角色（单角色模式·登记事件触发重置记录·不重建周期倒计时）")
     parser.add_argument("extra", nargs="*", help="write-raw/append-raw 的额外参数: <文件key> <YAML键路径> [内容]")
     # beatsheet 子命令 help 直达 cmd_beatsheet——argparse 内建 --help 会拦截并打印全局 help（action choices 一行）
@@ -3155,9 +3493,9 @@ def main():
     elif args.action == "write":
         cmd_write(world_dir, full_replace=args.full)
     elif args.action == "write-raw":
-        cmd_write_raw(world_dir, args.extra, batch=args.batch, dry_run=args.dry_run)
+        cmd_write_raw(world_dir, args.extra, batch=args.batch, dry_run=args.dry_run, force=args.force)
     elif args.action == "append-raw":
-        cmd_write_raw(world_dir, args.extra, batch=args.batch, append_mode=True, dry_run=args.dry_run)
+        cmd_write_raw(world_dir, args.extra, batch=args.batch, append_mode=True, dry_run=args.dry_run, force=args.force)
     elif args.action == "delete":
         cmd_delete(world_dir, args.extra)
     elif args.action == "convert":
@@ -3183,6 +3521,10 @@ def main():
         sys.exit(cmd_init_states(world_dir) or 0)
     elif args.action == "tmp-clean":
         cmd_tmp_clean(world_dir)
+    elif args.action == "lint":
+        cmd_lint(world_dir)
+    elif args.action == "fix":
+        cmd_fix(world_dir)
 
 if __name__ == "__main__":
     main()

@@ -42,7 +42,7 @@ def get_world_dir(world: str) -> Path:
     wd = WORLDS_ROOT / world
     if not wd.is_dir():
         print(f"[ERR] 世界 '{world}' 不存在: {wd}", file=sys.stderr)
-        print(f"      提示: 先执行 'sh scripts/create_world.sh <世界名>' 创建世界，或确认世界名正确", file=sys.stderr)
+        print(f"      提示: 先执行 'python3 scripts/create_world.py <世界名>' 创建世界，或确认世界名正确", file=sys.stderr)
         sys.exit(1)
     return wd
 

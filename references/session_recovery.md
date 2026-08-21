@@ -10,7 +10,7 @@
 
 **触发：** 用户提出新世界概念（主题/核心设定），且 worlds/ 下无同名世界。SKILL.md 会话首轮硬规则「世界不存在 → 询问是否创建」在此展开。**前置：须先经 references/disclosures.md「进入确认」（声明+询问·会话内一次），用户确认后才创建；未确认不执行本章。**
 
-**脚手架（create_world.sh）：** `sh scripts/create_world.sh <世界名>` —— 只生成 .md 静态骨架，**零 yaml**：
+**脚手架（create_world.py）：** `python3 scripts/create_world.py <世界名>` —— 只生成 .md 静态骨架，**零 yaml**：
 - `worlds/{世界名}/SETTING.md`（从 templates/ 复制·顶层唯一文件）
 - `worlds/{世界名}/story_architecture/CONFLICTS_SEED.md`（从 templates/ 复制）
 - 创建角色时从 `templates/CHAR_.md` 复制改名 `characters/CHAR_{名字}.md` 填写
@@ -20,7 +20,7 @@
 1. **SETTING.md** —— 世界名称/背景/地理/势力/规则/基调/核心高压法则/故事弧线（可选）；**含成人/性/暴力/胁迫等敏感主题 → 顶部写「内容门」声明（模板已含可选占位）——引擎加载本世界时经「进入确认」向用户声明并询问（见 references/disclosures.md「进入确认」）**
 2. **characters/CHAR_*.md** —— 每角色一个档案（静态档案目录）：基本信息（姓名/性别/生日/一句话简介）+ 人格内核（性格 + 八变量：Desire/Fear/Belief/Defense/Value Boundary/Reaction Style/崩溃模式/关系锚点）+ 关系网络 + 外在特征 + 叙事描写视角与重点 + 背景（生平概要/关键转折事件/未愈合的旧伤/现状处境）（角色卡导入的草稿在此精炼）；可选：情景与叙事（scenario/first_mes/mes_example/叙事线）· 世界法则·循环注册（仅循环世界）
 3. **story_architecture/CONFLICTS_SEED.md** —— 2-5 条冲突种子（每条核心高压法则至少覆盖一条；只写结构字段：描述/对抗双方/被争夺资源/紧迫度/关联角色；对抗双方禁抽象·抽象方须附显现机制）
-4. **story_architecture/LOOPS.md / CROSS_NARRATIVES.md** —— 可选（循环世界必填 LOOPS：声明循环机制+各角色默认循环；隐藏交叉线可选）
+4. **story_architecture/LOOPS.md / CROSS_NARRATIVES.md** —— 可选（循环世界必填 LOOPS：循环协调索引+跨角色互锁时刻表；各角色完整默认循环写入其 CHAR_「世界法则·循环注册·默认循环时间线」；隐藏交叉线可选）
 
 **校验（收尾自查）：** SETTING.md 含核心高压法则；characters/CHAR_*.md ≥1；story_architecture/CONFLICTS_SEED.md 可物化（对抗双方能画出对峙图、资源有载体/持有者）。
 
@@ -30,11 +30,25 @@
 
 ## 第二章 启动世界（首次启动 / 跨 Session 恢复·统一序列）
 
-**触发：** 用户输入含「启动/继续/恢复世界」类词并明确指向某世界名（**不含则不触发**）。首次启动 = 世界刚创建或 reset_world.sh 重置后（动态 yaml 缺失·无 scenes·轮次 0）；跨 Session 恢复 = 已有进度。**意图判定（硬性）：判定模糊（不确定用户是否要进入模拟）→ 询问用户确认，不默认进入。**
+**触发：** 用户输入含「启动/继续/恢复世界」类词并明确指向某世界名（**不含则不触发**）。首次启动 = 世界刚创建或 reset_world.py 重置后（动态 yaml 缺失·无 scenes·轮次 0）；跨 Session 恢复 = 已有进度。**意图判定（硬性）：判定模糊（不确定用户是否要进入模拟）→ 询问用户确认，不默认进入。**
 
 **前置（硬性）：** 须先经 references/disclosures.md「进入确认」（声明+询问·会话内一次），用户确认后才执行本章加载序列；未确认不加载。**引擎代际替换**（对话进行中·引擎失效换新·由编排者指令声明）豁免——会话内已确认过，不重复确认；且**不停住不描绘**：按原用户指令直接进入完整推进。
 
-**写入提示：** 本章含真实写入——init-states 物化、入场物化（初始场景创建）、map-sync 对账、validate 修复、周期重置触发、知情边界清理、tmp-clean；全部属进入确认已声明的读写契约。**LLM 手动写入（叙事约定补填/validate 修复补写等）前：新世界首次启动轮/字段结构不确定时先读 references/write_protocol.md 全文**（批次格式必查原文·禁止凭印象猜测）。
+**写入提示：** 本章含真实写入——init-states 物化、入场物化（初始场景创建）、map-sync 对账、validate 修复、周期重置触发、知情边界清理、tmp-clean；全部属进入确认已声明的读写契约。**LLM 手动写入（叙事约定补填/validate 修复补写等）前：新世界首次启动轮/字段结构不确定时先读 references/write_protocol.md 全文**（批次格式必查原文——引用以本次读取为准）。
+
+**状态写入通道（硬性·首轮起）：** 叙事约定/前情/倒计时等中文或多行内容**一律经 `write-raw --batch`**（stdin 直通·`sys.stdin.buffer` 原始字节显式 UTF-8·**唯一编码安全通道**）**一次写入**——**禁止把中文内容作为 CLI 参数传给 write-raw / write 单字段**（CLI 参数与 stdin 文本随 locale 解码·非干净 UTF-8 环境会把文件写成非法字节·实测致 world_state 损坏）；短 ASCII 值才可用单字段。一次批次示例：
+
+```
+cat << 'EOF' | python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch
+###FILE: world_state
+###KEY: 叙事约定
+POV=游客(Guest)单镜头·第二人称有限视角；认知边界=只写游客能感知的内容
+###KEY: 时间.基准时间
+第1日 08:00
+EOF
+```
+
+Windows 平台按 write_protocol「临时文件协议」（UTF-8 临时文件 + `cmd /c` 重定向）。
 
 **加载序列（分层单一路径·按序执行）：** 该加载什么由分层规则+当前焦点场景直接判定，与「首次/恢复」无关，**不存在全量兜底**——加载 = 规则的确定性输出，不是历史记录的复制：
 
@@ -42,11 +56,11 @@
 1. **静态设定：** SETTING.md + **当前焦点场景出场角色**（scene_card/INDEX 出场列）的 CHAR_.md——**无焦点场景（首次启动）→ 只读 POV 角色（Guest/玩家）档案 + 入口区域档案（`regions/` 入口节点 REGION.md）+ 入口常驻 NPC 档案**（入场物化与世界入口描绘所需）；背景角色档案一律不预读，进场或需推导反应时按需 `worldctl.py <世界> grep <角色名>` 补读；**CHAR_.md 缺失 = 禁止推导反应**，先补读
 2. **入场物化（无焦点场景时·幂等·有焦点场景则跳过）：** 世界入口的确定性物化——戏剧决策（CT 节拍/CHAR_state 填充）仍留首轮：
    - **时间起点确立：** 按 POV 角色初始情景与入口上下文确立——`时间.基准时间`/`具体时间` = 第1日 + 入口角色在岗时段（循环世界对照 LOOPS）
-   - **初始场景创建：** `init_scene.sh <世界> S01 <入口场景名> --place <入口区域档案路径> --type <INT/EXT> --time <起点时间> --cast <出场角色>`（目录/narrative/INDEX ACTIVE/world_state.焦点场景 由脚本处理）
+   - **初始场景创建：** `init_scene.py <世界> S01 <入口场景名> --place <入口区域档案路径> --type <INT/EXT> --time <起点时间> --cast <出场角色>`（目录/narrative/INDEX ACTIVE/world_state.焦点场景 由脚本处理）
    - **场景内容生成（参照 templates/·禁模板占位残留）：** scene_card（区域/类型/基准时间/出场角色/场景目标/前情钩子）；scene_state 物理锚点自入口区域 REGION 档案生成 + 出场角色摘要（POV 角色+入口常驻 NPC——「生成物理空间场景并放入角色」·`场景时间线` 留空禁预写）；start_snapshot **最小填充**（冻结时间=起点时间·开场轮次=1·角色姿态/道具位置/开场心理态=档案默认；开场节拍态/附加态/焦外=无——首次进入无内容可填）
 3. **动态核心：** world_state / conflicts / world_map / pending_actions + 出场角色的 CHAR_state（conflicts 关联角色**不驱动**档案加载——conflicts.yaml 照常读作推进依据，但档案只按当前场景出场加载）
 4. **焦点场景四件套**（scene_card/scene_state/narrative/start_snapshot·必读——入场物化刚生成的初始场景四件套·上下文已有→跳过）——narrative.md 原文用于叙事文本接续（只用于接续，不改变创作依赖）
-5. **架构与索引：** story_architecture/LOOPS.md 与 CROSS_NARRATIVES.md（有则各读一次）；knowledge_index.yaml（有则读一次·见 references/knowledge_index.md）
+5. **架构与索引：** story_architecture/LOOPS.md（循环协调索引·有则读一次）与 CROSS_NARRATIVES.md（有则各读一次）；knowledge_index.yaml（有则读一次·见 references/knowledge_index.md）
 6. **状态校验：** 执行 scene_management.md §状态校验（validate + 内容核查 + 修复）——validate 报错 = 修数据，不重读加载
 7. **循环机制核对（循环世界·会话启动时一次·非每轮）：** 时间已确立（入场物化确立·循环世界）→ 完整核对：
    - ① **周期倒计时核对**——`外部倒计时` 无周期条目（循环/重置/契约/期限类周期机制）→ 按当前时间登记周期倒计时（剩余时间=距下一重置点·**重置类须含 `到期时刻` 精确字段**·字段见 keys.md §倒计时协议；**周期不一定是每日**）
@@ -59,4 +73,4 @@
 **描绘（加载后唯一分叉·不推进剧情）：**
 - **有焦点场景**（首次启动=入场物化后的初始场景）→ 沉浸描绘前情提要（第一行=世界名+起始时间+轮次）和当前场景（第一行=场景名+时间）→ **停住·不推进**（引擎代际替换除外）——用户随后明确要求推进时再进入每轮流程；CHAR_state 填充 / CT 节拍确立由首轮完整推进完成（入场物化已就绪场景壳·首轮不再创建场景）
 
-**回退（低频例外）：** 启动后如需回到历史状态（叙事走错/用户要求撤销）：`snap.sh load <快照>`（主动存档恢复）或按 references/rollback.md 手工重建；回退后同样执行状态校验。不给每轮加载加负担。
+**回退（低频例外）：** 启动后如需回到历史状态（叙事走错/用户要求撤销）：`snap.py load <快照>`（主动存档恢复）或按 references/rollback.md 手工重建；回退后同样执行状态校验。不给每轮加载加负担。
