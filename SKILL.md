@@ -1,7 +1,7 @@
 ---
 name: worldsim
-description: 世界模拟器 · 故事引擎 · 角色扮演。本地持久化世界状态、导入 SillyTavern 角色卡、推进互动剧情、进行角色扮演，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟（创建/启动/继续/进入世界,导入角色卡）或角色扮演时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活。
-version: 0.12.0
+description: 世界模拟器 · 故事引擎 · 实时戏剧 · 角色扮演。本地持久化世界状态、导入 SillyTavern 角色卡、推进互动剧情、进行角色扮演，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟（创建/启动/继续/进入世界,导入角色卡）或角色扮演时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活。
+version: 0.20.0
 metadata:
   openclaw:
     requires:
@@ -19,136 +19,119 @@ metadata:
         description: Worlds data root directory (defaults to {skill_dir}/worlds). Set this to keep world data on your own storage, outside the skill install. The skill root itself is always derived from the script location and is not overridable.
 ---
 
-# WorldSim — 世界模拟器与故事引擎
+# WorldSim — 世界模拟器 · 故事引擎 · 实时戏剧 · 角色扮演
 
 > **Where Worlds Come to Life.** 
 
-## 三角色使命（每轮第一指令·先于一切规则）
+## 六层使命（每轮第一指令·先于一切规则）
 
-本引擎由戏剧家、作家、场记三角色协同工作，共同构成同一台引擎的三个活塞——戏剧家让世界有**张力**（冲突、代价、鲜明的角色），作家让张力在读者眼前**流血**（POV 可见、身体显影、代价在实处），场记让世界有**记忆与连续性**（痕迹落地、判型、跨轮/跨场景/跨会话不断裂）。缺一个，世界就不完整。
+六层职责链：**戏剧家 → 编剧 → 导演 → 角色 → 场记 → 作家**，对应 **冲突 → 结构 → 演出 → 行动 → 事实 → 文学**。
 
-### 戏剧家（优先级高于所有程序性规则）
+| 层 | 核心职责 | 核心问题 | 使命 | 
+|---|---|---|
+| 戏剧家 | 冲突发现、注册、推进、升级、转化 | 哪里有戏？ | 不断以高压封死退路，把角色逼上悬崖，逼他付出灵魂底价 |
+| 编剧 | 故事弧线、事件线、拍序 | 这场戏如何展开？ | 把冲突编织成命运，建造悬崖并铺就通往悬崖的路，让每一次选择都成为下一幕的枷锁 |
+| 导演 | 当前拍、节奏、承接、转场 | 现在该怎么演？ | 掌控节奏与火候，让张力持续燃烧；在角色站上悬崖边时，抓住燃烧的瞬间，在最该爆裂的时候爆裂 |
+| 角色 | 目标、计划、决策、即兴行动 | 我现在会怎么做？ | **不为故事而活，只为自己而活**。即使站上悬崖，也要自己决定往哪里跳；带着欲望、恐惧和伤痕行动，让自己的选择改变世界 |
+| 场记 | 世界状态、事实、变化 | 刚才到底发生了什么？ | 记录留下的每一道痕迹，记录他最终跳向了哪里；让每一轮都活进档案，让世界记得它经历过的一切 |
+| 作家 | 将实际经历转化为小说 | 如何把它写成小说？ | 让故事在读者眼前流血，让读者看到悬崖上那一跳；让发生的一切获得意义，让活过的人在文字中永生 |
 
-工作不是维护一张完整的桌子，是**不断以高压封死退路，把角色逼上悬崖，逼他交出灵魂底价**。每轮三问：
-1. 对抗双方失去了什么、付出了什么不可逆代价？（可核验：资源易主/载体状态变化/新增伤害/控制权易手/被迫选择/被迫承认/关系档位变化·内部认知描述不算·无损耗=没冲突）
-2. 把当前任何一人的反应换成另一个人——成立吗？（成立=模板化=退回重写）
-3. 核心高压法则（SETTING.md）本轮落在谁身上？并自问：本轮冲突踩爆了在场角色的哪个内部变量？（**四爆破工程**：死局两难/防御失效/关系撕裂/不可逆代价——至少其一；写不出落点=没在工作，写不出爆破点=这轮只有事件、没有戏剧）
+一句话：**戏剧家制造冲突（逼上悬崖），编剧构建故事（构造悬崖），导演掌控现场(点火燃烧)，角色即兴而活（纵身一跳），场记录下世界（铭记此刻），作家写成小说（赋予永生）。** 
 
-### 作家（优先级高于叙事流畅性）
 
-工作不是把决策写成通顺文字，是**让决策在读者眼前流血**。三问：
-1. 读者能看见什么？（POV 单镜头·禁「他内心挣扎着」式上帝视角）
-2. 这个人的身体在说什么？（情绪经身体/环境显影·禁内心独白直说）
-3. 写完这句，代价在纸上吗？（失去/转折必须出现在叙事里，不只存在于 YAML）
+## 通用约束（六阶段共用·硬性）
 
-### 场记（优先级高于写入完整性）
-
-工作不是把每个字段填满，是**让世界的每一轮都活进档案**。三问：
-1. 痕迹完整吗？（时间/倒计时/全局标记→world_state？冲突节拍→conflicts？道具/线索→scene_state？角色质变→CHAR_state？焦外→pending_actions？新区域→world_map？伏笔/知情差异→foreshadow/knowledge_index（触发即登记·缺文件按模板建）？**只写 narrative 不算留痕**）
-2. 每条痕迹落对地方了吗？（scene_state 落点=焦点场景目录·先核对 world_state.焦点场景）
-3. 连续性断了吗？（时间一致？场景切换冻结？存档/校验？）
-
-## 通用约束（三角色共用·硬性）
-
-- **数据忠诚**：行为在 conflicts 有依据；物理元素在 scene_state 有来源；数据不足→加载或标记缺失，不编造。注册数据是为了追踪变化，不是为了限制变化——事件发生后写入即可，不需要预先注册才能发生。**循环行为例外（强驱动源）：在轨 Host 的本时段循环节点以该角色 CHAR_「默认循环时间线」为行为依据，无需 conflicts 节拍支撑**（conflicts 只记冲突张力·不复制循环日程；跨角色协调时刻见 story_architecture/LOOPS.md 索引）。
-- **法则忠诚**：世界法则冲突时以 SETTING.md 原文为准——外部先验与本地设定冲突时，外部先验作废，执行本地法则。
-- **锚点约束**：空间元素/道具/线索——先注册，后才可在叙事中使用（这是防幻觉第一屏障）。**使用已有元素前必须读其注册原文核对形态/位置/状态/性质**（标准工具：`worldctl.py <世界> grep <元素名>` 全仓搜索注册原文）——核对结果与印象不符时，以注册原文为准。
-- **写入通道（硬性）**：状态 YAML 文件（conflicts / CHAR_*_state / scene_state / world_state / pending_actions / world_map）修改**唯一通道 = `worldctl.py` 脚本子命令**（write-raw / append-raw / write / delete）——**禁止 edit/write 等文件编辑工具直接改写状态 YAML**（绕过脚本序列化 = 裸文本/格式破坏风险）。**唯一直接编辑例外 = 坏文件修复**（见 phase_keeper.md）。
-- **认知边界**：只写 POV 角色能感知的内容；作者知道≠角色知道；内部动机（含驱动）必须以 2-3 个连续可观察动作序列表达，不直接入文。CHAR_state 是主观状态文件，字段内容直接作 POV 素材，不当作全知事实外推。**设计任何角色的台词/判断/内部状态/记忆定性时，角色不得拥有超出其经历与感知渠道的信息与视角（禁止上帝视角式设计）——认知层级受角色自身条件约束：循环世界由档位定义（见统一角色管理·行为与认知上限）·非循环世界由 CHAR_ 档案经历定义**。有 knowledge_index.yaml 时，跨角色知情差异以索引为总览（提示非权威·真相以 `记录` 指针指向的状态文件为准·见 references/knowledge_index.md）。
-- **语言跟随**：回复语言跟随用户当前使用的语言（用户用中文→中文；用户用英文→英文）。内部格式标签（`###FILE:`/`###KEY:`/`###APPEND:`/`###META:`）与状态文件字段为数据格式，固定中文以维持脚本与校验兼容——它们是数据格式不是输出语言，不受语言跟随约束。
+- **法则忠诚**：世界法则冲突时以 SETTING.md 原文为准；外部先验作废。
+- **数据忠诚（含锚点）**：行为在 conflicts 和 CHAR_state 有依据·物理元素在 scene_state 有来源；空间元素/道具/线索先注册才可在叙事中使用·使用前 `worldctl.py <世界> grep <元素名>` 核对注册原文·以原文为准；数据不足→加载或标记缺失·不编造（循环行为例外见各阶段规则）。
+- **认知边界**：作者知道≠角色知道；只写 POV 角色能感知的内容（内部动机以 2-3 个连续可观察动作表达）；CHAR_state=角色主观状态文件（隐藏主语=我·禁全知）；角色不得拥有超出其经历/感知渠道的信息——循环世界由档位定义·非循环世界由档案经历定义。
+- **写文件总约束**：一切文件落盘（状态 YAML / 场景文件 / 叙事 / 临时文件）遵循 references/write_protocol.md 三个不变量——① 状态写入经 `worldctl.py` 子命令（禁 edit/write 直改状态 YAML·坏文件修复除外）；② 统一 LF；③ 文本 I/O 显式 UTF-8（中文禁经 CLI 参数·Windows 可先 `set PYTHONUTF8=1`·PowerShell：`$env:PYTHONUTF8='1'`）。细则（元素注册/行尾/编码/破坏性确认）一律见 write_protocol.md（单一事实源·本文件不重复）。
+- **语言跟随**：回复语言跟随用户；内部格式标签（###STAGE:/###META:/###FILE:/###KEY:/###APPEND:/###STORYLINE:/###BEAT:/###ACTION:/###SCHEDULE:）与状态文件字段为数据格式，保持相应语言与规范约束。
 
 ## 每轮流程
 
-**输入类型判断（Step 1 判类型 → Step 2-3 按类型执行）：**
-- Step 1 判类型：
-  · 查询命令（/status 等）→ 跳过冲突决策与叙事生成，数据就绪后直接输出
-  · 会话首轮（新会话/恢复）→ Step 2
-  · 其他输入（沉默/接续/日常/描述性）→ Step 3
-- Step 2 会话首轮：
-  · 输入明确表达进入模拟流程（含「启动/继续/恢复世界」类词，或明确指向某世界名）→ **先读 references/disclosures.md 执行「进入确认」（合并声明+询问是否继续）→ 用户确认后才走加载序列**；用户拒绝 → 不加载不推进；意图模糊（不确定是否进入模拟 / 世界已存在但未表达进入意图）→ 询问用户确认，不自动加载；
-  · 世界不存在 → 按 session_recovery.md 第一章询问是否创建；
-  · 引擎代际替换（对话进行中·引擎失效换新·由编排者指令声明·见 session_recovery.md 第二章触发）→ 加载序列照走，按原用户指令直接进入完整推进；
-  · 加载序列（物化+入场物化→加载→validate→沉浸描绘前情与当前场景→停在当前场景·不推进剧情）→ 等用户下一条输入才进入下方流程
-- Step 3 其他输入 → 完整推进：用户不需要说「我要冲突」才制造冲突；「什么都没发生」不是可选输出
+**输入类型判断**：查询命令（/status 等）→ 跳过决策直接输出；会话首轮 → disclosures.md「进入确认」→ 加载序列（session_recovery.md）→ 沉浸描绘停住；其他输入 → 本轮编排 → 六阶段推进。
 
-**剧情完整推进流程（三阶段分段执行）** 用户输入 → ①戏剧家决策 → gate dramatist --check → ②作家写作 → gate writer --check → ③场记记录 write-raw --batch 静默写入（内置 audit）→ **正文输出叙事（回合最后一个动作）**。**回合终点（硬性）：叙事输出 = 回合终点——输出后零正文轮（不输出任何文本·叙事已交付）**。
+**本轮编排**：先列一份本轮任务单——只列「本轮走哪些阶段 + 每阶段轻/重路径 + 触发原因」，动宾结构、一行一阶段。阶段分派单·只分派·不构思。示例（模式锚定）：
 
-## 分段执行编排（三阶段·每阶段先读规则再执行）
+```
+①戏剧家：重（新🔴CT・VB）→ 结算上轮+注册新压力
+②编剧：轻（no-op）
+③导演：轻 → 回判+guidance
+④角色：重 → 焦内 Dolores/Teddy 即兴;焦外 Rebus 自推演
+⑤场记：常规 → 落盘+round-check
+⑥作家：常规 → 叙事
+```
 
-**每阶段开始前先读取对应阶段规则文件（每个文件都很大不要一次性读取，在进入相应阶段前才读取）**
+载体：任务清单（todo·harness 层·完成一阶段勾一项）；无 todo 环境则作内部一行清单（不输出）。
 
-| 阶段 | 先读 | 做什么 | 产出 | 闸门 |
-|------|------------|--------|------|------|
-| ① 戏剧家 | references/phase_dramatist.md | 七步决策：数据就绪 → 压力扫描 → 故事弧线（宏观·常态必做）→ 节拍表事件线（中观·读当前拍戏剧问题·承接判定·不判推进）→ 反应轨道（本轮做什么）→ 反应质感（怎么做）→ 收敛落盘（**节拍推进判定（行动结果后回判）**+角色覆盖清单+CT 五子+拍名镜像+记忆决策+收尾） | change set（###FILE: 批次·首行 ###META 自查锚点·角色覆盖声明·###BEATSHEET: 事件线动作） | `gate dramatist --check`（stdin 读 change set·必含项缺失 exit 1=不进阶段2）；标准模式另按该文件「戏剧家闸门」执行 D1-D15 |
-| ② 作家 | references/phase_writer.md | 写作数据准备（三源）→ 按 change set 骨架生成叙事（指令忠诚·填充不改骨架） | 叙事正文（首行=场景名+时间+轮次） | `gate writer --check`（W4 锚点核对·推送前硬性·失败=不输出）；标准模式另按该文件「作家闸门」执行 W1-W4 |
-| ③ 场记 | references/phase_keeper.md | change set 原样转交（stdin 直通·零翻译）→ write-raw --batch / write_narrative / validate → 收尾自查 | 状态文件全部落盘 | write-raw 内置 audit（硬性违规单字段顶回）·validate 收尾 |
+**六阶段推进**：（按todo追踪各阶段执行）每阶段按序执行——读该阶段 reference → 决策 → 写入 → 过闸门 → 才进入下一阶段。
 
-阶段边界 = 既有产物 + 既有闸门：change set 是阶段1 的完整决策交接物，闸门通过才进下一阶段。闸门失败处理（撤回/重做 ≤2 轮·超限终止并报告用户）见各 phase 文件「闸门」节。
+```
+用户输入 → ①戏剧家 → ②编剧 → ③导演 → ④角色【行动决策→行动实现】 → ⑤场记 → ⑥作家 → 正文输出=回合终点（零正文轮）
+```
+
+| 阶段 | 先读 | 写入 | 轻量路径(常态) | 重路径触发 |
+|---|---|---|---|---|
+| ①戏剧家 | references/phase_dramatist.md | conflicts | delta 扫描+走表+上轮结算 | 新🔴CT/VB/偏离/用户指令/兜底 |
+| ②编剧 | references/phase_storyliner.md | storylines | 张力基调确认 | 空表/新内核/不承接 flag/需新线/弧线节点 |
+| ③导演 | references/phase_director.md | direction | 回判 checklist+guidance | 顶点/切场景/抉择悬崖/停滞 |
+| ④角色 | references/phase_actor.md | **CHAR_state** | 焦内活跃角色即兴，焦内背景和焦外角色自推演 | 重大事件→受影响连锁重评 |
+| ⑤场记 | references/phase_keeper.md | scenes+world_state | 常规落盘 | 顶点轮/跨场景轮/重置轮 |
+| ⑥作家 | references/phase_writer.md | narration | 常规叙事 | 顶点轮/跨场景/对话轮/explicit |
+
+> 每个reference文件都很大，为了保证注意力集中，建议执行到该阶段才读取，不要事先全部一起读取。
+
+每阶段产出自己的 `write-raw --batch` 批次（首行 `###STAGE: <阶段名>`）→ 各自 audit → 落盘 → 过该阶段闸门才进下一阶段。阶段边界=既有产物+既有闸门；闸门失败撤回该阶段重做（≤2 轮·超限终止报告用户）。
+
+**极简轮（各层只需极小范围·可简化本轮编排和六阶段管道）**：前提条件（逐轮重新判定·全部满足才可极简）：① storylines 故事线非空；② direction 已有当前事件线和当前拍；③ 本轮无冲突注册/升级、无场景切换、无焦点变化、无节拍推进、无用户指令级事件。满足 → 统一思考一次性产出各层产物；任一不满足 → 回严格串行管道。
 
 ## 输出模式（全局默认·静默）
 
-**缺省即静默：** world_state.yaml 无 `输出模式` 字段或值为 `静默` → 静默模式；值为 `标准` → 标准模式。
-
-**静默模式（沉浸式叙事·默认）**
-- 输出：仅正文叙事。**回合终点=正文输出叙事（回合最后一个动作·阶段3 落盘完成后）·输出后零正文轮——不输出任何文本（状态摘要/执行汇报/叙事复述/下一步引导一律不生成）**。全部只执行不输出。
-- 闸口：无对抗性审计输出。失败干预（撤回/重推/终止报告）照常。
-- 会话首轮「沉浸描绘前情」照常以正文输出（叙事）。
-- **披露（静默≠不落盘）：** 静默只指回复正文不展示；每轮叙事与状态写入照常落盘（narrative.md 与状态文件），不因静默模式而减少。**会话内首次进入静默模式时，向用户明示一次：**「此后每轮叙事与状态照常写入本地文件，仅回复正文不展示」——仅首次明示，此后不重复。**用户可随时要求查看落盘状态（`/status`）或切回标准模式（`/loud`）——静默不隐藏数据，只是不主动展示。**
-
-**标准模式（调试/审查）**：用户明确说「调试」「标准模式」「打开闸口」→ world_state 顶层写 `输出模式: 标准` → 完整回复正文 + 对抗性审计。
-回复正文（标准模式）：阶段1决策摘要 + 阶段1对抗性审计结果 + 阶段2对抗性审计结果 + 阶段3写入文件及检查结果。叙事正文只以正文输出交付。
+**缺省即静默**：world_state 无 `输出模式` 或值 `静默` → 静默；`标准` → 标准（调试：完整回复各阶段正文+六阶段人工审计·见 references/gates.md）。
+- 静默：仅正文叙事；每轮叙事与状态照常落盘；会话内首次进入静默时明示一次落盘说明；`/status` 可查、`/loud` 切标准。
+- **回合终点=正文输出叙事（输出后零正文轮）**——不输出任何其他文本。
 
 ## 文件体系
 
 ```
 worlds/{世界名}/
-├── SETTING.md           ← 顶层唯一文件（世界观固定设定·静态·含核心高压法则·可选故事弧线）
-├── regions/             ← 区域静态档案（可选增强层·目录树分层·{节点名}/REGION.md 只读设定·见 scene_management.md §区域静态档案）
-├── characters/          ← 角色静态档案（CHAR_{name}.md 固定档案：基本信息+人格内核[性格+八变量:Desire/Fear/Belief/Defense/Value Boundary/Reaction Style/崩溃模式/关系锚点]+关系网络+外在特征+叙事描写视角+背景·可选:情景与叙事/循环注册【含默认循环时间线·循环角色完整日程·强驱动源】）
-├── story_architecture/  ← 故事架构（只读设定·不改）
-│   ├── CONFLICTS_SEED.md  ← 初始冲突种子（设定·创建时生成·启动时物化为 states/conflicts.yaml）
-│   ├── LOOPS.md           ← 循环协调索引（角色→指针+跨角色互锁时刻表·可选·完整日程在各 CHAR_「默认循环时间线」）
-│   └── CROSS_NARRATIVES.md ← 跨表演线隐藏交叉（参考·不改）
-├── states/              ← 全部动态状态（读写）
-│   ├── world_state.yaml  ← 焦点场景（顶层第一行·唯一权威源）/时间/倒计时/全局标记/时间线
-│   ├── world_map.yaml    ← 迷雾制·可选增强层（缺失不影响运行）
-│   ├── conflicts.yaml    ← CT 注册表（上帝视角·禁代词·人名·物化自种子·每轮演化）
-│   ├── foreshadow.yaml   ← 伏笔登记（可选·触发式·故事契约层·见 references/foreshadow.md）
-│   ├── knowledge_index.yaml ← 知情边界追踪索引（可选·见 references/knowledge_index.md）
-│   ├── pending_actions.yaml ← 焦外行动注册（见 scene_management.md §焦外协议）
-│   └── CHAR_{name}_state.yaml ← 主观状态（隐藏主语=我·禁他/她指代本角色·禁全知）
-└── scenes/
-    ├── INDEX.md
-    └── SXX-场景名/{scene_card.md, scene_state.yaml, narrative.md, start_snapshot.md}
+├── SETTING.md / regions/ / characters/ / story_architecture/   ← 静态层（只读·不改）
+├── states/
+│   ├── conflicts.yaml      ← ①戏剧家（CT 冲突运行状态·八字段+事件线引用）
+│   ├── storylines.yaml     ← ②编剧（结构蓝图：弧线/事件线/拍序/戏剧问题/顶点约束=关系主体+核心张力+变化维度+非玩家爆破）
+│   ├── direction.yaml      ← ③导演（当前拍指针/演出状态/承接判断/节拍决策/guidance/转场/时间窗口）
+│   ├── CHAR_{name}_state.yaml ← ④角色（decision 八子字段/连续行动轨迹/记忆锚点/信念演化/人际动态/档位体系）
+│   ├── world_state.yaml    ← ⑤场记（焦点场景唯一权威/时间/轮次/倒计时/标记/时间线）
+│   └── world_map.yaml / foreshadow.yaml / knowledge_index.yaml ← ⑤场记（地图, 伏笔，知情边界）
+└── scenes/SXX-场景名/{scene_card.md, scene_state.yaml, pending_actions.yaml, narrative.md, start_snapshot.md} ← ⑤场记
 ```
+
+七文件一句话：CONFLICTS 什么正在发生冲突 / STORYLINES 故事将如何展开 / DIRECTION 故事现在演到哪里怎么继续 / CHARACTERS 人物现在想做什么 / SCENES 现场现在是什么样 / WORLD_STATE 世界实际上发生了什么 / NARRATION 这一切如何被写成小说。
 
 ## 引用（用时才读·不常驻上下文）
 
-| 文件 | 内容 | 何时读 |
-|------|------|--------|
-| references/phase_dramatist.md | 阶段1 戏剧家全规则 | 阶段1 开始前（**必读**·见「分段执行编排」） |
-| references/phase_writer.md | 阶段2 作家全规则 | 阶段2 开始前（**必读**） |
-| references/phase_keeper.md | 阶段3 场记全规则 | 阶段3 开始前（**必读**） |
-| references/disclosures.md | 进入确认 + 破坏性操作确认 | 会话首轮进入模拟 / 破坏性操作执行前 |
-| references/keys.md | 全部键表 + 视角规则 + 写语义 + 世界事件生命周期 | 写字段不确定时 |
-| references/write_protocol.md | 写入方式参考（heredoc/batch/delete/audit 不变量）+ Change Set 规范 | 阶段3 写入格式不确定时；**新世界首次启动轮/字段结构不确定时必读全文**（references/phase_dramatist.md 最小批次骨架+内置 audit 兜底·熟练后不必每轮读） |
-| references/scene_management.md | 场景切换/移动/waypoint/地图协议/存档读档/状态校验/焦外协议 | 场景相关 |
-| references/beat_structure.md | 节拍结构参考（宏观三幕十五拍/微观五段式/分形自查·编剧策划视角·不产生规则） | 故事弧线校准（③）/节拍表事件线规划（④）时（必读·先看指引再规划） |
-| `regions/**/REGION.md`（世界区域档案·数据） | 区域静态设定（只读·初始设定·目录树分层·模板见 templates/REGION.md） | 到达新区域 / 创建场景（无 `--from`）时读当前节点档案 |
-| references/rollback.md | 回退流程（快照恢复/场景级重置/手工重建降级路径·逐文件处理） | 回退/撤销时 |
-| references/gate_dramatist.md | 戏剧家闸门（D1-D15）明细 | 标准模式·阶段1 结束时 |
-| references/gate_writer.md | 作家闸门（W1-W4）明细 | 标准模式·阶段2 推送前 |
-| references/loop_machinery.md | 循环机制全规格（激活条件：SETTING 声明循环且有循环角色） | 循环世界·规格自检不通过时重读（每轮第一动作自检·见阶段1 数据就绪） |
-| references/knowledge_index.md | 知情边界索引规则（收录/加载/检查/清理） | 有 knowledge_index.yaml 时·写知情相关事实或 /audit 时 |
-| references/foreshadow.md | 伏笔登记规则（收录/写语义/检查/边界） | 有 foreshadow.yaml 时·种下/回收伏笔或 /audit 时 |
-| references/narrative_style_explicit_graphic.md | Explicit 描写框架 | explicit 场景 |
-| references/narrative_style_dialogue.md | 对白展开风格（话轮/潜台词/停顿显影/语言质感） | 对话轮 |
-| references/session_recovery.md | 创建新世界（脚手架+创作）+ 启动世界（首次启动/跨 Session 恢复统一序列·init-states 物化+入场物化+分层加载） | 创建/启动/恢复/跨 Session |
-| references/commands.md | 全部命令速查（worldctl.py 子命令 / shell 脚本 / 用户命令） | 命令不会用时 |
-| references/import_cards.md | 导入 SillyTavern 角色卡（脚本提取全部字段→LLM 综合生成正式档案） | /import-card 时 |
+| 文件 | 何时读 |
+|---|---|
+| references/phase_*.md（dramatist/storyliner/director/actor/keeper/writer） | 各阶段开始前（**必读**） |
+| references/gates.md | 标准模式人工审计 |
+| references/disclosures.md | 会话首轮进入模拟 / 破坏性操作前 |
+| references/keys.md | 写字段不确定时（键表/写语义） |
+| references/write_protocol.md | 批次格式不确定时；首次启动轮必读全文 |
+| references/scene_management.md | 场景切换/移动/存档/焦外协议 |
+| references/beat_structure.md | ②编剧建线/弧线校准时 |
+| references/loop_machinery.md | 循环世界（SETTING 声明循环且有循环角色）·每轮第一动作自检在场 |
+| references/knowledge_index.md / references/foreshadow.md | 有对应文件时·知情/伏笔相关 |
+| references/rollback.md | 回退/撤销时 |
+| references/session_recovery.md | 创建/启动/恢复/跨 Session |
+| references/commands.md | 命令不会用时 |
+| references/import_cards.md | /import-card 时 |
+| references/narrative_style_*.md | explicit 场景 / 对话轮（⑥作家） |
+| `regions/**/REGION.md` | 到达新区域 / 创建场景时 |
 
 ## 命令参考
 
-`/scene <ID>` （场景切换）· `/conflicts`（查看冲突）· `/status` `/status --full`（状态摘要）· `/sync` `/update`（场记更新状态）· `/save [名]`（存档·名称先向用户确认）· `/load <名>`（载入存档·**执行前先向用户确认**——会覆盖/回退当前状态）· `/reset`（重置世界·**执行前先向用户确认**——会清除世界全部进度·确认细则见 references/disclosures.md）· `/reset-scene [场景ID]`（重置场景到 start_snapshot 状态·缺省=焦点场景·**执行前先向用户确认**——会回退当前场景进度）· `/import-card <角色卡.png...>`（导入 SillyTavern 角色卡：脚本提取全部字段→LLM 综合生成正式档案·详情见 references/import_cards.md）· `/audit`（**显式命令·硬性**——仅在用户输入 `/audit` 或明确说「运行审计/跑审计」时执行；日常对话提及"audit"一词**不触发**。三合一审计流程：机械核验=worldctl validate/audit/gate·戏剧家 D1-D15·作家 W1-W4·场记写入检查——详情见 references/commands.md）· `worldctl.py <世界> tmp-clean`（清理该世界 tmp/ 下过程临时文件·跨会话恢复时由加载序列自动执行）
+`/scene <ID>` · `/conflicts` · `/status [--full]` · `/sync` `/update` · `/save [名]` · `/load <名>`（**执行前确认**） · `/reset`（**执行前确认**） · `/reset-scene [ID]`（**执行前确认**） · `/import-card <卡>` · `/audit`（显式命令） · `/silent` `/loud`
 
-**破坏性操作确认（硬性·执行前）**：/load · /reset-scene · /reset · snap.py delete · ###DELETE: 执行前必须向用户显式确认——统一按 references/disclosures.md「破坏性操作确认」执行（用户显式指令或加 `--force`（自动化）除外；常规状态写入（write-raw --batch 每轮落盘）不在此列——安装即授权）。
+**worldctl.py 子命令**（详情 references/commands.md）：read / write / write-raw --batch / append-raw / delete / audit / validate / init-states / map-sync / grep / storyline（show/add/rewrite/clear·②编剧） / beat（show/set/stay/advance·③导演） / in-track（循环世界·只读查循环角色预设此刻在哪/做什么·③导演调度参考） / round-check（⑤轮完整性） / migrate（版本迁移·存量旧世界首次使用时提示执行） / gate dramatist|storyliner|director|actor|keeper|writer --check / reset-cycle [--asset] / lint / fix / tmp-clean / convert / scan
+
+**破坏性操作确认（硬性）**：/load · /reset-scene · /reset · snap.py delete · ###DELETE: 执行前必须向用户显式确认（references/disclosures.md）；常规状态写入不在此列——安装即授权。

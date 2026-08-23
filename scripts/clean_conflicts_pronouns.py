@@ -4,6 +4,15 @@
 #       排除「他们/她们/他人/其他/他日/他乡」等组合；「我/你」不处理（存档简单清洗）。
 import re, glob, os, sys
 
+# I/O 纪律（硬性）：本脚本读写一律 UTF-8——Windows 缺省 locale（GBK）读中文 yaml 必炸、
+# emoji 写 GBK stdout 必炸；所有 open/read_text/write_text 已显式 encoding，此处兜底 stdout/stderr
+for _s in (sys.stdout, sys.stderr):
+    try:
+        if _s and _s.encoding and _s.encoding.lower().replace("-", "") != "utf8":
+            _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 FEMALE = {"Clementine", "Dolores", "Maeve", "Armistice", "Elsie", "Theresa"}
 MALE = {"Guest", "Hector", "Teddy", "Peter", "Rebus", "Walter", "Sheriff",
         "Ford", "Bernard", "Arnold", "Felix", "Sylvester", "William",
@@ -83,7 +92,7 @@ def process(path):
         new_lines[s:e] = new_block.split('\n')
     new_text = '\n'.join(new_lines)
     if new_text != text:
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, 'w', encoding='utf-8', newline='') as f:
             f.write(new_text)
     return replaced, skipped
 

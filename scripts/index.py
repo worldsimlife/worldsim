@@ -41,7 +41,7 @@ def _row_id(line: str) -> str:
 def ensure_index(filepath: Path) -> None:
     if not filepath.is_file():
         filepath.parent.mkdir(parents=True, exist_ok=True)
-        filepath.write_text(INDEX_HEADER, encoding="utf-8")
+        filepath.write_text(INDEX_HEADER, encoding="utf-8", newline="")
 
 
 def _insert_after_last_srow(lines: list[str], row: str) -> list[str]:
@@ -65,7 +65,7 @@ def _sync_focus(world_dir: Path, scene_id: str) -> None:
         text = re.sub(r"^焦点场景:.*", f"焦点场景: {scene_id}", text, count=1, flags=re.M)
     else:
         text = f"焦点场景: {scene_id}\n" + text
-    ws.write_text(text, encoding="utf-8")
+    ws.write_text(text, encoding="utf-8", newline="")
     print(f"[OK] world_state.焦点场景 已更新为 {scene_id}")
 
 
@@ -108,7 +108,7 @@ def main():
             sys.exit(0)
         row = f"| {scene_id} | {scene_name} | {scene_type} | {scene_time} | {scene_cast} | {scene_status} |"
         lines = _insert_after_last_srow(lines, row)
-        filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        filepath.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="")
         print(f"[OK] 索引 +{scene_id} {scene_name}")
 
     elif action == "update":
@@ -155,7 +155,7 @@ def main():
                 i += 2
             else:
                 print(f"[ERR] 未知参数: {a}", file=sys.stderr); sys.exit(1)
-        filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        filepath.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="")
 
     elif action == "activate":
         scene_id = rest[0] if len(rest) >= 1 else ""
@@ -178,7 +178,7 @@ def main():
                 lines[i] = "|".join(parts)
         if not changed:
             print(f"[ERR] 场景 {scene_id} 不在索引中", file=sys.stderr); sys.exit(1)
-        filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        filepath.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="")
         _sync_focus(world_dir, scene_id)
         print(f"[OK] {scene_id} 设为 ACTIVE，其余标记 COMPLETED")
 
@@ -189,7 +189,7 @@ def main():
         if not filepath.is_file():
             print("[ERR] INDEX.md 不存在", file=sys.stderr); sys.exit(1)
         lines = [ln for ln in filepath.read_text(encoding="utf-8").splitlines() if not ln.startswith(f"| {scene_id} |")]
-        filepath.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        filepath.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="")
         print(f"[OK] 索引已移除: {scene_id}")
 
     elif action == "show":

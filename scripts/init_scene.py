@@ -139,7 +139,8 @@ def main():
     # scene_state.yaml（新键表，见 references/keys.md §scene_state.yaml；脚本只建空值骨架，字段值随剧情轮 change set 注册自然累积）
     # 场景时间线【禁止预写】——剧情事件一律由每轮 change set ###APPEND: 追加（预写=把计划当记录·会与 change set 双写重复）。
     ss_file = scene_dir / "scene_state.yaml"
-    ss_file.write_text(SCENE_STATE_SKELETON, encoding="utf-8")
+    ss_file.write_text(SCENE_STATE_SKELETON, encoding="utf-8", newline="")
+    (scene_dir / "pending_actions.yaml").write_text("已完成: {}\n活跃中: {}\n", encoding="utf-8", newline="")
 
     # ── INHERIT: --from 继承旧场景物理锚点/道具（同物理地点切换必用；源存在性+可解析性已在创建前预检）──
     if src_dir is not None:
@@ -159,7 +160,7 @@ def main():
             else:
                 target_text = re.sub(pattern, lambda m: src_block, target_text, count=1, flags=re.M | re.S)
             inherited.append(key)
-        ss_file.write_text(target_text, encoding="utf-8")
+        ss_file.write_text(target_text, encoding="utf-8", newline="")
         print(f"[OK] 场景继承: {src_name} -> {scene_dir.name} ({'、'.join(inherited)})")
         # 继承后立即校验新场景 YAML 可解析（防坏格式静默通过）
         try:
@@ -169,12 +170,12 @@ def main():
             sys.exit(1)
 
     # narrative.md（空文件——每轮由 write_narrative.py 轮转写入，创建时留空为设计）
-    (scene_dir / "narrative.md").write_text("", encoding="utf-8")
+    (scene_dir / "narrative.md").write_text("", encoding="utf-8", newline="")
 
     # 更新场景索引（与 templates/INDEX.md 对齐：场景名称/基准时间）
     index_file = world_dir / "scenes" / "INDEX.md"
     if not index_file.is_file():
-        index_file.write_text(INDEX_HEADER, encoding="utf-8")
+        index_file.write_text(INDEX_HEADER, encoding="utf-8", newline="")
     if any(line.startswith(f"| {scene_id} |") for line in index_file.read_text(encoding="utf-8").splitlines()):
         print(f"[WARN] 场景 {scene_id} 已存在于索引中，跳过索引更新")
     else:
@@ -188,7 +189,7 @@ def main():
             lines = lines[: last + 1] + [row] + lines[last + 1 :]
         else:
             lines = lines + [row]
-        index_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        index_file.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="")
 
     print(f"[OK] 场景已创建: {scene_dir}")
     print(f"[OK] 索引文件已更新: {index_file}")
@@ -201,7 +202,7 @@ def main():
             text = re.sub(r"^焦点场景:.*", f"焦点场景: {scene_id}", text, count=1, flags=re.M)
         else:
             text = f"焦点场景: {scene_id}\n" + text
-        ws_file.write_text(text, encoding="utf-8")
+        ws_file.write_text(text, encoding="utf-8", newline="")
         print(f"[OK] world_state.焦点场景 已更新为 {scene_id}")
 
     # ── 待填清单输出（脚本只建基础设施——内容文件按 templates/ 直接生成，禁止带模板占位运行）──

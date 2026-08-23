@@ -30,6 +30,15 @@ import_card.py — SillyTavern 兼容角色卡提取（解析+完整留存+预�
 import sys, os, re, json, base64, struct
 from pathlib import Path
 
+# I/O 纪律（硬性）：本脚本读写一律 UTF-8——Windows 缺省 locale（GBK）读中文 yaml 必炸、
+# emoji（🔴等）写 GBK stdout 必炸；所有 open/read_text/write_text 已显式 encoding，此处兜底 stdout/stderr
+for _s in (sys.stdout, sys.stderr):
+    try:
+        if _s and _s.encoding and _s.encoding.lower().replace("-", "") != "utf8":
+            _s.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
 SKILL_DIR = Path(__file__).resolve().parent.parent
 WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
 INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
@@ -177,7 +186,7 @@ def process_one(world_dir: Path, png_path: Path, dry_run: bool) -> int:
         return 0
 
     import_dir.mkdir(parents=True, exist_ok=True)
-    json_target.write_text(json.dumps(material, ensure_ascii=False, indent=2), encoding="utf-8")
+    json_target.write_text(json.dumps(material, ensure_ascii=False, indent=2), encoding="utf-8", newline="")
     print(f"\n  [OK] 素材已留存: {json_target.relative_to(world_dir)}")
     print(f"  → 下一步: LLM 读素材全部原文，按 templates/CHAR_.md 结构综合生成 CHAR_{name}.md")
     return 0

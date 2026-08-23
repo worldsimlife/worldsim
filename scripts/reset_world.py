@@ -21,7 +21,7 @@ SKILL_DIR = Path(__file__).resolve().parent.parent
 SCRIPT_DIR = Path(__file__).resolve().parent
 WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
 
-DYNAMIC_FILES = ["world_state.yaml", "conflicts.yaml", "world_map.yaml", "pending_actions.yaml", "foreshadow.yaml", "knowledge_index.yaml"]
+DYNAMIC_FILES = ["world_state.yaml", "conflicts.yaml", "world_map.yaml", "foreshadow.yaml", "knowledge_index.yaml"]
 
 
 def main():

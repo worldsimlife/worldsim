@@ -52,18 +52,20 @@ Windows 平台按 write_protocol「临时文件协议」（UTF-8 临时文件 + 
 
 **加载序列（分层单一路径·按序执行）：** 该加载什么由分层规则+当前焦点场景直接判定，与「首次/恢复」无关，**不存在全量兜底**——加载 = 规则的确定性输出，不是历史记录的复制：
 
-0. **动态文件物化：** `worldctl.py <世界> init-states`（幂等·缺什么补什么·已存在跳过·统一 LF）——conflicts.yaml ← CONFLICTS_SEED.md / world_state·world_map·pending_actions ← 模板 / `CHAR_{名}_state.yaml` 骨架（自主性初始值解析自 CHAR_.md「世界法则·循环注册」·外部者角色无该行）；有 regions/ 时自动 map-sync 对账。物化后检查 `world_state.叙事约定`——为空 → LLM 按世界设定填写（POV 视角/叙事人称/认知边界）
+0. **动态文件物化：** `worldctl.py <世界> init-states`（幂等·缺什么补什么·已存在跳过·统一 LF）——conflicts.yaml ← CONFLICTS_SEED.md / world_state·world_map·**storylines·direction** ← 模板 / `CHAR_{名}_state.yaml` 骨架（自主性解析自 CHAR_.md「世界法则·循环注册」·外部者角色无该行）；有 regions/ 时自动 map-sync 对账。物化后检查 `world_state.叙事约定`——为空 → LLM 按世界设定填写（POV 视角/叙事人称/认知边界）
+   **存量旧世界**：conflicts 含 节拍表/当前节拍 旧结构 → 提示用户执行 `worldctl.py <世界> migrate`（经确认后迁移；机械部分脚本完成·角色反应/决策状态翻译按 tmp/migrate_report.md 由 LLM 辅助完成）
+   **中断恢复协议（六批次）**：阶段落盘顺序固定 conflicts→storylines→direction→CHAR_state→scenes/world_state→narration；恢复时 validate+8c 叙事新鲜度检测半完成轮（narrative 轮次 < world_state 轮次）→ 默认 `snap.py load` 回退轮首快照重驱动（干净·推荐）·无快照续驱动（LLM 判断中间状态一致性）；关键节点（场景切换/顶点出线/重置）⑤收尾后建议 snap save
 1. **静态设定：** SETTING.md + **当前焦点场景出场角色**（scene_card/INDEX 出场列）的 CHAR_.md——**无焦点场景（首次启动）→ 只读 POV 角色（Guest/玩家）档案 + 入口区域档案（`regions/` 入口节点 REGION.md）+ 入口常驻 NPC 档案**（入场物化与世界入口描绘所需）；背景角色档案一律不预读，进场或需推导反应时按需 `worldctl.py <世界> grep <角色名>` 补读；**CHAR_.md 缺失 = 禁止推导反应**，先补读
 2. **入场物化（无焦点场景时·幂等·有焦点场景则跳过）：** 世界入口的确定性物化——戏剧决策（CT 节拍/CHAR_state 填充）仍留首轮：
    - **时间起点确立：** 按 POV 角色初始情景与入口上下文确立——`时间.基准时间`/`具体时间` = 第1日 + 入口角色在岗时段（循环世界对照 LOOPS）
    - **初始场景创建：** `init_scene.py <世界> S01 <入口场景名> --place <入口区域档案路径> --type <INT/EXT> --time <起点时间> --cast <出场角色>`（目录/narrative/INDEX ACTIVE/world_state.焦点场景 由脚本处理）
    - **场景内容生成（参照 templates/·禁模板占位残留）：** scene_card（区域/类型/基准时间/出场角色/场景目标/前情钩子）；scene_state 物理锚点自入口区域 REGION 档案生成 + 出场角色摘要（POV 角色+入口常驻 NPC——「生成物理空间场景并放入角色」·`场景时间线` 留空禁预写）；start_snapshot **最小填充**（冻结时间=起点时间·开场轮次=1·角色姿态/道具位置/开场心理态=档案默认；开场节拍态/附加态/焦外=无——首次进入无内容可填）
-3. **动态核心：** world_state / conflicts / world_map / pending_actions + 出场角色的 CHAR_state（conflicts 关联角色**不驱动**档案加载——conflicts.yaml 照常读作推进依据，但档案只按当前场景出场加载）
-4. **焦点场景四件套**（scene_card/scene_state/narrative/start_snapshot·必读——入场物化刚生成的初始场景四件套·上下文已有→跳过）——narrative.md 原文用于叙事文本接续（只用于接续，不改变创作依赖）
+3. **动态核心：** world_state / conflicts / world_map / pending_actions + 出场角色的 CHAR_state（conflicts 关联角色**不驱动**档案加载——conflicts.yaml 照常读作推进依据，但档案只按当前场景出场加载） 
+4. **焦点场景四件套**（根据world_state.焦点场景读：scene_card/scene_state/narrative/start_snapshot·必读——入场物化刚生成的初始场景四件套·上下文已有→跳过）——narrative.md 原文用于叙事文本接续（只用于接续，不改变创作依赖）
 5. **架构与索引：** story_architecture/LOOPS.md（循环协调索引·有则读一次）与 CROSS_NARRATIVES.md（有则各读一次）；knowledge_index.yaml（有则读一次·见 references/knowledge_index.md）
 6. **状态校验：** 执行 scene_management.md §状态校验（validate + 内容核查 + 修复）——validate 报错 = 修数据，不重读加载
 7. **循环机制核对（循环世界·会话启动时一次·非每轮）：** 时间已确立（入场物化确立·循环世界）→ 完整核对：
-   - ① **周期倒计时核对**——`外部倒计时` 无周期条目（循环/重置/契约/期限类周期机制）→ 按当前时间登记周期倒计时（剩余时间=距下一重置点·**重置类须含 `到期时刻` 精确字段**·字段见 keys.md §倒计时协议；**周期不一定是每日**）
+   - ① **周期倒计时核对**——`外部倒计时` 无周期条目（循环/重置/契约/期限类周期机制）→ 按当前时间登记周期倒计时（剩余时间=距下一重置点·**重置类须含 `到期时刻` 精确字段**·字段见 keys.md §倒计时协议；**周期不一定是每日**）。**到期时刻权威源（硬性）**：= SETTING「世界倒计时」显式声明；未声明时 = 全体在轨角色 LOOPS 的**共同循环边界**（醒转时刻=新循环开始）——**禁止取单角色班次结束/入睡时刻当世界重置点**（班次是个人的·循环边界是世界的；单角色中途回收=事件触发 reset-cycle --asset）
    - ② **重置点核对**——当前时间越过周期重置 `到期时刻` 且循环角色无覆盖当前日期的 `重置记录` → 执行 `worldctl.py reset-cycle`（**脚本自动判定覆盖范围与豁免**）；调用后 LLM 只做：保留候选微调 + 状态按 LOOPS 补写 + CT 节拍核查 + 重置叙事
    - ③ **走表校准**——既有周期倒计时剩余时间按当前时间校准（轮间未走表的补齐）
    - 此后每轮重置触发由 **write-raw audit 机械拦截**兜底：写 `时间.具体时间` 越过 `到期时刻` 且无当日 `重置记录` → 字段硬性顶回（见 references/phase_dramatist.md 压力源扫描③b / commands.md）

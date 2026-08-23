@@ -122,7 +122,7 @@ def main():
         else:
             os.replace(str(narr_file), str(scene_dir / f"narrative.{ts}.md"))
             print(f"  归档: narrative.md -> narrative.{ts}.md")
-    narr_file.write_text("", encoding="utf-8")
+    narr_file.write_text("", encoding="utf-8", newline="")
     print("  清空: narrative.md")
 
     # ── 2. scene_state.yaml：场景时间线置空 + 核心状态待填充（保留静态基线）──
@@ -138,7 +138,7 @@ def main():
                 if data.get("核心状态"):
                     data["核心状态"] = "<!-- 已重置：待按 start_snapshot.md 恢复开场状态 -->"
                     changed.append("核心状态")
-                ss_file.write_text(yaml.dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8")
+                ss_file.write_text(yaml.dump(data, allow_unicode=True, sort_keys=False), encoding="utf-8", newline="")
                 if changed:
                     print(f"  重置: {'/'.join(changed)}")
                 else:
@@ -189,14 +189,14 @@ def main():
         if start_time:
             text = re.sub(r"^  具体时间:.*", f"  具体时间: {start_time}", text, count=1, flags=re.M)
             text = re.sub(r"^  基准时间:.*", f"  基准时间: {start_time}", text, count=1, flags=re.M)
-            ws_file.write_text(text, encoding="utf-8")
+            ws_file.write_text(text, encoding="utf-8", newline="")
             print(f"  回退: world_state 时间 → {start_time}（场景开场）")
         else:
             print("[WARN] start_snapshot.md 无冻结时间，跳过 world_state 时间回退（请补填 start_snapshot「## 冻结时间」）", file=sys.stderr)
         if start_round:
             text = ws_file.read_text(encoding="utf-8")
             text = re.sub(r"^轮次:.*", f"轮次: '{start_round}'", text, count=1, flags=re.M)
-            ws_file.write_text(text, encoding="utf-8")
+            ws_file.write_text(text, encoding="utf-8", newline="")
             print(f"  回退: world_state 轮次 → {start_round}（场景开场）")
         else:
             print("[WARN] start_snapshot.md 无开场轮次，跳过 world_state 轮次回退（请补填 start_snapshot「## 开场轮次」）", file=sys.stderr)
@@ -206,12 +206,12 @@ def main():
     print("下一步: 戏剧家按 start_snapshot.md 重新填充 scene_state 核心状态，继续叙事")
     print("")
     print("【回退后必查·脚本不自动处理·LLM 按 references/rollback.md 涉及文件清单逐项核对】:")
-    print("  1. conflicts.yaml        CT 当前节拍回退/覆盖（或删除回退期间推进的节拍）")
-    print("  2. CHAR_*_state.yaml     核心状态/情绪/位置恢复开场形态；记忆锚点/反应轨迹含回退后'未来'条目需裁剪")
+    print("  1. conflicts.yaml/direction  CT 关系状态/内部状态/相位回退·拍指针对照 snapshot 开场态重设")
+    print("  2. CHAR_*_state.yaml     核心状态/情绪/位置恢复开场形态；记忆锚点/连续行动轨迹（旧字段反应轨迹）/信念演化/偏离登记按开场轮次裁剪")
     print("                            （外部者如 Guest 必须裁剪未来记忆·Host 可保留作既视感/碎片素材）")
     print("  3. world_state.yaml      前情描述/外部倒计时/全局标记（脚本只回退了时间/轮次·其余仍可能是回退前状态）")
     print("  4. scene_state.yaml      核心状态/出场角色摘要恢复开场形态（脚本只清了时间线·静态基线保留）")
-    print("  5. states/pending_actions.yaml     焦外条目回退（最易漏）")
+    print("  5. scenes/{当前焦点场景}/pending_actions.yaml     焦外条目回退（最易漏）")
     print("  6. world_map.yaml        回退期间新登记的区域（如有）")
     sys.exit(0)
 

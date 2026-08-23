@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # snap.py — 状态快照存档（V2）
 # 备份范围（全量）：
-#   - 动态状态: states/ 下全部 yaml（world_state/conflicts/world_map/pending_actions·快照内平铺）
+#   - 动态状态: states/ 下全部 yaml（world_state/conflicts/world_map·快照内平铺）
 #   - 角色状态: states/CHAR_*_state.yaml
-#   - 场景: scenes/ 全目录（INDEX.md + 每个场景的 scene_state/narrative/scene_card/start_snapshot）
+#   - 场景: scenes/ 全目录（INDEX.md + 每个场景的 scene_state/pending_actions/narrative/scene_card/start_snapshot）
 # 焦点场景唯一权威源 = world_state.yaml 顶层「焦点场景」（不再使用 .active 文件）
 # 用法:
 #   python3 scripts/snap.py <世界名> save [快照名]
@@ -25,7 +25,7 @@ for _s in (sys.stdout, sys.stderr):
 SKILL_DIR = Path(__file__).resolve().parent.parent
 WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
 
-STATE_FILES = ["world_state.yaml", "conflicts.yaml", "pending_actions.yaml", "world_map.yaml"]
+STATE_FILES = ["world_state.yaml", "conflicts.yaml", "world_map.yaml", "storylines.yaml", "direction.yaml"]
 
 
 def validate_name(name: str) -> None:
@@ -139,6 +139,10 @@ def main():
             if f.is_file():
                 shutil.copy2(f, outdir / f.name)
                 file_count += 1
+        for f in sorted((world_dir / "states").glob(".climax_baseline_*.yaml")):
+            if f.is_file():
+                shutil.copy2(f, outdir / f.name)
+                file_count += 1
         if (world_dir / "scenes").is_dir():
             shutil.copytree(world_dir / "scenes", outdir / "scenes")
             file_count += len(_rel_files(outdir / "scenes"))
@@ -153,7 +157,7 @@ def main():
                 continue
             size = (outdir / rel).stat().st_size
             lines.append(f"- `{rel}` ({size} B)")
-        manifest.write_text("\n".join(lines) + "\n", encoding="utf-8")
+        manifest.write_text("\n".join(lines) + "\n", encoding="utf-8", newline="")
         file_count += 1
         print(f"已保存快照: {snapname} ({file_count} 个文件，scenes 已全量备份)")
 
@@ -175,6 +179,9 @@ def main():
         for f in sorted((world_dir / "states").glob("CHAR_*_state.yaml")):
             if f.is_file():
                 shutil.copy2(f, bakdir / f.name)
+        for f in sorted((world_dir / "states").glob(".climax_baseline_*.yaml")):
+            if f.is_file():
+                shutil.copy2(f, bakdir / f.name)
         if (world_dir / "scenes").is_dir():
             shutil.copytree(world_dir / "scenes", bakdir / "scenes")
         print(f"当前状态已备份到: _before_{bak_ts}")
@@ -186,6 +193,11 @@ def main():
                 restored += 1
                 print(f"  恢复: states/{f}")
         for f in sorted(srcdir.glob("CHAR_*_state.yaml")):
+            if f.is_file():
+                shutil.copy2(f, world_dir / "states" / f.name)
+                restored += 1
+                print(f"  恢复: {f.name}")
+        for f in sorted(srcdir.glob(".climax_baseline_*.yaml")):
             if f.is_file():
                 shutil.copy2(f, world_dir / "states" / f.name)
                 restored += 1

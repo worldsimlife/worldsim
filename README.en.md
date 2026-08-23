@@ -1,6 +1,6 @@
 # WorldSim — Where Worlds Come to Life
 
-> World Simulation · Narrative Engine · Roleplay
+> World Simulation · Narrative Engine · Live Drama · Roleplay
 
 > WorldSim is more than roleplay — it's a world that breathes: characters are flesh and blood, making trade-offs under pressure; in corners no one watches, fates keep rising and falling. Walk in — you are part of the story.
 > For players who want deep roleplay and creators chasing dramatic tension.
@@ -173,19 +173,22 @@ WorldSim can import **SillyTavern-compatible character cards** (`.png` with embe
 | Back to immersion mode | `/silent` |
 | **Something feels off — audit the engine** | `/audit` |
 
-> **Audit** (`/audit`): use it whenever something feels off — the engine checks world state and narrative against the dramatist/writer/continuity gates, item by item, outputting PASS/FAIL with evidence (file paths + field text), and follows the repair flow on failures. If audits keep finding the same class of violations (the engine repeatedly fails to follow its rules, patches don't help) — recommend switching to a different agent or LLM model instead of endlessly patching.
+> **Audit** (`/audit`): use it whenever something feels off — the engine checks world state and narrative against the six-stage checklists (Dramatist D / Storyliner S / Director R / Actor A / Continuity Keeper K / Writer W), item by item, outputting PASS/FAIL with evidence (file paths + field text), and follows the repair flow on failures. If audits keep finding the same class of violations (the engine repeatedly fails to follow its rules, patches don't help) — recommend switching to a different agent or LLM model instead of endlessly patching.
 
 ---
 
-## Architecture: A Single-Context, Phase-Segmented Pipeline
+## Architecture: A Single-Context, Six-Stage Pipeline
 
-WorldSim's core architecture is a single LLM within a single shared context — unlike the industry-common Multi-Agent architecture (multiple models colliding in high-cost, low-density "swarm chat"). It is not many models talking to each other; it is one engine executing three logical phases in sequence within the same context, sharing the same world knowledge and conversation history:
+WorldSim's core architecture is a single LLM within a single shared context — unlike the industry-common Multi-Agent architecture (multiple models colliding in high-cost, low-density "swarm chat"). It is not many models talking to each other; it is one engine executing six logical layers in sequence within the same context, sharing the same world knowledge and conversation history:
 
-1. **The Dramatist** — conflict modeling and state pressure: reviews the previous turn, manufactures dilemmas and irreversible costs, pushes characters to the edge of choice
-2. **The Writer** — detail rendering and cinematic framing: given the tension targets, writes "Show, Don't Tell" — actions, micro-expressions, senses, and subtext
-3. **The Continuity Keeper** — state persistence and archiving: distills each turn's irreversible state changes (shattered psychological defenses, destroyed key objects, deep memory imprints), keeping long-session context drift-free
+1. **The Dramatist** — conflict engine: scans pressure sources, registers / advances / escalates conflicts (CTs), manufactures deadlocks and irreversible costs — pressing characters onto the cliff's edge
+2. **The Storyliner** — structure engine: story arcs, storylines, and beat sequences — weaving conflicts into fate, holding the macro course
+3. **The Director** — live-direction engine: judges last turn's actual performance, controls pacing, continuation, and transitions of the current beat — detonating at the moment that matters most
+4. **The Actor** — the life layer: NPCs decide and improvise autonomously from a four-layer drive model (persona drives / current goals / action state / environmental pressure) — each owns a continuous timeline independent of the player; the player can enter or interrupt it, but is never its origin
+5. **The Continuity Keeper** — fact engine: records what has actually happened into world state — long-session context stays drift-free
+6. **The Writer** — narrative engine: turns what the user just lived through into prose — letting readers watch the jump from the cliff
 
-The three are pistons of the same engine, completing all the work in sequence within a single inference. To keep per-turn cognitive load in check, **rules are loaded at the point of use**: SKILL.md keeps only the orchestration and constraints needed every turn; the phase rule files (`references/phase_*.md`) are read when that phase or moment is reached — phase rules enter the context when needed, no longer resident in full. Phases are separated by **artifact handoff + script gates**: the Dramatist outputs a change set (`gate dramatist --check`), the Writer outputs the narrative (`gate writer --check`), the Continuity Keeper persists (`write-raw` built-in audit); a failed gate means redo. 
+Each of the seven state files has exactly one authoritative writer (Single Writer per State); routine turns take lightweight paths (conditional skipping), heavy paths fire only on triggers. To keep per-turn cognitive load in check, **rules load at the point of use**: SKILL.md keeps only orchestration and constraints; the six phase rule files (`references/phase_*.md`) are read when their stage begins — read, decide, and generate stage by stage, never all at once. Stages are separated by **artifact handoff + script gates**: each stage produces its own write batch (first line `###STAGE:`) and must pass its own `gate <stage> --check` before the next stage begins; the Keeper closes each round with `round-check`; the Writer's narrative passes the W4 anchor check before output — output is the end of the turn.
 
 **Dramatic craft instead of model stacking** — quality comes from the discipline of screenwriting, not from model count: low cost, results that exceed expectations.
 

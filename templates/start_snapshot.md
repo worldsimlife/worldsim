@@ -14,7 +14,7 @@
 - [角色名]: [同上]
 
 开场 conflicts 节拍态：
-- [CT-ID]: [当前节拍一句话·有事件线时含拍名引用=`节拍表.{N}.当前拍`（格式 `{N}-{拍名}`）] (恢复时写入 conflicts.yaml 对应 CT 的 当前节拍)
+- [CT-ID]: [对峙状态一句话·有事件线时含指针=direction 当前事件线 SL-XX/当前拍] (恢复时写入 conflicts 对应 CT 的 关系状态 与 direction 指针)
 - [CT-ID]: [同上]
 
 开场 world_state 附加态：
@@ -22,4 +22,4 @@
 - 全局标记：[开场时已成立的世界事实] (恢复时写入 world_state.yaml 的 全局标记.{名})
 
 焦外待揭示（开场时·揭示场景=本场景）：
-- [PA-ID]: [行动 + 当前状态 + 信号] (恢复时写入 states/pending_actions.yaml 的 活跃中.{PA-ID})
+- [PA-ID]: [行动 + 当前状态 + 信号] (恢复时写入当前焦点场景 pending_actions.yaml 的 活跃中.{PA-ID})
