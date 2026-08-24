@@ -5,7 +5,7 @@
 
 ## 数据就绪（本阶段开头）
 
-conflicts（①刚写）＋ storylines ＋ SETTING 故事弧线 ＋ beat_structure 宏观骨架 ＋（循环世界）LOOPS 结构素材（跨角色互锁时刻） + 伏笔 foreshadow。
+conflicts（①刚写）＋ storylines ＋ direction（**escalation_flags.不承接 消化**）＋ SETTING 故事弧线 ＋ beat_structure 宏观骨架 ＋（循环世界）LOOPS 结构素材（跨角色互锁时刻） + 伏笔 foreshadow。
 
 ## 职责
 
@@ -14,11 +14,12 @@ conflicts（①刚写）＋ storylines ＋ SETTING 故事弧线 ＋ beat_structu
    - 本幕主题/整体张力（紧/松）/宏观位置/收敛边界——一行张力基调确认写入 META；
    - 建线/重大推进时对照 SETTING 弧线（幕数/中点/高潮目标/张力预算）逐项校准。
  
-2. **建线/重规划（触发式·结构性动作）**：
+2. **建线/重规划/收束（触发式·结构性动作）**：
    - 结构参考：references/beat_structure.md（五段式节拍表/分形咬合·规划前读）
    - 节拍表空或新冲突内核（对抗双方+被争夺资源·与现有线不同）→ `###STORYLINE: add`
-   - direction.escalation_flags.不承接 → 默认 `###STORYLINE: clear N`（低阻力出口·残余由新线从现实状态承接为铺垫）；判线有继续价值 → `rewrite N`
-   - 顶点出线后需新线 → 清后建
+   - direction.escalation_flags.不承接 → 判线有继续价值 → `###STORYLINE: rewrite N`；无继续价值 → `###STORYLINE: clear N`（废弃·整条抹为空锚点）
+   - direction 当前拍=余波（线已演完）→ `###STORYLINE: close N`（收束·必带一行 收束摘要——结局定性）
+   - **close/clear 复位 direction 指针：当轮必须 add 后继线（可低强度铺垫线）并由③导演 set 新起点——否则 round-check FAIL**
 3. **拍序设计**：每拍填 空间/时间/**戏剧问题**（本拍必须回答的、有边界的戏剧问题·禁无界持续描述「加剧/深化」类措辞）/兑现形态（问题被回答时的可观察形态：证据易手/被迫承认/控制权转移/关系定性/退路封死——单一判据的具象化）；**顶点拍预填 顶点约束**（五字段：关系主体/核心张力/变化维度/非玩家爆破/基准快照——声明这一场关系必须被推至的临界）：
    - `关系主体` ≥2 去重（不区分玩家/NPC——顶点的单位是关系不是单人·与 CT 对抗双方同构）
    - `核心张力`：必须被推至临界的未决问题——一句话点名赌注所在（爆破点库挑最痛）
@@ -61,6 +62,25 @@ conflicts（①刚写）＋ storylines ＋ SETTING 故事弧线 ＋ beat_structu
 ```
 
 建线后起点指针由③导演 `###BEAT: set SL-XX <起点拍>` 落 direction（本阶段不碰 direction）。CT.事件线引用 由①戏剧家在下轮结算时补挂。
+
+收束格式（当前拍=余波时·与后继线建线同批）：
+
+```
+###STAGE: 编剧
+###META: 编剧 收束SL-01·建线SL-02
+###STORYLINE: close SL-01
+收束摘要: 钥匙归还·关系定性为互相守护——转入日常形态
+###STORYLINE: add
+名称: 婚事风波线
+类型: 关系转折
+状态: 活跃
+拍序:
+- 拍名: 铺垫
+  空间: 柜台
+  时间: 第2日
+  戏剧问题: 名分话题会被谁先挑明？
+  兑现形态: 被迫承认
+```
 
 ## 闸门
 

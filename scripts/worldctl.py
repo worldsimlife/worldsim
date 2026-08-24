@@ -23,7 +23,7 @@ worldctl.py — WorldSim 批量状态管理 V2
   worldctl.py <世界名> scan [--live]      ← 扫描世界状态摘要（默认含历史轮转/archive·--live 仅当前）
   worldctl.py <世界名> gate dramatist|storyliner|director|actor|keeper|writer [--check]
                                          ← 六阶段闸门（--check=从 stdin 读该阶段批次/叙事跑代码化核验·不合格 exit 1）
-  worldctl.py <世界名> storyline <子命令> ← 事件线结构维护（show/add/rewrite/clear·写 states/storylines.yaml·②编剧唯一通道）
+  worldctl.py <世界名> storyline <子命令> ← 事件线结构维护（show/add/rewrite/close/clear·写 states/storylines.yaml·②编剧唯一通道）
   worldctl.py <世界名> beat <子命令>     ← 演出指针维护（show/set/stay/advance·写 states/direction.yaml·③导演唯一通道）
   worldctl.py <世界名> reset-cycle [--asset <角色>]
                                          ← 循环世界周期重置（全员机械重置+登记+重建倒计时）
@@ -87,6 +87,9 @@ DIRECTION_KEYS = {"当前事件线", "当前拍", "当前戏剧问题", "当前�
                   "承接判断", "节拍决策", "guidance", "转场", "escalation_flags", "时间窗口", "调度单"}
 STORYLINES_TOP_KEYS = {"故事弧线", STORYLINE_TOP_KEY}
 PERF_STATES = ("上升", "持续", "转折", "收束", "停滞")
+# 施压方向（conflicts 顶层键·①戏剧家每轮随推进池标注——瞄准声明·非结算字段非行动脚本）
+PRESSURE_KEY = "施压方向"
+PRESSURE_ENUM = ("死局两难", "防御踩爆", "关系撕裂", "不可逆代价", "维持")
 # 连续行动轨迹增长告警线（窗口滚动裁剪后·兜底软告警）
 ACTION_TRACK_LIMIT = 5000
 
@@ -548,7 +551,7 @@ def parse_batch_entries(lines):
       errors   : 解析错误列表
       meta     : ###META 行（静默自查锚点——不产生写入 ops·不落盘）
       stage    : ###STAGE 声明的阶段名（戏剧家/编剧/导演/角色/场记/作家·缺省 ""）
-      storyline: [(动作行, payload行列表|None)]——add/rewrite 后跟事件线 YAML 块（到下一个 ### 行·write-raw 自动执行）
+      storyline: [(动作行, payload行列表|None)]——add/rewrite/close 后跟 YAML 块（到下一个 ### 行·write-raw 自动执行）
       beat     : [动作行]——set/stay/advance（③导演·无 payload）
       action   : [行动卡行]——④角色阶段产物（四件套·audit ①①b⑨ 检查对象）
       schedule : [调度单行]——受影响链留痕（④角色·时间窗口收敛记录）"""
@@ -589,7 +592,7 @@ def parse_batch_entries(lines):
         elif line.startswith("###STORYLINE:"):
             sl_action = line[len("###STORYLINE:"):].strip()
             first = sl_action.split()[0] if sl_action else ""
-            if first in ("add", "rewrite"):
+            if first in ("add", "rewrite", "close"):
                 sl_payload = []
                 storyline_lines.append((sl_action, sl_payload))
             else:
@@ -968,8 +971,8 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
         # ⑬ FILE 归属校验（硬性——防 FILE 标记错位导致字段写入错误文件）
         if key_path:
             if file_key == "conflicts":
-                if not key_path[0].startswith("CT-"):
-                    hard.append((idx, f"{file_key}.{key_path_str}: conflicts 顶层键必须是 CT-XX（当前 '{key_path[0]}'）——疑似 FILE 标记错位/字段写入错误文件"))
+                if not (key_path[0].startswith("CT-") or key_path[0] == PRESSURE_KEY):
+                    hard.append((idx, f"{file_key}.{key_path_str}: conflicts 顶层键必须是 CT-XX 或 {PRESSURE_KEY}（当前 '{key_path[0]}'）——疑似 FILE 标记错位/字段写入错误文件"))
                 elif len(key_path) >= 2:
                     # ⑭ CT 子键白名单（硬性·防编码损坏静默入库）：CT-XX 下仅允许八字段+事件线引用（+存量归档标记）
                     #   实测案例：PowerShell 管道把中文键损坏成 `????` → 被当新键静默创建；白名单使此类损坏当场爆炸
@@ -1074,6 +1077,25 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
     if ops and stage == "戏剧家":
         if not has_ct_op:
             soft.append((-1, "戏剧家批应含 ≥1 条 CT 推进/注册（conflicts.CT-XX）——查询轮豁免"))
+        # 停滞旗标消费核验：旗标在场 → 本批必须写 conflicts.施压方向 且 ≠维持（加压兑现）
+        _flags = _load_direction(world_dir).get("escalation_flags")
+        if isinstance(_flags, dict) and any("停滞" in str(k) for k in _flags):
+            _press_writes = [
+                str(_content).strip()
+                for _kind, _file_key, _key_path, _content, _append in ops
+                if _kind == "write" and _file_key.strip().lower() == "conflicts"
+                and _key_path.strip() == PRESSURE_KEY
+            ]
+            if not _press_writes:
+                hard.append((-1, f"direction.escalation_flags.停滞 在场——本批必须写 conflicts.{PRESSURE_KEY}（四爆破方向四选一·加压兑现·停滞旗标当轮消化）"))
+            elif all(v == "维持" for v in _press_writes):
+                hard.append((-1, f"direction.escalation_flags.停滞 在场而 {PRESSURE_KEY}=维持——停滞轮禁标维持（四爆破方向四选一）"))
+        # 施压方向枚举校验（本批写入值）
+        for _kind, _file_key, _key_path, _content, _append in ops:
+            if _kind == "write" and _file_key.strip().lower() == "conflicts" and _key_path.strip() == PRESSURE_KEY:
+                _pv = str(_content).strip()
+                if _pv and _pv not in PRESSURE_ENUM:
+                    hard.append((-1, f"conflicts.{PRESSURE_KEY} '{_pv}' 非法（枚举: {'/'.join(PRESSURE_ENUM)}）"))
     elif ops and stage == "场记":
         for flag, msg in ((has_ws_time, "场记批应含 world_state.时间.具体时间 推进"),
                           (has_ws_round, "场记批应含 world_state.轮次 +1"),
@@ -1086,7 +1108,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             _sl_map = (_load_storylines(world_dir).get(STORYLINE_TOP_KEY) or {})
             if _sl_map:
                 if ops and not any(("no-op" in m) or ("张力基调" in m) for m in meta_lines):
-                    soft.append((-1, "编剧批应含 ###STORYLINE: 动作（add/rewrite N/clear N）或 META 声明 no-op·张力基调——常态轮 no-op 豁免"))
+                    soft.append((-1, "编剧批应含 ###STORYLINE: 动作（add/rewrite N/close N/clear N）或 META 声明 no-op·张力基调——常态轮 no-op 豁免"))
             else:
                 hard.append((-1, "storylines 空表而批次无建线动作——重路径触发（空表）：###STORYLINE: add 必含（建线/重规划·phase_storyliner 职责2）"))
     elif stage == "导演":
@@ -1099,6 +1121,18 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             hard.append((-1, "direction.guidance 为空且批次未写 guidance——③导演回判/guidance 未落盘（direction 核心三件之一）"))
         if ops and not beat_lines and not any("回判" in m for m in meta_lines):
             soft.append((-1, "导演批应含 ###BEAT: 动作（set/stay/advance）或 META 回判留痕（no-op 亦算）"))
+        # 连续 stay 核验（无状态）：落盘前节拍决策已是「继续当前拍」而本批仍 stay → 必须写停滞旗标
+        # （措辞不匹配=静默放过·退化为 phase_director 规则兜底·不误拦）
+        if any(_b.startswith("stay") for _b in beat_lines) \
+                and str(_dr.get("节拍决策", "") or "").strip().startswith("继续当前拍"):
+            _flag_stay = any(
+                _kind == "write" and _file_key.strip().lower() == "direction"
+                and "escalation_flags" in _key_path
+                and ("停滞" in _key_path or "停滞" in _content)
+                for _kind, _file_key, _key_path, _content, _append in ops
+            )
+            if not _flag_stay:
+                hard.append((-1, "连续第 2 轮 stay（上轮节拍决策=继续当前拍）——本批必须写 escalation_flags.停滞=待加压（①戏剧家次轮必须加压）"))
     elif stage == "角色":
         _char_writes = sum(
             1 for _kind, _file_key, _key_path, _content, _append in ops
@@ -1594,8 +1628,8 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
         # ── ###STORYLINE / ###BEAT 自动执行（结构/指针落盘·失败拦批——LLM 不手动调用）──
         for action, payload in ctx["storyline"]:
             parts = action.split()
-            if not parts or parts[0] not in ("add", "rewrite", "clear"):
-                print(f"[FAIL] ###STORYLINE 动作非法: {action!r}（合法: add / rewrite N / clear N——结构动作·②编剧）——批次拦截", file=sys.stderr)
+            if not parts or parts[0] not in ("add", "rewrite", "close", "clear"):
+                print(f"[FAIL] ###STORYLINE 动作非法: {action!r}（合法: add / rewrite N / close N / clear N——结构动作·②编剧）——批次拦截", file=sys.stderr)
                 sys.exit(1)
             stdin_text = "\n".join(payload) if payload is not None else None
             try:
@@ -1659,6 +1693,9 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
     # 内容：CLI 参数优先，否则 stdin
     if len(extra) >= 3:
         content = extra[2]
+        if not content.isascii():
+            print("[ERR] 单字段模式仅限短 ASCII 值——中文/多行内容经 CLI 参数会随 locale 解码损坏文件，请用 write-raw --batch（stdin 直通·唯一编码安全通道）", file=sys.stderr)
+            sys.exit(1)
     else:
         content = _read_stdin_utf8()
 
@@ -2064,6 +2101,7 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
     CHECKLISTS = {
         "dramatist": [
             "D1 冲突推进: ≥1 条 CT 推进/注册（推进池非空）",
+            "D2b 施压方向: conflicts.施压方向 已写（死局两难/防御踩爆/关系撕裂/不可逆代价/维持——施压瞄准·停滞旗标在场时禁维持）",
             "D2 代价: CT 对抗双方可核验变化（资源易主/控制权易手/新增伤害/被迫选择/关系档位）",
             "D3 实质推进: 对抗加码或重大转折（冷却不写弱）",
             "D4 抽象方: 显现机制+本轮出手形态+抵抗痕迹",
@@ -2195,11 +2233,7 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False):
                 if stem:
                     char_md_names.add(stem)
             # 豁免：非角色专名（场景/组织/道具/系统）+ Guest/玩家 + 已知无档案的叙事称谓
-            KNOWN_NO_CHAR = {
-                "Guest", "Mesa", "QA", "游客", "便衣", "灰衣", "前门便衣",
-                "Westworld", "Sweetwater", "Mariposa", "Delos", "Welcome", "Center",
-                "Host", "Hosts", "Smart", "Ammo", "Mesa Hub", "The Maze", "Maze",
-            }
+            # 词表来源=audit_words.yaml（缺省内置通用词表·见 _load_audit_words）
             # 提取叙事中出现的英文专名（大写开头词/词组·排除句首·排除全大写缩写）
             name_pat = re.compile(r"\b([A-Z][a-zA-Z]+(?:[\s][A-Z][a-zA-Z]+)*)\b")
             text_no_speech = re.sub(r"「[^」]*」", "", raw)  # 去对话（台词内人名不算引用）
@@ -2490,6 +2524,11 @@ def cmd_validate(world_dir: Path):
             cdata = yaml.safe_load(conflicts_fp.read_text(encoding="utf-8"))
             if isinstance(cdata, dict):
                 for k in cdata:
+                    if str(k) == PRESSURE_KEY:
+                        pv = str(cdata[k] or "").strip()
+                        if pv and pv not in PRESSURE_ENUM:
+                            warnings.append(f"conflicts.yaml: {PRESSURE_KEY} '{pv}' 非法（枚举: {'/'.join(PRESSURE_ENUM)}）")
+                        continue
                     if not re.match(r"^CT-\d{2}$", str(k)):
                         extra = f"（v0.11 节拍表残留——执行 worldctl.py {world_dir.name} migrate）" if str(k) == BEAT_TOP_KEY else ""
                         warnings.append(f"conflicts.yaml: 顶层键 '{k}' 不符合 CT-XX 格式{extra}")
@@ -3165,7 +3204,8 @@ def _storyline_usage():
     print("  show [SL-XX]       读事件线（全部 / 指定）", file=sys.stderr)
     print("  add                stdin YAML 建线（id 自动递增 SL-XX·结构蓝图无当前拍——指针由③导演 ###BEAT: set 落 direction）", file=sys.stderr)
     print("  rewrite SL-XX      stdin YAML 重规划（现实不承接·判线仍有继续价值时）", file=sys.stderr)
-    print("  clear SL-XX        清线（当前拍=余波 或 不承接时·清空保留字段名·direction 指针自动复位）", file=sys.stderr)
+    print("  close SL-XX        收束（当前拍=余波·线已演完）——stdin YAML 必含一行 收束摘要；保留 名称/类型＋状态=已收束·清拍序·指针复位", file=sys.stderr)
+    print("  clear SL-XX        废弃（不承接且无继续价值）——整条抹为空锚点·direction 指针自动复位", file=sys.stderr)
     print("add/rewrite stdin 事件线 YAML 骨架（拍序含顶点拍时须带 顶点约束 五字段）:", file=sys.stderr)
     print("  名称: 事件标识", file=sys.stderr)
     print("  类型: 对峙/追逃/营救/关系转折…", file=sys.stderr)
@@ -3329,7 +3369,7 @@ def cmd_storyline(world_dir: Path, extra: list[str], stdin_text: str | None = No
         _warn_empty_beats(n, line)
         return
 
-    if sub in ("rewrite", "clear"):
+    if sub in ("rewrite", "close", "clear"):
         if len(extra) < 2:
             _storyline_usage()
             sys.exit(1)
@@ -3337,17 +3377,50 @@ def cmd_storyline(world_dir: Path, extra: list[str], stdin_text: str | None = No
         if n not in beats:
             print(f"[ERR] {STORYLINE_TOP_KEY} 无事件线 {n}", file=sys.stderr)
             sys.exit(1)
+        dr = _load_direction(world_dir)
+        ptr_on_line = str(dr.get("当前事件线", "") or "").strip() == n
+        cur_beat = str(dr.get("当前拍", "") or "").strip()
+        if sub == "close":
+            if not ptr_on_line:
+                print(f"[ERR] direction 指针不在事件线 {n}（当前: {dr.get('当前事件线', '')}/{cur_beat}）——close 只收束当前演完的线", file=sys.stderr)
+                sys.exit(1)
+            if cur_beat != "余波":
+                print(f"[ERR] 当前拍='{cur_beat}' 非余波——线未演完不收束（中途放弃走 clear·继续演出走 stay）", file=sys.stderr)
+                sys.exit(1)
+            pl = yaml.safe_load(stdin_text if stdin_text is not None else _read_stdin_utf8())
+            summary = str(pl.get("收束摘要", "")).strip() if isinstance(pl, dict) else ""
+            if not summary:
+                print("[ERR] close 缺 收束摘要（一行结局定性——不想留档说明该走 clear 废弃）", file=sys.stderr)
+                sys.exit(1)
+            old = beats[n] if isinstance(beats.get(n), dict) else {}
+            closed = {"名称": str(old.get("名称", "") or "").strip() or n}
+            ltype = str(old.get("类型", "") or "").strip()
+            if ltype:
+                closed["类型"] = ltype
+            closed["状态"] = "已收束"
+            closed["收束摘要"] = summary
+            beats[n] = closed
+            bfp = _climax_baseline_fp(world_dir, n)
+            if bfp.exists():
+                bfp.unlink()
+                print(f"[OK] 基线落档已清理（{bfp.name}）", file=sys.stderr)
+            dr["当前事件线"] = ""
+            dr["当前拍"] = ""
+            dr["当前戏剧问题"] = ""
+            _save_direction(world_dir, dr)
+            data[STORYLINE_TOP_KEY] = beats
+            write_yaml(fp, data)
+            print(f"[OK] {STORYLINE_TOP_KEY} 事件线 {n} 已收束（状态=已收束·留 名称/类型/收束摘要）——direction 指针已复位·当轮须 add 后继线并由③导演 set 新起点（否则 round-check FAIL）")
+            return
         if sub == "clear":
-            dr = _load_direction(world_dir)
-            if str(dr.get("当前事件线", "") or "").strip() == n:
-                cur_beat = str(dr.get("当前拍", "") or "").strip()
-                if cur_beat != "余波":
-                    print(f"[WARN] 当前拍='{cur_beat}' 非余波——清线按生命周期（现实与当前拍不承接·默认 clear）执行·语义由 D12 审计把关", file=sys.stderr)
+            if ptr_on_line and cur_beat == "余波":
+                print(f"[WARN] 当前拍='余波'——线已演完·应走 close 收束留档（本次按废弃抹除执行）", file=sys.stderr)
+            if ptr_on_line:
                 dr["当前事件线"] = ""
                 dr["当前拍"] = ""
                 dr["当前戏剧问题"] = ""
                 _save_direction(world_dir, dr)
-                print(f"[OK] direction 指针已复位（事件线 {n} 清线）", file=sys.stderr)
+                print(f"[OK] direction 指针已复位（事件线 {n} 废弃）", file=sys.stderr)
             beats[n] = {}
             bfp = _climax_baseline_fp(world_dir, n)
             if bfp.exists():

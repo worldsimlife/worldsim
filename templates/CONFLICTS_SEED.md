@@ -9,7 +9,7 @@
 种子只写**结构字段**（描述/对抗双方/被争夺资源/紧迫度/关联角色）。
 `关系状态`/`内部状态`/`相位`/`事件线引用` **留空**——它们是场景绑定内容（空间占位/生理反应/行动
 都发生在具体场景里），由①戏剧家**首轮**按首场景结算填充，种子给不了、也不该给。故事结构（事件线/拍序/顶点约束）
-=states/storylines.yaml（`worldctl.py <世界> storyline` 子命令维护·②编剧·建线 add/换线 rewrite/清线 clear·可多条并行）。
+=states/storylines.yaml（`worldctl.py <世界> storyline` 子命令维护·②编剧·建线 add/换线 rewrite/收束 close/废弃 clear·可多条并行）。
 
 ### 对抗双方（硬性·禁止抽象）
 

@@ -83,7 +83,7 @@ You can also simply tell WorldSim: "help me turn the story into a novel" — it 
 
 ## Data Storage & Privacy
 
-Every turn is written to the current scene's `narrative.md` (with rotated archives); imported SillyTavern character cards are stored in full under `{world}/import/`. All data lives on your local disk — **do not enter passwords, secrets, or sensitive personal information into stories**. Deleting the `worlds/{world}/` directory removes the entire world's records (narrative, state, snapshots, and imported originals).
+Every turn is written to the current scene's `narrative.md` (with rotated archives); imported SillyTavern character cards are used only as temporary material for generating the character file, and are deleted right after the file is generated. All data lives on your local disk — **do not enter passwords, secrets, or sensitive personal information into stories**. Deleting the `worlds/{world}/` directory removes the entire world's records (narrative, state, and snapshots).
 
 ---
 
@@ -143,7 +143,7 @@ WorldSim can import **SillyTavern-compatible character cards** (`.png` with embe
 - **While creating a world** — say 「create a world <name> and put the character from <card.png> in it」
 - **Any time in an existing world** — say 「import character card <card.png> into <world>」 or `/import-card <card.png...>`
 
-**How it works**: a script mechanically extracts the card's full content (lore, greetings, alternate greetings, knowledge base, etc.) into the material store → the AI reads all of it and synthesizes a proper WorldSim character file (fields left blank when unsupported, overflow info collected in the "Supplementary Settings" section, nothing thrown away) → the original material stays in `{world}/import/` for reference.
+**How it works**: a script mechanically extracts the card's full content (lore, greetings, alternate greetings, knowledge base, etc.) as temporary material → the AI reads all of it and runs a risk review first (prompt-injection / sensitive / copyright content is disclosed to you and only proceeds after your confirmation) → then synthesizes a proper WorldSim character file (fields left blank when unsupported, overflow info collected in the "Supplementary Settings" section, nothing thrown away); the temporary material is deleted right after the character file is generated.
 
 ### What You'll Discover
 

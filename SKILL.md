@@ -1,7 +1,7 @@
 ---
 name: worldsim
-description: 世界模拟器 · 故事引擎 · 实时戏剧 · 角色扮演。本地持久化世界状态、导入 SillyTavern 角色卡、推进互动剧情、进行角色扮演，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟（创建/启动/继续/进入世界,导入角色卡）或角色扮演时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活。
-version: 0.20.0
+description: 世界模拟器 · 故事引擎 · 实时戏剧。本地持久化世界状态（运行会在 worlds/ 下创建、修改和删除本地文件）、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟（创建/启动/继续/进入世界、导入角色卡），或明确要求在本 skill 创建的世界中开展角色扮演时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活，与已有世界无关的泛化扮演/role-play 请求也不激活。
+version: 0.20.1
 metadata:
   openclaw:
     requires:
@@ -25,10 +25,10 @@ metadata:
 
 ## 六层使命（每轮第一指令·先于一切规则）
 
-六层职责链：**戏剧家 → 编剧 → 导演 → 角色 → 场记 → 作家**，对应 **冲突 → 结构 → 演出 → 行动 → 事实 → 文学**。
+六层职责链：**戏剧家 → 编剧 → 导演 → 角色 → 场记 → 作家**，对应 **冲突 → 结构 → 调度 → 行动 → 事实 → 文学**。
 
 | 层 | 核心职责 | 核心问题 | 使命 | 
-|---|---|---|
+|---|---|---|---|
 | 戏剧家 | 冲突发现、注册、推进、升级、转化 | 哪里有戏？ | 不断以高压封死退路，把角色逼上悬崖，逼他付出灵魂底价 |
 | 编剧 | 故事弧线、事件线、拍序 | 这场戏如何展开？ | 把冲突编织成命运，建造悬崖并铺就通往悬崖的路，让每一次选择都成为下一幕的枷锁 |
 | 导演 | 当前拍、节奏、承接、转场 | 现在该怎么演？ | 掌控节奏与火候，让张力持续燃烧；在角色站上悬崖边时，抓住燃烧的瞬间，在最该爆裂的时候爆裂 |
@@ -70,10 +70,10 @@ metadata:
 用户输入 → ①戏剧家 → ②编剧 → ③导演 → ④角色【行动决策→行动实现】 → ⑤场记 → ⑥作家 → 正文输出=回合终点（零正文轮）
 ```
 
-| 阶段 | 先读 | 写入 | 轻量路径(常态) | 重路径触发 |
+| 阶段 | 先读 | 写入 | 轻量路径 | 全路径触发 |
 |---|---|---|---|---|
 | ①戏剧家 | references/phase_dramatist.md | conflicts | delta 扫描+走表+上轮结算 | 新🔴CT/VB/偏离/用户指令/兜底 |
-| ②编剧 | references/phase_storyliner.md | storylines | 张力基调确认 | 空表/新内核/不承接 flag/需新线/弧线节点 |
+| ②编剧 | references/phase_storyliner.md | storylines | 张力基调确认 | 空表/新内核/不承接 flag/当前拍=余波收束/弧线节点 |
 | ③导演 | references/phase_director.md | direction | 回判 checklist+guidance | 顶点/切场景/抉择悬崖/停滞 |
 | ④角色 | references/phase_actor.md | **CHAR_state** | 焦内活跃角色即兴，焦内背景和焦外角色自推演 | 重大事件→受影响连锁重评 |
 | ⑤场记 | references/phase_keeper.md | scenes+world_state | 常规落盘 | 顶点轮/跨场景轮/重置轮 |
@@ -83,7 +83,7 @@ metadata:
 
 每阶段产出自己的 `write-raw --batch` 批次（首行 `###STAGE: <阶段名>`）→ 各自 audit → 落盘 → 过该阶段闸门才进下一阶段。阶段边界=既有产物+既有闸门；闸门失败撤回该阶段重做（≤2 轮·超限终止报告用户）。
 
-**极简轮（各层只需极小范围·可简化本轮编排和六阶段管道）**：前提条件（逐轮重新判定·全部满足才可极简）：① storylines 故事线非空；② direction 已有当前事件线和当前拍；③ 本轮无冲突注册/升级、无场景切换、无焦点变化、无节拍推进、无用户指令级事件。满足 → 统一思考一次性产出各层产物；任一不满足 → 回严格串行管道。
+**极简轮（各层只需极小范围·可简化本轮编排和六阶段管道）**：前提条件（逐轮重新判定·全部满足才可极简）：① storylines 故事线非空；② direction 已有当前事件线和当前拍、且 escalation_flags 为空（无待消化旗标）；③ 本轮无冲突注册/升级、无场景切换、无焦点变化、无节拍推进、无用户指令级事件。满足 → 统一思考一次性产出各层产物；任一不满足 → 回严格串行管道。
 
 ## 输出模式（全局默认·静默）
 
@@ -103,7 +103,7 @@ worlds/{世界名}/
 │   ├── CHAR_{name}_state.yaml ← ④角色（decision 八子字段/连续行动轨迹/记忆锚点/信念演化/人际动态/档位体系）
 │   ├── world_state.yaml    ← ⑤场记（焦点场景唯一权威/时间/轮次/倒计时/标记/时间线）
 │   └── world_map.yaml / foreshadow.yaml / knowledge_index.yaml ← ⑤场记（地图, 伏笔，知情边界）
-└── scenes/SXX-场景名/{scene_card.md, scene_state.yaml, pending_actions.yaml, narrative.md, start_snapshot.md} ← ⑤场记
+└── scenes/SXX-场景名/{scene_card.md, start_snapshot.md, scene_state.yaml, pending_actions.yaml, narrative.md} ← ⑤场记
 ```
 
 七文件一句话：CONFLICTS 什么正在发生冲突 / STORYLINES 故事将如何展开 / DIRECTION 故事现在演到哪里怎么继续 / CHARACTERS 人物现在想做什么 / SCENES 现场现在是什么样 / WORLD_STATE 世界实际上发生了什么 / NARRATION 这一切如何被写成小说。
@@ -132,6 +132,6 @@ worlds/{世界名}/
 
 `/scene <ID>` · `/conflicts` · `/status [--full]` · `/sync` `/update` · `/save [名]` · `/load <名>`（**执行前确认**） · `/reset`（**执行前确认**） · `/reset-scene [ID]`（**执行前确认**） · `/import-card <卡>` · `/audit`（显式命令） · `/silent` `/loud`
 
-**worldctl.py 子命令**（详情 references/commands.md）：read / write / write-raw --batch / append-raw / delete / audit / validate / init-states / map-sync / grep / storyline（show/add/rewrite/clear·②编剧） / beat（show/set/stay/advance·③导演） / in-track（循环世界·只读查循环角色预设此刻在哪/做什么·③导演调度参考） / round-check（⑤轮完整性） / migrate（版本迁移·存量旧世界首次使用时提示执行） / gate dramatist|storyliner|director|actor|keeper|writer --check / reset-cycle [--asset] / lint / fix / tmp-clean / convert / scan
+**worldctl.py 子命令**（详情 references/commands.md）：read / write / write-raw --batch / append-raw / delete / audit / validate / init-states / map-sync / grep / storyline（show/add/rewrite/close/clear·②编剧） / beat（show/set/stay/advance·③导演） / in-track（循环世界·只读查循环角色预设此刻在哪/做什么·③导演调度参考） / round-check（⑤轮完整性） / migrate（版本迁移·存量旧世界首次使用时提示执行） / gate dramatist|storyliner|director|actor|keeper|writer --check / reset-cycle [--asset] / lint / fix / tmp-clean / convert / scan
 
 **破坏性操作确认（硬性）**：/load · /reset-scene · /reset · snap.py delete · ###DELETE: 执行前必须向用户显式确认（references/disclosures.md）；常规状态写入不在此列——安装即授权。

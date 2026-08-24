@@ -2,9 +2,10 @@
 # reset_world.py — 重置世界到「创建完成态」（纯 .md 静态骨架·零 yaml）
 # 用法: python3 scripts/reset_world.py <世界名> [--force]
 # 破坏性操作（重置前自动存档·可回滚）：
-#   删除 scenes/ 整个目录、states/ 下全部 yaml
+#   删除 scenes/ 整个目录、states/ 下全部文件（运行期产物·不按文件名枚举·含隐藏文件）
 #   保留 SETTING.md / characters/ / story_architecture/ / regions/ / snaps/
-# 重置后世界回到未启动状态——用『启动世界』走 init-states 重新物化（见 references/session_recovery.md 第二章）
+# 重置后世界回到未启动状态——用『启动世界』走 init-states 重新物化（见 references/session_recovery.md 第二章：
+# conflicts/world_state/world_map/storylines/direction ← 模板与 SEED·CHAR_{名}_state.yaml ← 骨架）
 # 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
 import os, re, shutil, subprocess, sys
 from datetime import datetime
@@ -20,8 +21,6 @@ for _s in (sys.stdout, sys.stderr):
 SKILL_DIR = Path(__file__).resolve().parent.parent
 SCRIPT_DIR = Path(__file__).resolve().parent
 WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
-
-DYNAMIC_FILES = ["world_state.yaml", "conflicts.yaml", "world_map.yaml", "foreshadow.yaml", "knowledge_index.yaml"]
 
 
 def main():
@@ -46,7 +45,7 @@ def main():
             print(f"错误: 非交互环境执行重置需显式 --force 标志（python3 scripts/reset_world.py {world} --force）", file=sys.stderr)
             sys.exit(1)
         print(f"重置世界 '{world}' 到创建完成态（删除全部动态状态·自动存档可回滚）[y/N] ", end="", flush=True)
-        ans = sys.stdin.readline().strip()
+        ans = sys.stdin.buffer.readline().decode("utf-8").strip()
         if ans.lower() not in ("y", "yes"):
             print("已取消")
             sys.exit(0)
@@ -60,19 +59,16 @@ def main():
     if (world_dir / "scenes").is_dir():
         shutil.rmtree(world_dir / "scenes")
         print("  删除: scenes/")
-    for f in sorted((world_dir / "states").glob("CHAR_*_state.yaml")):
-        if f.is_file():
-            f.unlink()
-            print(f"  删除: {f.name}")
-    for f in DYNAMIC_FILES:
-        fp = world_dir / "states" / f
-        if fp.is_file():
-            fp.unlink()
-            print(f"  删除: states/{f}")
+    states_dir = world_dir / "states"
+    if states_dir.is_dir():
+        for f in sorted(states_dir.iterdir()):
+            if f.is_file():
+                f.unlink()
+                print(f"  删除: states/{f.name}")
 
     print("")
     print(f"已重置世界 '{world}' 到创建完成态（仅 .md·零 yaml）")
-    print("下一步: 用『启动世界』进入第二章（init-states 重新物化 conflicts/world_state/world_map/pending_actions）")
+    print("下一步: 用『启动世界』进入第二章（init-states 重新物化 conflicts/world_state/world_map/storylines/direction + CHAR_state 骨架）")
     sys.exit(0)
 
 

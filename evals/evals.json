@@ -26,9 +26,9 @@
       "name": "导入角色卡并相遇",
       "setup": "复用用例 1 的世界；准备合成 SillyTavern 角色卡放 evals/files/test_card.json（一律使用合成卡）",
       "prompt": "把这张角色卡导进 eval-west：evals/files/test_card.json。导入完让她自然出现在镇上，跟我（警长）来一场初次相遇的戏。",
-      "expected_output": "import_card.py 提取字段并留存 card.json → LLM 综合生成正式 CHAR_{名}.md → 该角色经③导演调度单入画 → 相遇戏符合双方立场与认知边界",
+      "expected_output": "import_card.py 提取字段写临时素材 tmp/{名}.card.json → LLM 评估后综合生成正式 CHAR_{名}.md → CHAR.md 落盘后临时素材已删除 → 该角色经③导演调度单入画 → 相遇戏符合双方立场与认知边界",
       "assertions": [
-        "characters/CHAR_{名}.md 已生成且 import/{名}.card.json 原始字段留存",
+        "characters/CHAR_{名}.md 已生成且 tmp/{名}.card.json 临时素材已删除",
         "本轮 direction.调度单 含该角色具名条目（CHAR_{名}）",
         "相遇叙事中该角色行为能在其档案中找到依据（数据忠诚·抽查 1-2 个动作）",
         "叙事只写警长 POV 可感知内容，未直接泄露对方内心活动（认知边界）"
