@@ -2,7 +2,7 @@
 
 > **本文件 = 全部命令的唯一速查**（worldctl.py 子命令 / shell 脚本 / 用户命令）。命令不会用时来这里查，不需要逐轮执行。
 > 行为指令在 SKILL.md（编排·每轮必读）+ references/phase_*.md（阶段规则·阶段开始前必读）；键表/写语义在 references/keys.md；写入批次格式在 references/write_protocol.md。
-> **Windows 平台（PowerShell）备注：** 下方 heredoc 管道（`cat <<'EOF' \| python3 …`）为 Unix 写法——Windows PowerShell 下直接照搬，UTF-8 中文会经控制台 GBK 码页被破坏（写入内容变 `?`）。替代写法：把批次写入 UTF-8 临时文件，再用 `cmd /c "python3 {skill_dir}/scripts/worldctl.py <世界> … < 临时文件"` 重定向喂 stdin（落点/命名/清理见 references/write_protocol.md「临时文件协议」小节·全局唯一权威）。**worldctl.py 全部 stdin 读取路径（write/write-raw --batch/storyline/单字段回退）均已统一为 `sys.stdin.buffer` 显式 UTF-8 解码——上述 cmd /c 重定向写法对所有子命令成立。**
+> **Windows 平台（PowerShell）备注：** 下方 heredoc 管道（`cat <<'EOF' \| python3 …`）为 Unix 写法——Windows PowerShell 下直接照搬，UTF-8 中文会经控制台 GBK 码页被破坏（写入内容变 `?`）。**首选 `--file`：** 批次先写 UTF-8 临时文件，再 `python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --file <临时文件>`（audit / gate --check 同样适用；备选 `cmd /c "… < 临时文件"` 重定向。落点/命名/清理见 references/write_protocol.md「批次文本双通道」小节·全局唯一权威）；禁止 PowerShell 管道（`Get-Content \| python3 …` 经 `$OutputEncoding` 转码·中文必损坏）。
 
 ---
 
@@ -28,9 +28,9 @@
 | delete | `python3 {skill_dir}/scripts/worldctl.py <世界> delete <文件key> <键路径>` | 删整条 CT / pending 条目；批量流支持 `###DELETE:` |
 | storyline show | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline show [SL-XX]` | 读事件线（全部 / 指定·states/storylines.yaml） |
 | storyline add | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline add`（stdin=单条事件线 YAML：名称/类型/状态/拍序） | **storylines 唯一写入入口·②编剧**——建线（id 自动递增 SL-XX·脚本机械落盘+结构/枚举校验·LLM 不直接改 YAML·**顶点拍须含 `顶点约束`（关系主体≥2/核心张力/变化维度/非玩家爆破≥1·缺则拒绝 exit 1）**）；建线后起点指针由③导演 `beat set` 落 direction |
-| storyline rewrite | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline rewrite SL-XX`（stdin=新事件线 YAML） | 换线/重规划（现实不承接·判线仍有继续价值时·顶点拍同步重填·缺则拒绝） |
-| storyline close | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline close SL-XX`（批次中 `###STORYLINE: close SL-XX` 后跟一行 `收束摘要:`） | **收束（线已演完·当前拍=余波）**——保留 名称/类型＋状态=已收束＋收束摘要·清拍序·direction 指针复位；非余波/缺摘要 exit 1。当轮须 add 后继线并由③导演 set 新起点（否则 round-check FAIL） |
-| storyline clear | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline clear SL-XX` | 废弃（不承接且无继续价值）——整条抹为空锚点·direction 指针自动复位；当前拍=余波时 WARN 提示应走 close 收束留档 |
+| storyline rewrite | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline rewrite SL-XX`（stdin=新事件线 YAML） | 换线/重规划（现实不承接·前提取翻但问题仍重要·顶点拍同步重填·缺则拒绝） |
+| storyline close | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline close SL-XX`（批次中 `###STORYLINE: close SL-XX` 后跟一行 `收束摘要:`） | **收束（线已演完——按线自身状态判断·含指针已切走的遗留线）**——保留 名称/类型＋状态=已收束＋收束摘要·清拍序；当前线收束须当前拍=余波并复位指针（非余波/缺摘要 exit 1·当轮须 add 后继线并由③导演 set 新起点否则 round-check FAIL）；遗留线收束凭收束摘要留档·指针不动 |
+| storyline clear | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline clear SL-XX` | 废弃（不承接·三问全灭——前提崩塌/问题无意义/无承诺待兑现）——整条抹为空锚点·direction 指针自动复位；当前拍=余波时 WARN 提示应走 close 收束留档 |
 | beat show | `python3 {skill_dir}/scripts/worldctl.py <世界> beat show` | 读 direction（当前事件线/当前拍/演出状态/guidance） |
 | beat set | `python3 {skill_dir}/scripts/worldctl.py <世界> beat set SL-XX 拍名` | 初始指针（建线后③导演设定起点拍·进入顶点时自动记录基准快照） |
 | beat stay | `python3 {skill_dir}/scripts/worldctl.py <世界> beat stay SL-XX` | 停留当前拍（③导演回判确认·无写入） |
@@ -39,13 +39,13 @@
 | round-check | `python3 {skill_dir}/scripts/worldctl.py <世界> round-check` | **⑤场记轮完整性收尾**——direction/世界三件套/场景时间线/区域一致性（POV 位置节点 vs 焦点场景区域节点·空间已变未切即 FAIL）/引用对账逐项核对·FAIL exit 1 |
 | migrate | `python3 {skill_dir}/scripts/worldctl.py <世界> migrate` | **存量旧世界数据迁移**（节拍表→storylines·CT.当前节拍→direction·旧字段清除+LLM 辅助报告·自动存档可回滚·幂等）——存量旧世界首次使用时提示执行 |
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |
-| gate | `python3 {skill_dir}/scripts/worldctl.py <世界> gate dramatist\|storyliner\|director\|actor\|keeper\|writer [--check]` | 阶段出口闸门——无 `--check` 打印该阶段人工审计清单（gates.md 同源）；有 `--check` 读 stdin 批次（writer=叙事正文）做可代码化硬性核验，不合格 exit 1 |
+| gate | `python3 {skill_dir}/scripts/worldctl.py <世界> gate dramatist\|storyliner\|director\|actor\|keeper\|writer [--check]` | 阶段出口闸门——批次类五阶段的闸门已默认内嵌于 write-raw --batch 逐段执行（`--force` 豁免）；本命令无 `--check` 打印该阶段人工审计清单（gates.md 同源），有 `--check` 用于 writer 叙事核验与单段手动复检，不合格 exit 1 |
 | lint | `python3 {skill_dir}/scripts/worldctl.py <世界> lint` | 全部状态文件 YAML 格式/引用问题只读检查（不落盘） |
 | fix | `python3 {skill_dir}/scripts/worldctl.py <世界> fix` | 规范化重写全部 YAML 状态文件（snap 自动备份 + validate） |
 | scan | `python3 {skill_dir}/scripts/worldctl.py <世界> scan <关键词> [--live]` | 全仓关键词扫描（worlds/<世界>/ 下 .md/.yaml·排除 narrative 轮转与 archive；`--live` 只扫现行文件）——残留扫描/修复验证用；退出码：0=无匹配（已清除）1=有匹配 2=用法错误 |
 
 > **批次自动执行（硬性）：** 批次中的 `###STORYLINE:`（②编剧·结构）与 `###BEAT:`（③导演·指针）由 write-raw --batch 自动执行对应子命令落盘（`add`/`rewrite` 后直接跟事件线 YAML 块直到下一个 `###` 行·失败=批次拦截 exit 1）——**LLM 不手动调用 storyline/beat 写命令**；下表命令保留用于查询（show）与维护。
-> **每轮触发（硬性·条件跳过）**：②编剧常态 no-op（张力基调一行确认）·触发时 `###STORYLINE: add/rewrite/close/clear`（当前拍=余波→close 必带收束摘要·当轮建后继线；顶点拍预填 顶点约束·缺则拒绝）；③导演每轮回判——已兑现→`###BEAT: advance SL-XX 下一拍`（顶点=advance 余波·受 gate director 收束核验）·未兑现且问题正被逼近→`###BEAT: stay SL-XX`（承接判断须写出逼近路径·上轮节拍决策=继续当前拍而本轮仍 stay→本批必写 escalation_flags.停滞·gate 核验→①次轮加压/兜底·余波拍除外）·不承接/意外事件→escalation flag→②次轮 rewrite/clear；查询轮/维护轮豁免。
+> **每轮触发（硬性·条件跳过）**：②编剧常态轻量（张力基调一行确认·仍出批次）·触发时 `###STORYLINE: add/rewrite/close/clear`（线演完→close 必带收束摘要·含指针已切走的遗留线·当轮建后继线；顶点拍预填 顶点约束·缺则拒绝）；③导演每轮回判——已兑现→`###BEAT: advance SL-XX 下一拍`（顶点=advance 余波·受 gate director 收束核验）·未兑现且问题正被逼近→`###BEAT: stay SL-XX`（承接判断须写出逼近路径·上轮节拍决策=继续当前拍而本轮仍 stay→本批必写 escalation_flags.停滞·gate 核验→①次轮加压/兜底·余波拍除外）·不承接/意外事件→escalation flag→②次轮三问定原线去向（保留+建新线接焦/rewrite/clear·判据见 phase_storyliner 职责2）；查询轮/维护轮豁免。
 
 ## Shell 脚本
 
@@ -81,7 +81,7 @@
 | `/status` / `/status --full` | 状态摘要 / 完整状态 |
 | `/sync` / `/update` | 场记记录变化更新状态 |
 | `/save [名]` / `/load <名>` | 存档管理 |
-| `/silent` | 切回静默模式（全局默认·沉浸·只推叙事正文）——world_state 写 `输出模式: 静默` |
+| `/silent` | 切回沉浸式模式（全局默认·沉浸·只推叙事正文）——world_state 写 `输出模式: 沉浸式` |
 | `/loud` / 说「调试」「标准模式」 | 切到标准模式（完整回复正文 + D1-D5/W1-W4 闸口）——world_state 写 `输出模式: 标准` |
 | 「审计」/「/audit」 | **用户觉察不对劲时使用**——六阶段审计流程（人工清单=references/gates.md·机械项调用现成工具）：① 机械核验=worldctl.py `validate` + `audit` + `gate <阶段> --check` + `round-check` ② 六阶段人工审计=加载 references/gates.md → D/S/R/A/K/W 清单逐项（默认不通过·找茬制·证据引用）③ 知情边界核对=有 knowledge_index.yaml → 独立审计者视角逐条按 `记录` 指针读状态文件比对 + 清理（已公开/已落定/循环重置失效→删·不确定留）④ 伏笔闭环核对=有 foreshadow.yaml → validate 已机械检查 + 人工核对 `时间` 错位。输出=逐项 PASS/FAIL + 证据；FAIL→修复流程（≤2 轮）超限终止报告。**若审计反复发现同类违规（补丁无效）→ 主动建议用户更换 LLM model——不无限打补丁·诚实承认模型能力/注意力上限** |
 

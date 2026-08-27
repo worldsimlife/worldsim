@@ -87,8 +87,8 @@ def main():
     else:
         tmp.write_bytes(sys.stdin.buffer.read())
 
-    # 落盘：已存在则改名归档（带轮次号·精确到秒），再写入
-    if narrative.exists():
+    # 落盘：已存在且非空则改名归档（带轮次号·精确到秒）；空占位（init_scene 骨架）直接覆盖·不留伪归档
+    if narrative.exists() and narrative.stat().st_size > 0:
         ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
         round_no = ""
         try:
@@ -102,7 +102,7 @@ def main():
         else:
             os.replace(str(narrative), str(scene_dir / f"narrative.{ts}.md"))
 
-    tmp.rename(narrative)
+    os.replace(str(tmp), str(narrative))
     print(f"[OK] 叙事已写入: {world} / {scene_id}")
 
 
