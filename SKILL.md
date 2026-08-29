@@ -1,7 +1,7 @@
 ---
 name: worldsim
 description: 世界模拟器 · 故事引擎 · 实时戏剧 · 角色扮演。本地持久化世界状态（运行会在 worlds/ 下创建、修改和删除本地文件）、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟（创建/启动/继续/进入世界、导入角色卡），或明确要求在本 skill 创建的世界中开展角色扮演时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活，与已有世界无关的泛化扮演/role-play 请求也不激活。
-version: 0.21.0
+version: 0.22.0
 metadata:
   openclaw:
     requires:
@@ -63,6 +63,7 @@ metadata:
 ```
 
 载体：任务清单（todo·harness 层·完成一阶段勾一项）；无 todo 环境则作内部一行清单（不输出）。
+**触发识别（机械优先·脚本预检）**：`worldctl.py <世界> precheck`（只读·不拦截）先吐出本轮状态可导出的**机械义务**——顶点拍/停滞旗标/不承接旗标/空表建线/切场景/跨天/连续stay（每条带「本批必含」与违反后果）；任务单的「每阶段轻/重」机械部分据此认定，user 指令/重大事件/回判张力等**判断类触发**仍由 LLM 自行补判。预检只提示不替代 gate（gate/round-check 仍是最终裁决）。
 
 **六阶段推进**：（按todo追踪各阶段执行）每阶段按序执行——读该阶段 reference → 决策 → 写入（内嵌闸门核验）→ 通过 → 才进入下一阶段。
 
@@ -117,7 +118,7 @@ worlds/{世界名}/
 | references/write_protocol.md | 批次格式不确定时；首次启动轮必读全文 |
 | references/scene_management.md | 场景切换/移动/存档/焦外协议 |
 | references/beat_structure.md | ②编剧建线/弧线校准时 |
-| references/loop_machinery.md | 循环世界（SETTING 声明循环且有循环角色）·每轮第一动作自检在场 |
+| references/loop_machinery.md | 循环世界（SETTING 声明循环且有循环角色）·**每轮加载·§1 执行表按「执行阶段」列分派**（①③④⑥各有归属动作·非单阶段文件） |
 | references/knowledge_index.md / references/foreshadow.md | 有对应文件时·知情/伏笔相关 |
 | references/rollback.md | 回退/撤销时 |
 | references/session_recovery.md | 创建/启动/恢复/跨 Session |

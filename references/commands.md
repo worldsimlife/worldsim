@@ -19,6 +19,7 @@
 | write-raw（批量·推荐） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch` | **change set 写入通道**——内置 audit 语义检查（硬性违规单字段顶回·软性警告 validate 汇总）+ 写入后自动轻量校验 |
 | write-raw（批量·预演） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --dry-run` | 解析+audit+对比磁盘差异（新增/覆盖/无变化/顶回），**不落盘**——重跑批次/脚本改过 change set 后先跑这个 |
 | write-raw（批量·回退） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --force` | **显式回退专用**——绕过 audit ④ 轮次单调/⑬b 轨迹覆盖写（无快照手工重建时用·见 rollback.md）；其余硬性检查照常·非幂等同前·回退后必做残留扫描+validate |
+| write-raw（批量·重提） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --resume-from <段N>` | **合并批失败后重提**：只执行段 N 及其后（段号按原始批次 1 起始·免重跑已成功段）；须先按 stderr 的 `[BATCH-FAIL]` 报告，把已落盘的 `###STORYLINE/###BEAT` 从重提内容中剔除，再先 `--dry-run` 预演确认无 `[无变化]` 误报 |
 | append-raw（单字段追加） | `python3 {skill_dir}/scripts/worldctl.py <世界> append-raw <文件key> <YAML键> "内容"` |
 | audit（预检） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> audit` | 只校验不落盘；通过 → `AUDIT OK`；硬性违规 → 列出全部 exit 1；仅软性警告 → 打印警告 exit 0 |
 | validate | `python3 {skill_dir}/scripts/worldctl.py <世界> validate` | YAML 格式报错 + 内容级警告（load 后/跨 Session 恢复后必跑；含同物理地点场景元素继承检查） |
@@ -33,9 +34,10 @@
 | storyline clear | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline clear SL-XX` | 废弃（不承接·三问全灭——前提崩塌/问题无意义/无承诺待兑现）——整条抹为空锚点·direction 指针自动复位；当前拍=余波时 WARN 提示应走 close 收束留档 |
 | beat show | `python3 {skill_dir}/scripts/worldctl.py <世界> beat show` | 读 direction（当前事件线/当前拍/演出状态/guidance） |
 | beat set | `python3 {skill_dir}/scripts/worldctl.py <世界> beat set SL-XX 拍名` | 初始指针（建线后③导演设定起点拍·进入顶点时自动记录基准快照） |
-| beat stay | `python3 {skill_dir}/scripts/worldctl.py <世界> beat stay SL-XX` | 停留当前拍（③导演回判确认·无写入） |
-| beat advance | `python3 {skill_dir}/scripts/worldctl.py <世界> beat advance SL-XX 拍名` | 推进指针（校验拍名在拍序中·**禁回退**·顶点出线=advance SL-XX 余波 受 gate director 收束核验；停留用 stay） |
+| beat stay | `python3 {skill_dir}/scripts/worldctl.py <世界> beat stay SL-XX` | 保持当前拍，在当前拍继续精彩展开（③导演回判确认·指针不动）；stay 的意图=把当前拍演透、演到该爆发的节点，不是什么都不做 |
+| beat advance | `python3 {skill_dir}/scripts/worldctl.py <世界> beat advance SL-XX 拍名` | 推进指针（校验拍名在拍序中·**禁回退**·顶点出线=advance SL-XX 余波 受 gate director 收束核验；尚不推进时用 stay 保持当前拍） |
 | in-track | `python3 {skill_dir}/scripts/worldctl.py <世界> in-track` | 只读查询——按各 CHAR_.md「默认循环时间线」表+world_state 当前时间，输出此刻各循环角色应在哪/做什么（③导演调度单输入之一·循环世界用；无时间线角色报「无可用时间线」·不改任何状态） |
+| **precheck** | `python3 {skill_dir}/scripts/worldctl.py <世界> precheck` | **本轮义务预检（只读·exit 0 恒过·不拦截）**——把 gate/round-check 必然强制的**机械义务**前置暴露（顶点拍/停滞旗标/不承接旗标/空表建线/切场景/跨天/连续stay），让 LLM 第一射即满足·避免 gate 失败整轮重提；只覆盖**状态可导出的机械义务**（用户指令/重大事件/回判张力等推断类触发仍由 LLM 判定·输出末尾明示）；本轮编排前跑·与 `--dry-run`（批内预演）/`gate --check`（单段复验）互补 |
 | round-check | `python3 {skill_dir}/scripts/worldctl.py <世界> round-check` | **⑤场记轮完整性收尾**——direction/世界三件套/场景时间线/区域一致性（POV 位置节点 vs 焦点场景区域节点·空间已变未切即 FAIL）/引用对账逐项核对·FAIL exit 1 |
 | migrate | `python3 {skill_dir}/scripts/worldctl.py <世界> migrate` | **存量旧世界数据迁移**（节拍表→storylines·CT.当前节拍→direction·旧字段清除+LLM 辅助报告·自动存档可回滚·幂等）——存量旧世界首次使用时提示执行 |
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |

@@ -97,7 +97,7 @@ By default, world data is stored in `worlds/` inside the skill directory. To kee
 
 WorldSim is distributed through two channels: **Clawhub** (recommended) and **GitHub**. Same skill either way — pick one.
 
-Releases and version history: [GitHub Releases](https://github.com/zhaowh/worldsim/releases)
+Releases and version history: [GitHub Releases](https://github.com/worldsimlife/worldsim/releases)
 
 ### Capability Notice
 
@@ -114,7 +114,7 @@ openclaw skills install @zhaowh/worldsim
 ### Option 2: Install from GitHub
 
 ```sh
-git clone https://github.com/zhaowh/worldsim.git
+git clone https://github.com/worldsimlife/worldsim.git
 ```
 
 Place the `worldsim` directory (or a symlink to it) in your client's skills directory — e.g. `.codex/skills/` or `.claude/skills/` for Codex / Claude Code–style clients — so the final path is `…/skills/worldsim/`.
@@ -196,7 +196,7 @@ Each of the seven state files has exactly one authoritative writer (Single Write
 
 ## License
 
-MIT License (Copyright © 2026 zhaowh). Free to use, modify, and distribute, including commercially, provided the copyright notice is retained. See [`LICENSE`](LICENSE).
+MIT License (Copyright © 2026 WorldSim.Life). Free to use, modify, and distribute, including commercially, provided the copyright notice is retained. See [`LICENSE`](LICENSE).
 
 ---
 

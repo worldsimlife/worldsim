@@ -21,7 +21,7 @@
 2. **焦外记录（pending_actions·场景级·缺文件按模板建·templates/pending_actions.yaml）**：③调度单.焦外（含循环预设）+ ④焦外角色状态 → 筛相关（冲突对抗方/时间线节点临近/揭示候选/用户关注）→ 记 `活跃中.{PA-ID}`（角色/时段/行动/当前状态/预计影响/揭示场景·标可揭示）；揭示（焦外→焦内）→ 移 `已完成`·记揭示场景。
 3. **世界事实落盘**：world_state 时间.具体时间（旧值+本轮已耗时间窗口·只增不减·跨天先切场景）/ 轮次（单调递增）/ 时间.前情描述（≤100字）/ 外部倒计时走表（本轮有确立/走表/到期时必写·**越过周期到期点→执行 loop_machinery §4 联动表·全员·非活跃焦外不豁免·对接 audit ④b/reset-cycle**）/ 全局标记写删 / 时间线压缩（场景 COMPLETE 时：scene_state.场景时间线 提炼为 world_state.时间线.{旧场景ID}·≤3 转折点·每条≤120字）。
 4. **重置联动补写**（reset-cycle 调用后）：world_state 侧补写＋保留候选确认（脚本已做机械部分）。
-5. **场景切换机械执行**（③导演 transition 决策 → 落地）：冻结旧场景（终态入 scene_state+时间线压缩）→ INDEX 旧场景 COMPLETED → init_scene 建新场景（同物理地点必用 `--from` 继承锚点/道具）→ world_state.焦点场景 更新（唯一权威源）→ 连续性核查（服装/道具/伤口）→ world_map 登记。细则见 scene_management.md §场景切换流程。
+5. **场景切换机械执行**（③导演 transition 决策 → 落地）：冻结旧场景（终态入 scene_state+时间线压缩）→ INDEX 旧场景 COMPLETED → init_scene 建新场景（同物理地点必用 `--from` 继承锚点/道具）→ world_state.焦点场景 更新（唯一权威源）→ 连续性核查（服装/道具/伤口）→ world_map 登记。细则见 scene_management.md §场景切换流程。若当前 Agent 有生成图像的能力（如有 tool/skill 支持文生图），生成新场景剧照（聚焦新出场角色）并发送用户。 
 6. **轮完整性收尾检查**：`worldctl.py <世界> round-check`——direction/世界三件套/场景时间线/区域一致性（POV 位置节点 vs 焦点场景区域节点·空间已变未切场景即 FAIL）/引用对账逐项核对；FAIL=本阶段修复或上报。
 7. **场记三问收尾自查**（每轮·写后）：①痕迹完整——场景时间线/道具线索→scene_state · 焦外→pending_actions · 伏笔→foreshadow（触发即登记·缺文件按模板建·规则 references/foreshadow.md）· 知情差异→knowledge_index（触发即收录·references/knowledge_index.md）；②落点=焦点场景目录；③连续性=时间/轮次/存档一致。validate 通过 ≠ 自查通过。
 

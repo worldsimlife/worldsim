@@ -99,7 +99,7 @@ WorldSim 什么世界都能造：中世纪的城堡、赛博朋克的雨夜、�
 
 WorldSim 目前通过两个渠道分发：**Clawhub**（推荐）与 **GitHub**。两者都是同一个 skill，选其一即可。
 
-发布与版本历史见 [GitHub Releases](https://github.com/zhaowh/worldsim/releases)
+发布与版本历史见 [GitHub Releases](https://github.com/worldsimlife/worldsim/releases)
 
 ### 能力声明
 
@@ -116,7 +116,7 @@ openclaw skills install @zhaowh/worldsim
 ### 方式二：从 GitHub 安装
 
 ```sh
-git clone https://github.com/zhaowh/worldsim.git
+git clone https://github.com/worldsimlife/worldsim.git
 ```
 
 把 `worldsim` 目录（或符号链接）放到你的客户端技能目录，例如 Codex / Claude Code 类的 `.codex/skills/` 或 `.claude/skills/` 下，确保最终路径为 `…/skills/worldsim/`。
@@ -198,7 +198,7 @@ WorldSim 以单 LLM 单上下文为核心架构，与行业常见的 Multi-Agent
 
 ## 许可
 
-本项目采用 **MIT License**（Copyright © 2026 zhaowh）。允许自由使用、修改、商用，仅需保留版权声明。详见 [`LICENSE`](LICENSE)。
+本项目采用 **MIT License**（Copyright © 2026 WorldSim.Life）。允许自由使用、修改、商用，仅需保留版权声明。详见 [`LICENSE`](LICENSE)。
 
 ---
 
