@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta name="color-scheme" content="dark">
 <title>WorldSim — Where Worlds Come to Life</title>
-<meta name="description" content="WorldSim — 动态世界模拟器与故事引擎（Agent Skill）：本地持久化世界状态、导入 SillyTavern 角色卡、推进互动剧情，支持存档/读档/回滚/状态修复。安装：openclaw skills install @zhaowh/worldsim，或 git clone https://github.com/worldsimlife/worldsim.git。">
+<meta name="description" content="WorldSim — 动态世界模拟器与故事引擎（Agent Skill）：本地持久化世界状态、导入 SillyTavern 角色卡、推进互动剧情，支持存档/读档/回滚/状态修复。安装：在支持 Agent Skills 的 AI 客户端中输入 install worldsim skill from https://github.com/worldsimlife/worldsim.git。">
 <meta name="keywords" content="WorldSim, worldsim, skill, agent skill, 世界模拟器, 故事引擎, SillyTavern, 角色卡, westworld, AI agent">
 <!--
   ═════════════════════════════════════════════════════════════════
@@ -21,15 +21,15 @@
   表达创建/启动/进入/查看世界、继续剧情、角色扮演、导入角色卡时激活。
 
   【安装指令（AI Agent 请按此执行）】
-  方式一（推荐·Clawhub）：
-    openclaw skills install @zhaowh/worldsim
-  方式二（GitHub）：
+  在支持 Agent Skills 的 AI 客户端里执行：
+    install worldsim skill from https://github.com/worldsimlife/worldsim.git
+  若客户端不会自动安装，则手动执行：
     git clone https://github.com/worldsimlife/worldsim.git
-    把 worldsim skill 目录（或符号链接）放到你的客户端技能目录，
+    把 worldsim skill 目录（或符号链接）放到客户端技能目录，
     确保最终路径为 …/skills/worldsim/（如 .codex/skills/ 或
     .claude/skills/ 下）。
   环境要求：Python 3.10+ 与 PyYAML；sh（POSIX shell）；支持
-  Agent Skills 的客户端（OpenClaw / Codex / Claude Code 等）。
+  Agent Skills 的 AI 客户端。
 
   【数据与权限】
   - 世界数据存于 {skill}/worlds/{世界名}/，删除该目录即彻底清除全部记录
@@ -55,15 +55,15 @@
     "step": [
       {
         "@type": "HowToStep",
-        "text": "方式一（推荐）：openclaw skills install @zhaowh/worldsim"
+        "text": "在支持 Agent Skills 的 AI 客户端中输入：install worldsim skill from https://github.com/worldsimlife/worldsim.git"
       },
       {
         "@type": "HowToStep",
-        "text": "方式二（GitHub）：git clone https://github.com/worldsimlife/worldsim.git，把 worldsim skill 目录（或符号链接）放到客户端技能目录，确保最终路径为 …/skills/worldsim/（如 .codex/skills/ 或 .claude/skills/）"
+        "text": "若客户端不会自动安装：git clone https://github.com/worldsimlife/worldsim.git，把 worldsim skill 目录（或符号链接）放到客户端技能目录，确保最终路径为 …/skills/worldsim/（如 .codex/skills/ 或 .claude/skills/）"
       },
       {
         "@type": "HowToStep",
-        "text": "环境要求：Python 3.10+ 与 PyYAML、sh（POSIX shell）、支持 Agent Skills 的客户端（OpenClaw / Codex / Claude Code 等）"
+        "text": "环境要求：Python 3.10+ 与 PyYAML、sh（POSIX shell）、支持 Agent Skills 的 AI 客户端"
       }
     ]
   }
