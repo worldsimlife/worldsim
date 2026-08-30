@@ -21,8 +21,8 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-SKILL_DIR = Path(__file__).resolve().parent.parent
-WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _paths import resolve_world, safe_rmtree, validate_name
 
 # 快照顶层除 states 平铺文件与 scenes/ 外还有 MANIFEST.md——恢复/对账时排除
 SNAP_META = ["MANIFEST.md"]
@@ -33,12 +33,6 @@ def _states_files(d: Path) -> list[Path]:
     if not d.is_dir():
         return []
     return sorted(f for f in d.iterdir() if f.is_file() and f.name not in SNAP_META)
-
-
-def validate_name(name: str) -> None:
-    if not name or "/" in name or "\\" in name or ".." in name:
-        print(f"错误: 非法名称 '{name}'（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
-        sys.exit(1)
 
 
 def confirm_destructive(world: str, action: str, snapname: str, force: bool, prompt: str) -> None:
@@ -97,11 +91,7 @@ def main():
         elif not snapname:
             snapname = a
 
-    validate_name(world)
-    world_dir = WORLDS_ROOT / world
-    if not world_dir.is_dir():
-        print(f"ERROR: world '{world}' not found", file=sys.stderr)
-        sys.exit(1)
+    world_dir = resolve_world(world)
     snap_dir = world_dir / "snaps"
     archive_dir = world_dir / "archive" / "scenes"
     snap_dir.mkdir(parents=True, exist_ok=True)
@@ -128,7 +118,7 @@ def main():
         validate_name(snapname)
         outdir = snap_dir / snapname
         if outdir.exists():
-            shutil.rmtree(outdir)
+            safe_rmtree(outdir)
         outdir.mkdir(parents=True)
 
         file_count = 0
@@ -245,7 +235,7 @@ def main():
         if not target.is_dir():
             print(f"ERROR: 快照 '{snapname}' 不存在", file=sys.stderr); sys.exit(1)
         confirm_destructive(world, "delete", snapname, force, f"删除快照 '{snapname}' 不可恢复")
-        shutil.rmtree(target)
+        safe_rmtree(target)
         print(f"已删除快照: {snapname}")
 
     else:

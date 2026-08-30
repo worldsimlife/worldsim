@@ -93,11 +93,25 @@ WorldSim 什么世界都能造：中世纪的城堡、赛博朋克的雨夜、�
 
 默认世界数据存放在 skill 目录内的 `worlds/`。想把它放到你自己的存储（独立磁盘 / 网络盘 / 容器卷），设置环境变量 **`WORLDSIM_WORLDS_DIR`** 指向你的目录即可——全部脚本（校验/写入/快照/重置/导入）经该变量解析世界路径；未设置时回退到 `{skill_dir}/worlds/`。skill 本体（SKILL.md / 脚本 / 模板）始终由脚本自身位置定位，**不可**被环境变量改变。
 
+**请指向专用目录**——不要指向家目录、项目根目录或盘符根目录，脚本会拒绝执行；破坏性操作（重置/删除）还会先校验目录内是否有 `SETTING.md`，避免误删无关目录。
+
 ---
 
 ## 安装
 
-WorldSim 目前通过两个渠道分发：**Clawhub**（推荐）与 **GitHub**。两者都是同一个 skill，选其一即可。
+在支持 Agent Skills 的 AI 客户端里，对它说一句（直接复制粘贴即可）：
+
+```
+install worldsim skill from https://github.com/worldsimlife/worldsim.git
+```
+
+客户端会自行拉取仓库并把 skill 装到它的技能目录。若你的客户端不会自动安装，手动执行：
+
+```sh
+git clone https://github.com/worldsimlife/worldsim.git
+```
+
+再把 `worldsim` 目录（或符号链接）放到客户端技能目录下，例如 Codex / Claude Code 类的 `.codex/skills/` 或 `.claude/skills/`，确保最终路径为 `…/skills/worldsim/`。
 
 发布与版本历史见 [GitHub Releases](https://github.com/worldsimlife/worldsim/releases)
 
@@ -105,27 +119,11 @@ WorldSim 目前通过两个渠道分发：**Clawhub**（推荐）与 **GitHub**�
 
 本 skill 为运转世界需要读写本地文件（世界档案、叙事记录、快照），并调用 `scripts/` 下的维护脚本（校验/写入/快照/重置/导入）。安装即视为同意这些本地文件操作。
 
-### 方式一：从 Clawhub 安装（推荐）
-
-[Clawhub 页面](https://clawhub.ai/zhaowh/skills/worldsim) · 依赖 OpenClaw CLI：
-
-```sh
-openclaw skills install @zhaowh/worldsim
-```
-
-### 方式二：从 GitHub 安装
-
-```sh
-git clone https://github.com/worldsimlife/worldsim.git
-```
-
-把 `worldsim` 目录（或符号链接）放到你的客户端技能目录，例如 Codex / Claude Code 类的 `.codex/skills/` 或 `.claude/skills/` 下，确保最终路径为 `…/skills/worldsim/`。
-
 ### 环境要求
 
 - **Python 3.10+** 与 **PyYAML**（世界状态读写引擎 `worldctl.py` 的运行时依赖）
 - **sh**（POSIX shell，脚本工具链使用）
-- 支持 Agent Skills 的客户端（OpenClaw / Codex / Claude Code 等）
+- 支持 Agent Skills 的 AI 客户端
 
 ---
 

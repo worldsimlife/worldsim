@@ -7,7 +7,7 @@
 # 重置后世界回到未启动状态——用『启动世界』走 init-states 重新物化（见 references/session_recovery.md 第二章：
 # conflicts/world_state/world_map/storylines/direction ← 模板与 SEED·CHAR_{名}_state.yaml ← 骨架）
 # 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
-import os, re, shutil, subprocess, sys
+import subprocess, sys
 from datetime import datetime
 from pathlib import Path
 
@@ -18,9 +18,8 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-SKILL_DIR = Path(__file__).resolve().parent.parent
-SCRIPT_DIR = Path(__file__).resolve().parent
-WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _paths import SCRIPT_DIR, require_world_marker, resolve_world, safe_rmtree, safe_unlink
 
 
 def main():
@@ -31,13 +30,9 @@ def main():
     if not world:
         print("用法: python3 scripts/reset_world.py <世界名> [--force]", file=sys.stderr)
         sys.exit(1)
-    if "/" in world or "\\" in world or ".." in world:
-        print(f"错误: 非法世界名 '{world}'（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
-        sys.exit(1)
-    world_dir = WORLDS_ROOT / world
-    if not world_dir.is_dir():
-        print(f"错误: 世界 '{world}' 不存在: {world_dir}", file=sys.stderr)
-        sys.exit(1)
+    # 世界目录解析（名称校验 + 存在性 + 链接拦截 + 越界校验）+ 世界指纹校验（防 worlds 根指错目录时误删）
+    world_dir = resolve_world(world)
+    require_world_marker(world_dir)
 
     # 破坏性操作确认：--force 直过；交互终端提示 [y/N]（默认拒绝）；非交互且无 --force → 拒绝执行
     if not force:
@@ -57,13 +52,13 @@ def main():
 
     # 删除动态状态与场景
     if (world_dir / "scenes").is_dir():
-        shutil.rmtree(world_dir / "scenes")
+        safe_rmtree(world_dir / "scenes")
         print("  删除: scenes/")
     states_dir = world_dir / "states"
     if states_dir.is_dir():
         for f in sorted(states_dir.iterdir()):
             if f.is_file():
-                f.unlink()
+                safe_unlink(f)
                 print(f"  删除: states/{f.name}")
 
     print("")

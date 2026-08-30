@@ -97,10 +97,10 @@ def process(path):
     return replaced, skipped
 
 if __name__ == '__main__':
-    # worlds 根经 WORLDSIM_WORLDS_DIR 推导（缺省 {skill_dir}/worlds），禁止硬编码绝对路径
-    skill_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    worlds_root = os.environ.get("WORLDSIM_WORLDS_DIR", os.path.join(skill_dir, "worlds"))
-    snaps = sys.argv[1] if len(sys.argv) > 1 else os.path.join(worlds_root, 'westworld', 'snaps')
+    # worlds 根经 _paths 单一事实源推导（缺省 {skill_dir}/worlds），禁止硬编码绝对路径
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from _paths import worlds_root
+    snaps = sys.argv[1] if len(sys.argv) > 1 else os.path.join(worlds_root(), 'westworld', 'snaps')
     total_r = total_s = 0
     for p in sorted(glob.glob(os.path.join(snaps, '*', 'conflicts.yaml'))):
         r, s = process(p)

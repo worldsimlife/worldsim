@@ -41,8 +41,10 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-SKILL_DIR = Path(__file__).resolve().parent.parent
-WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _paths import worlds_root
+
+WORLDS_ROOT = worlds_root()
 INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 # 与 WorldSim 引擎语义冲突、永不注入引擎的字段（仍写入 tmp 素材供 LLM 审读时过滤）

@@ -13,8 +13,10 @@ for _s in (sys.stdout, sys.stderr):
     except Exception:
         pass
 
-SKILL_DIR = Path(__file__).resolve().parent.parent
-WORLDS_ROOT = Path(os.environ.get("WORLDSIM_WORLDS_DIR", SKILL_DIR / "worlds"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _paths import SKILL_DIR, worlds_root
+
+WORLDS_ROOT = worlds_root()
 
 
 def main():

@@ -1,7 +1,7 @@
 ---
 name: worldsim
-description: 世界模拟器 · 故事引擎 · 实时戏剧 · 角色扮演。本地持久化世界状态（运行会在 worlds/ 下创建、修改和删除本地文件）、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟（创建/启动/继续/进入世界、导入角色卡），或明确要求在本 skill 创建的世界中开展角色扮演时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活，与已有世界无关的泛化扮演/role-play 请求也不激活。
-version: 0.22.0
+description: 世界模拟器 · 故事引擎 · 实时戏剧 · 角色扮演。本地持久化世界状态（运行会在 worlds 数据目录下创建、修改和删除本地文件——缺省 worlds/，可由环境变量 WORLDSIM_WORLDS_DIR 指向你自己的目录）、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟、且请求指向具体世界（如启动/继续/进入XXXX世界，或明确要求创建XXXX世界/导入角色卡至XXXX世界）时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活，与已有世界无关的泛化扮演/role-play 请求也不激活。
+version: 0.23.0
 metadata:
   openclaw:
     requires:
@@ -9,14 +9,14 @@ metadata:
       config: [worlds/]
     permissions:
       filesystem:
-        - paths: ["worlds/"]
+        - paths: ["worlds/（或 $WORLDSIM_WORLDS_DIR 指向的目录）"]
           access: [read, write, delete]
       scripts:
         - 维护脚本（校验/写入/快照/重置/删除/导入·scripts/）
     envVars:
       - name: WORLDSIM_WORLDS_DIR
         required: false
-        description: Worlds data root directory (defaults to {skill_dir}/worlds). Set this to keep world data on your own storage, outside the skill install. The skill root itself is always derived from the script location and is not overridable.
+        description: Worlds data root directory (defaults to {skill_dir}/worlds). Set this to keep world data on your own storage, outside the skill install. Point it at a dedicated directory — never at your home directory, a project root, or a system directory. The skill root itself is always derived from the script location and is not overridable.
 ---
 
 # WorldSim — 世界模拟器 · 故事引擎 · 实时戏剧 · 角色扮演
@@ -51,19 +51,27 @@ metadata:
 
 **输入类型判断**：查询命令（/status 等）→ 跳过决策直接输出；会话首轮 → disclosures.md「进入确认」→ 加载序列（session_recovery.md）→ 沉浸描绘停住；其他输入 → 本轮编排 → 六阶段推进。
 
-**本轮编排**：先列一份本轮任务单——只列「本轮走哪些阶段 + 每阶段轻/重 + 触发原因」，动宾结构、一行一阶段。阶段分派单·只分派·不构思。示例（模式锚定·首轮完整推进形态）：
+**轻重触发识别（机械优先·脚本预检）**：`worldctl.py <世界> precheck`（只读·不拦截）先吐出本轮状态可导出的 **机械义务**——顶点拍/停滞旗标/不承接旗标/空表建线/切场景/跨天/连续stay（每条带「本批必含」与违反后果）；任务单的「每阶段轻/重」机械部分据此认定，user 指令/重大事件/回判张力等**判断类触发**仍由 LLM 自行补判。预检只提示不替代 gate（gate/round-check 仍是最终裁决）。
 
+**本轮编排（本轮任务单·硬性·线性两步）**：
+1. 建立任务单 —— 按 `轻重触发` 结果逐阶段写一行 `①戏剧家：重/轻（触发原因）→ 任务`（不描述剧情落点·只分派·不构思）；
+2. 落盘任务单 —— 有 `TodoWrite`/`Task` 工具则 `TodoWrite(todos=[{content, status}])` 落盘，无工具则内存维护同一清单不输出。落盘后每完成一阶段标记 `completed`，下一阶段置 `in_progress`。
+示例（模式锚定·Few-Shot）：
 ```
-①戏剧家：重（CT 初始未结算）→ 结算各 CT 关系/内部状态+施压方向
-②编剧：重（storylines 空表）→ 建线 SL-01+拍序+顶点约束
-③导演：重（direction 无指针）→ beat set 起点+guidance+调度单
-④角色：重 → 焦内 Angela/Guest 即兴;焦外在轨自推演
-⑤场记：常规 → 落盘+round-check
-⑥作家：常规 → 叙事
+TodoWrite(todos=[
+  {content:"①戏剧家：重（CT 有推进）→ 结算关系/内部状态+施压方向", status:"in_progress"},
+  {content:"②编剧：重（空表）→ 建故事线", status:"pending"},
+  {content:"③导演：重（顶点停滞）→ 回判+guidance+调度单", status:"pending"},
+  {content:"④角色：重 → 焦内即兴/焦外自推演", status:"pending"},
+  {content:"⑤场记：常规 → 落盘+round-check", status:"pending"},
+  {content:"⑥作家：常规 → 叙事", status:"pending"}
+])
 ```
 
-载体：任务清单（todo·harness 层·完成一阶段勾一项）；无 todo 环境则作内部一行清单（不输出）。
-**触发识别（机械优先·脚本预检）**：`worldctl.py <世界> precheck`（只读·不拦截）先吐出本轮状态可导出的**机械义务**——顶点拍/停滞旗标/不承接旗标/空表建线/切场景/跨天/连续stay（每条带「本批必含」与违反后果）；任务单的「每阶段轻/重」机械部分据此认定，user 指令/重大事件/回判张力等**判断类触发**仍由 LLM 自行补判。预检只提示不替代 gate（gate/round-check 仍是最终裁决）。
+**单射直通（轻量轮·快速通道）**
+- 是什么：一次推理内按序完成①→⑥决策，落盘合并为单批多段（批次内重复 `###STAGE:` 切段，闸门逐段独立，场记段附跑 `round-check`）后 `write_narrative`；六阶段决策完整保留
+- 走哪条：`precheck` 双绿→走单射，任一红→走六阶段串行
+  - 双绿 = 机械全绿（无顶点/无停滞·不承接旗标/表非空/无切场景跨天/非连续stay）且判断全静默（无用户指令加压/无🔴CT/无偏离·VB/无建线·close·rewrite·clear/非顶点出线）
 
 **六阶段推进**：（按todo追踪各阶段执行）每阶段按序执行——读该阶段 reference → 决策 → 写入（内嵌闸门核验）→ 通过 → 才进入下一阶段。
 
@@ -74,15 +82,15 @@ metadata:
 | 阶段 | 先读 | 写入 | 轻量路径 | 全路径触发 |
 |---|---|---|---|---|
 | ①戏剧家 | references/phase_dramatist.md | conflicts | delta 扫描+走表+上轮结算 | 新🔴CT/VB/偏离/用户指令/兜底 |
-| ②编剧 | references/phase_storyliner.md | storylines | 张力基调确认 | 空表/新内核/不承接 flag/线演完收束（含遗留线）/弧线节点 |
+| ②编剧 | references/phase_storyliner.md | storylines | 张力基调+活跃线对账 | 空表/新内核/不承接 flag/线演完收束（含遗留线）/弧线节点 |
 | ③导演 | references/phase_director.md | direction | 回判 checklist+guidance | 顶点/切场景/抉择悬崖/停滞 |
 | ④角色 | references/phase_actor.md | **CHAR_state** | 焦内活跃角色即兴，焦内背景和焦外角色自推演 | 重大事件→受影响连锁重评 |
 | ⑤场记 | references/phase_keeper.md | scenes+world_state | 常规落盘 | 顶点轮/跨场景轮/重置轮 |
 | ⑥作家 | references/phase_writer.md | narration | 常规叙事 | 顶点轮/跨场景/对话轮/explicit |
 
-各阶段按序逐步推进：读该阶段 reference → 决策 → 产出本阶段批次（首行 `###STAGE: <阶段名>`）→ `write-raw --batch` 落盘（段级闸门内嵌·落盘前拦截不合格批次·作家除外详见⑥）→ 通过才进下一阶段。阶段边界=既有产物+闸门；闸门失败撤回该阶段重做（≤2 轮·超限终止报告用户）。轻量合并仅限 write_protocol「运行时优化」可选通道（默认不用）。跨场景轮按 scene_management §场景切换「批次拆分」执行。Windows/PowerShell 环境批次文本经 `--file` 通道引用 UTF-8 临时文件（references/write_protocol.md「批次文本双通道」）。
+**各阶段按序逐步推进**：读该阶段 reference → 决策 → 产出本阶段批次（首行 `###STAGE: <阶段名>`）→ `write-raw --batch` 落盘（段级闸门内嵌·落盘前拦截不合格批次·作家除外详见⑥）→ 通过才进下一阶段。阶段边界=既有产物+闸门；闸门失败撤回该阶段重做（≤2 轮·超限终止报告用户）。双绿走单射单批多段，红走六阶段串行（write_protocol「运行时合并」谓词分派）。跨场景轮按 scene_management §场景切换「批次拆分」执行。Windows/PowerShell 环境批次文本经 `--file` 通道引用 UTF-8 临时文件（references/write_protocol.md「批次文本双通道」）。
 
-**阶段完整性（硬性）：** 推进轮六阶段逐一走过·任何阶段不得缺席。「轻/重」只描述该阶段**写入量**——轻=沿既有态势最小维护（仍出本阶段批次与闸门·如张力基调确认行），重=结构性产出（表中「全路径触发」条件命中即重）。轻≠no-op≠跳过。数据就绪所需多文件读取一律一批并行发出（一条消息多个读取调用·禁逐个排队）。
+**阶段完整性**： 推进轮六阶段逐一走过·任何阶段不得缺席。「轻/重」只描述该阶段**写入量**——轻=沿既有态势最小维护（仍出本阶段批次与闸门·如张力基调确认行），重=结构性产出（表中「全路径触发」条件命中即重）。轻≠no-op≠跳过。数据就绪所需多文件读取一律一批并行发出（一条消息多个读取调用·禁逐个排队）。
 
 ## 输出模式（全局默认·沉浸式）
 

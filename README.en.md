@@ -91,11 +91,25 @@ Every turn is written to the current scene's `narrative.md` (with rotated archiv
 
 By default, world data is stored in `worlds/` inside the skill directory. To keep it on your own storage (separate disk / network share / container volume), set the **`WORLDSIM_WORLDS_DIR`** environment variable to your directory — all scripts (validate/write/snapshot/reset/import) resolve world paths through it; when unset it falls back to `{skill_dir}/worlds/`. The skill itself (SKILL.md / scripts / templates) is always located from the script's own position and **cannot** be overridden by an environment variable.
 
+**Point it at a dedicated directory** — never at your home directory, a project root, or a drive root; the scripts refuse these. Destructive operations (reset/delete) additionally require a `SETTING.md` inside the target directory, so an unrelated directory can never be wiped by mistake.
+
 ---
 
 ## Installation
 
-WorldSim is distributed through two channels: **Clawhub** (recommended) and **GitHub**. Same skill either way — pick one.
+In any AI client that supports Agent Skills, just say (copy-paste as-is):
+
+```
+install worldsim skill from https://github.com/worldsimlife/worldsim.git
+```
+
+The client fetches the repo and installs the skill into its own skills directory. If your client doesn't install skills on its own, do it manually:
+
+```sh
+git clone https://github.com/worldsimlife/worldsim.git
+```
+
+Then place the `worldsim` directory (or a symlink to it) in your client's skills directory — e.g. `.codex/skills/` or `.claude/skills/` for Codex / Claude Code–style clients — so the final path is `…/skills/worldsim/`.
 
 Releases and version history: [GitHub Releases](https://github.com/worldsimlife/worldsim/releases)
 
@@ -103,27 +117,11 @@ Releases and version history: [GitHub Releases](https://github.com/worldsimlife/
 
 To run worlds, this skill reads and writes local files (world archives, narrative records, snapshots) and calls maintenance scripts under `scripts/` (validation/write/snapshot/reset/import). Installing it means you accept these local file operations.
 
-### Option 1: Install from Clawhub (recommended)
-
-[Clawhub page](https://clawhub.ai/zhaowh/skills/worldsim) · Requires the OpenClaw CLI:
-
-```sh
-openclaw skills install @zhaowh/worldsim
-```
-
-### Option 2: Install from GitHub
-
-```sh
-git clone https://github.com/worldsimlife/worldsim.git
-```
-
-Place the `worldsim` directory (or a symlink to it) in your client's skills directory — e.g. `.codex/skills/` or `.claude/skills/` for Codex / Claude Code–style clients — so the final path is `…/skills/worldsim/`.
-
 ### Requirements
 
 - **Python 3.10+** and **PyYAML** (runtime dependency of the state engine `worldctl.py`)
 - **sh** (POSIX shell, used by the script toolchain)
-- A client that supports Agent Skills (OpenClaw / Codex / Claude Code, etc.)
+- An AI client that supports Agent Skills
 
 ---
 

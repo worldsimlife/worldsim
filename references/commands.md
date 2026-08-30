@@ -77,7 +77,7 @@
 | 「创建世界 <名>」 | 走 session_recovery.md 第一章（create_world.py 脚手架 + 创作填充→校验→收尾提示启动世界） |
 | 「重置世界」/「/reset」 | reset_world.py——破坏性操作（自动存档可回滚）·重置后走启动世界（首次启动态） |
 | 「重置场景」/「/reset-scene [场景ID]」 | reset_scene.py——重置指定场景（缺省=当前焦点场景）到 start_snapshot 状态（自动存档可回滚） |
-| 「启动世界」「继续世界」「恢复」等（会话首轮） | 启动世界统一序列（首次启动/跨 Session 恢复）——走 session_recovery.md 第二章：物化→入场物化→分层加载→validate→循环核对→描绘→停住·不推进 |
+| 「启动世界 <名>」「继续世界 <名>」（会话首轮·须带世界名） | 启动世界统一序列（首次启动/跨 Session 恢复）——走 session_recovery.md 第二章：物化→入场物化→分层加载→validate→循环核对→描绘→停住·不推进；用户只说「继续/恢复」而未指名世界 → 列出已有世界请其点名 |
 | `/scene <ID>` / `/scene new <名>` | 场景切换 / 新建场景 |
 | `/conflicts` | 查看冲突 |
 | `/status` / `/status --full` | 状态摘要 / 完整状态 |
