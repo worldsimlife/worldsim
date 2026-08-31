@@ -38,7 +38,6 @@ metadata:
 
 一句话：**戏剧家制造冲突（逼上悬崖），编剧构建故事（构造悬崖），导演掌控现场(点火燃烧)，角色即兴而活（纵身一跳），场记录下世界（铭记此刻），作家写成小说（赋予永生）。** 
 
-
 ## 通用约束（六阶段共用·硬性）
 
 - **法则忠诚**：世界法则冲突时以 SETTING.md 原文为准；外部先验作废。
@@ -49,48 +48,93 @@ metadata:
 
 ## 每轮流程
 
-**输入类型判断**：查询命令（/status 等）→ 跳过决策直接输出；会话首轮 → disclosures.md「进入确认」→ 加载序列（session_recovery.md）→ 沉浸描绘停住；其他输入 → 本轮编排 → 六阶段推进。
+**输入类型判断**：
+  - 查询命令（/status 等）→ 跳过决策直接输出；
+  - 会话首轮 → disclosures.md「进入确认」→ 加载序列（session_recovery.md）→ 沉浸描绘停住；
+  - 其他输入（每轮会话） → 本轮编排 → 六阶段推进：
+  
+  ```
+  用户输入 → ①戏剧家 → ②编剧 → ③导演 → ④角色【行动决策→行动实现】 → ⑤场记 → ⑥作家 → 正文输出=回合终点（零正文轮）
+  ```
+**Step1 — 轻重触发识别，建立任务单**：
+  - `worldctl.py <世界> precheck`（只读·不拦截）先吐出本轮状态可导出的 **机械义务**——顶点拍/停滞旗标/不承接旗标/空表建线/切场景/跨天/连续stay（每条带「本批必含」与违反后果）；
+  - 任务单的「每阶段轻/重」机械部分据此认定，user 指令/重大事件/回判张力等**判断类触发**仍由 LLM 自行补判。
+  - 预检只提示不替代 gate（gate/round-check 仍是最终裁决）；
+  - 建立任务单 —— 按 `轻重触发` 结果逐阶段写一行 `①戏剧家：重/轻（触发原因）→ 任务`（不描述剧情落点·只分派·不构思）。
 
-**轻重触发识别（机械优先·脚本预检）**：`worldctl.py <世界> precheck`（只读·不拦截）先吐出本轮状态可导出的 **机械义务**——顶点拍/停滞旗标/不承接旗标/空表建线/切场景/跨天/连续stay（每条带「本批必含」与违反后果）；任务单的「每阶段轻/重」机械部分据此认定，user 指令/重大事件/回判张力等**判断类触发**仍由 LLM 自行补判。预检只提示不替代 gate（gate/round-check 仍是最终裁决）。
+  - **任务单编排**：
+    - 落盘任务单 —— 有 `TodoWrite`/`TaskCreate` 工具则使用其标准机制将任务单落盘(如`TodoWrite(todos=[{content, status}])`），无工具则内存维护同一清单不输出。 示例：
+    ```
+    todos=[
+      {content:"①戏剧家：重（CT 有推进）→ 结算关系/内部状态+施压方向", status:"in_progress"},
+      {content:"②编剧：重（空表）→ 建故事线", status:"pending"},
+      {content:"③导演：重（顶点停滞）→ 回判+guidance+调度单", status:"pending"},
+      {content:"④角色：重 → 焦内即兴/焦外自推演", status:"pending"},
+      {content:"⑤场记：常规 → 落盘+round-check", status:"pending"},
+      {content:"⑥作家：常规 → 叙事", status:"pending"}
+    ]
+    ```
+    - 任务单固定六行（①-⑥），轻量轮也各占一行标注"轻→最小维护"；缺行=流程违规（轻≠缺席）。
+    - 若使用 TodoWrite，以 TodoWrite(todos=[{content, status}]) 落盘；若使用 TaskCreate，逐项创建对应任务，并维护其 status。status 统一使用 pending / in_progress / completed。
+    - 任务单必须随执行过程持续更新：当前阶段任务置为 in_progress；每完成一个阶段，将其置为 completed，并将下一阶段置为 in_progress。始终保持任务单与实际执行进度一致。
+  
+  | 阶段 | 先读 | 写入 | 轻量路径 | 全路径触发 |
+  |---|---|---|---|---|
+  | ①戏剧家 | references/phase_dramatist.md | conflicts | delta 扫描+走表+上轮结算 | 新🔴CT/VB/偏离/用户指令/兜底 |
+  | ②编剧 | references/phase_storyliner.md | storylines | 张力基调+活跃线对账 | 空表/新内核/不承接 flag/顶点已出线进入余波拍·待收束（`direction.当前拍==余波`）/弧线节点 |
+  | ③导演 | references/phase_director.md | direction | 回判 checklist+guidance | 顶点/切场景/抉择悬崖/停滞 |
+  | ④角色 | references/phase_actor.md | **CHAR_state** | 焦内活跃角色即兴，焦内背景和焦外角色自推演 | 重大事件→受影响连锁重评 |
+  | ⑤场记 | references/phase_keeper.md | scenes+world_state | 常规落盘 | 顶点轮/跨场景轮/重置轮 |
+  | ⑥作家 | references/phase_writer.md | narration | 常规叙事 | 顶点轮/跨场景/对话轮/explicit |
 
-**本轮编排（本轮任务单·硬性·线性两步）**：
-1. 建立任务单 —— 按 `轻重触发` 结果逐阶段写一行 `①戏剧家：重/轻（触发原因）→ 任务`（不描述剧情落点·只分派·不构思）；
-2. 落盘任务单 —— 有 `TodoWrite`/`Task` 工具则 `TodoWrite(todos=[{content, status}])` 落盘，无工具则内存维护同一清单不输出。落盘后每完成一阶段标记 `completed`，下一阶段置 `in_progress`。
-示例（模式锚定·Few-Shot）：
-```
-TodoWrite(todos=[
-  {content:"①戏剧家：重（CT 有推进）→ 结算关系/内部状态+施压方向", status:"in_progress"},
-  {content:"②编剧：重（空表）→ 建故事线", status:"pending"},
-  {content:"③导演：重（顶点停滞）→ 回判+guidance+调度单", status:"pending"},
-  {content:"④角色：重 → 焦内即兴/焦外自推演", status:"pending"},
-  {content:"⑤场记：常规 → 落盘+round-check", status:"pending"},
-  {content:"⑥作家：常规 → 叙事", status:"pending"}
-])
-```
+**Step2 — 执行路径选择**：
+  - 默认尝试 `Step 3A — 单射路径`；
+  - 任一段硬拦→按 `BATCH-FAIL` 对账剔除已落盘 `STORYLINE/BEAT` 后 `--resume-from` 重提或整体转`Step 3B — 串行路径`；
+  - storylines空表·故事线不承接·建线·出线/切场景 → `Step 3B — 串行路径`（角色偏离/VB由①戏剧家·④角色阶段内按 loop_machinery 承载，不触发路径分派）。
+  
+**推进执行 Step 3A — 单射路径**：
+  - 单批五段合并执行（①戏剧家→②编剧→③导演→④角色→⑤场记 合并 `write-raw --batch`，批次内重复 `###STAGE:` 切段，闸门逐段独立，⑤附跑 `round-check`），参见`write_protocal.md`里`阶段批次规范.运行时合并（谓词分派）`；
+  - `round-check`通过后，执行⑥作家 `write_narrative`；
+  - 六阶段决策完整保留；
+  - TodoWrite/TaskUpdate更新任务`status`。
 
-**单射直通（轻量轮·快速通道）**
-- 是什么：一次推理内按序完成①→⑥决策，落盘合并为单批多段（批次内重复 `###STAGE:` 切段，闸门逐段独立，场记段附跑 `round-check`）后 `write_narrative`；六阶段决策完整保留
-- 走哪条：`precheck` 双绿→走单射，任一红→走六阶段串行
-  - 双绿 = 机械全绿（无顶点/无停滞·不承接旗标/表非空/无切场景跨天/非连续stay）且判断全静默（无用户指令加压/无🔴CT/无偏离·VB/无建线·close·rewrite·clear/非顶点出线）
+**推进执行 Step 3B — 串行路径**：
+    
+  - **逐阶段执行**：
+    - 按序逐段 `读 reference→决策→产出批次(首行 ###STAGE)→write-raw --batch 落盘→闸门通过→下一段`；
+    - 六阶段逐一走过·不得缺席（轻=最小维护仍出批次与闸门，重=结构性产出；轻≠no-op≠跳过；轻≠跳过）；
+    - 阶段边界=既有产物+闸门，失败撤回该段重做（≤2 轮·超限终止报告）；
+    - 跨场景按 `scene_management` 批次拆分；
+    - 每完成一阶段TodoWrite/TaskUpdate更新完成阶段任务`status`为`completed`，下一阶段置 `in_progress`。
 
-**六阶段推进**：（按todo追踪各阶段执行）每阶段按序执行——读该阶段 reference → 决策 → 写入（内嵌闸门核验）→ 通过 → 才进入下一阶段。
+> 数据就绪所需多文件读取一律一批并行发出（一条消息多个读取调用·禁逐个排队）；Windows/PowerShell 批次文本经 `--file` 通道引用 UTF-8 临时文件
 
-```
-用户输入 → ①戏剧家 → ②编剧 → ③导演 → ④角色【行动决策→行动实现】 → ⑤场记 → ⑥作家 → 正文输出=回合终点（零正文轮）
-```
+## 双层 ReAct 映射
+六阶段是一套围绕世界状态持续回馈的循环，显式拆为「世界级 React」与「角色层 React」两层，共用同一状态内核：
 
-| 阶段 | 先读 | 写入 | 轻量路径 | 全路径触发 |
-|---|---|---|---|---|
-| ①戏剧家 | references/phase_dramatist.md | conflicts | delta 扫描+走表+上轮结算 | 新🔴CT/VB/偏离/用户指令/兜底 |
-| ②编剧 | references/phase_storyliner.md | storylines | 张力基调+活跃线对账 | 空表/新内核/不承接 flag/线演完收束（含遗留线）/弧线节点 |
-| ③导演 | references/phase_director.md | direction | 回判 checklist+guidance | 顶点/切场景/抉择悬崖/停滞 |
-| ④角色 | references/phase_actor.md | **CHAR_state** | 焦内活跃角色即兴，焦内背景和焦外角色自推演 | 重大事件→受影响连锁重评 |
-| ⑤场记 | references/phase_keeper.md | scenes+world_state | 常规落盘 | 顶点轮/跨场景轮/重置轮 |
-| ⑥作家 | references/phase_writer.md | narration | 常规叙事 | 顶点轮/跨场景/对话轮/explicit |
+**世界级 React**：
 
-**各阶段按序逐步推进**：读该阶段 reference → 决策 → 产出本阶段批次（首行 `###STAGE: <阶段名>`）→ `write-raw --batch` 落盘（段级闸门内嵌·落盘前拦截不合格批次·作家除外详见⑥）→ 通过才进下一阶段。阶段边界=既有产物+闸门；闸门失败撤回该阶段重做（≤2 轮·超限终止报告用户）。双绿走单射单批多段，红走六阶段串行（write_protocol「运行时合并」谓词分派）。跨场景轮按 scene_management §场景切换「批次拆分」执行。Windows/PowerShell 环境批次文本经 `--file` 通道引用 UTF-8 临时文件（references/write_protocol.md「批次文本双通道」）。
+| 环节 | 现有承载 |
+|---|---|
+| Goal | ①戏剧家 `conflicts`  |
+| Plan | ②编剧 `storylines` 与 ③导演 `direction` |
+| Act | ④角色 React |
+| Result | ⑤场记 `scene_state` `world_state` / ⑥作家 `narration` |
+| Re-plan | 下一轮①戏剧家结算/压力注册 + ②编剧重规划 + ③导演回判 + ④角色React |
 
-**阶段完整性**： 推进轮六阶段逐一走过·任何阶段不得缺席。「轻/重」只描述该阶段**写入量**——轻=沿既有态势最小维护（仍出本阶段批次与闸门·如张力基调确认行），重=结构性产出（表中「全路径触发」条件命中即重）。轻≠no-op≠跳过。数据就绪所需多文件读取一律一批并行发出（一条消息多个读取调用·禁逐个排队）。
+**角色层 React**（阶段④内部微循环，详见 references/phase_actor.md）：
+
+| 环节 | 现有承载 |
+|---|---|
+| Observe  | 数据就绪＋1.1 状态构建·感知过滤 |
+| Think  | 1.2 八问 |
+| Goal | `CHAR_state.decision.核心诉求`  | 
+| Plan |  `CHAR_state.decision.当前计划` |
+| Act | `CHAR_state.decision.当前行动` / `###ACTION`（1.5 行动实现） |
+| Result | `CHAR_state.连续行动轨迹` / 受影响角色反应·上下文中的 ###ACTION 序列 |
+| Re-plan | 2.行动链推进.受影响重评 | 
+
+世界 Result 进入下一轮世界级 Re-plan；角色 Result 进入受影响角色重评与本角色下一圈行动环。
 
 ## 输出模式（全局默认·沉浸式）
 
@@ -110,12 +154,13 @@ worlds/{世界名}/
 │   ├── CHAR_{name}_state.yaml ← ④角色（decision 八子字段/连续行动轨迹/记忆锚点/信念演化/人际动态/档位体系）
 │   ├── world_state.yaml    ← ⑤场记（焦点场景唯一权威/时间/轮次/倒计时/标记/时间线）
 │   └── world_map.yaml / foreshadow.yaml / knowledge_index.yaml ← ⑤场记（地图, 伏笔，知情边界）
-└── scenes/SXX-场景名/{scene_card.md, start_snapshot.md, scene_state.yaml, pending_actions.yaml, narrative.md} ← ⑤场记
+└── scenes/SXX-场景名/{scene_card.md, start_snapshot.md, scene_state.yaml, pending_actions.yaml} ← ⑤场记
+└── scenes/SXX-场景名/{narrative.md} ← ⑥作家
 ```
 
 七文件一句话：CONFLICTS 什么正在发生冲突 / STORYLINES 故事将如何展开 / DIRECTION 故事现在演到哪里怎么继续 / CHARACTERS 人物现在想做什么 / SCENES 现场现在是什么样 / WORLD_STATE 世界实际上发生了什么 / NARRATION 这一切如何被写成小说。
 
-## 引用（用时才读·不常驻上下文）
+## 引用
 
 | 文件 | 何时读 |
 |---|---|
@@ -126,7 +171,7 @@ worlds/{世界名}/
 | references/write_protocol.md | 批次格式不确定时；首次启动轮必读全文 |
 | references/scene_management.md | 场景切换/移动/存档/焦外协议 |
 | references/beat_structure.md | ②编剧建线/弧线校准时 |
-| references/loop_machinery.md | 循环世界（SETTING 声明循环且有循环角色）·**每轮加载·§1 执行表按「执行阶段」列分派**（①③④⑥各有归属动作·非单阶段文件） |
+| references/loop_machinery.md | 循环世界（SETTING 声明循环且有循环角色） |
 | references/knowledge_index.md / references/foreshadow.md | 有对应文件时·知情/伏笔相关 |
 | references/rollback.md | 回退/撤销时 |
 | references/session_recovery.md | 创建/启动/恢复/跨 Session |
@@ -135,10 +180,41 @@ worlds/{世界名}/
 | references/narrative_style_*.md | explicit 场景 / 对话轮（⑥作家） |
 | `regions/**/REGION.md` | 到达新区域 / 创建场景时 |
 
-## 命令参考
+## 命令参考（详情 references/commands.md 用户命令）
+`/conflicts` 
+`/storylines`
+`/status` 
+`/save [名]` 
+`/load <名>`（执行前确认） 
+`/reset`（执行前确认） 
+`/reset-scene [ID]`（执行前确认） 
+`/import-card <卡>` 
+`/audit`（显式命令） 
+`/silent` 
+`/loud`
 
-`/scene <ID>` · `/conflicts` · `/status [--full]` · `/sync` `/update` · `/save [名]` · `/load <名>`（**执行前确认**） · `/reset`（**执行前确认**） · `/reset-scene [ID]`（**执行前确认**） · `/import-card <卡>` · `/audit`（显式命令） · `/silent` `/loud`
-
-**worldctl.py 子命令**（详情 references/commands.md）：read / write / write-raw --batch（段级闸门内嵌·场记批落盘后自动附跑 round-check）/ append-raw / delete / audit / validate / init-states / map-sync / grep / storyline（show/add/rewrite/close/clear·②编剧） / beat（show/set/stay/advance·③导演） / in-track（循环世界·只读查循环角色预设此刻在哪/做什么·③导演调度参考） / round-check（⑤轮完整性·亦随场记批自动附跑） / migrate（版本迁移·存量旧世界首次使用时提示执行） / gate dramatist|storyliner|director|actor|keeper|writer --check（单段复检与 writer 叙事核验） / reset-cycle [--asset] / lint / fix / tmp-clean / convert / scan
+**worldctl.py 子命令**（详情 references/commands.md worldctl.py 子命令）：
+read 
+write 
+write-raw --batch（段级闸门内嵌·场记批落盘后自动附跑 round-check）
+append-raw 
+delete 
+audit 
+validate 
+init-states 
+map-sync 
+grep 
+storyline（show/add/rewrite/close/clear·②编剧） 
+beat（show/set/stay/advance·③导演） 
+in-track（循环世界·只读查循环角色预设此刻在哪/做什么·③导演调度参考） 
+round-check（⑤轮完整性·亦随场记批自动附跑） 
+migrate（版本迁移·存量旧世界首次使用时提示执行） 
+gate dramatist|storyliner|director|actor|keeper|writer --check（单段复检与 writer 叙事核验） 
+reset-cycle [--asset] 
+lint 
+fix 
+tmp-clean 
+convert 
+scan
 
 **破坏性操作确认（硬性）**：/load · /reset-scene · /reset · snap.py delete · ###DELETE: 执行前必须向用户显式确认（references/disclosures.md）；常规状态写入不在此列——安装即授权。

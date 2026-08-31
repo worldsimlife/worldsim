@@ -43,7 +43,7 @@ worldctl.py — WorldSim 批量状态管理 V2
   
 核心优化：read = 1 次 exec 获取所有状态；write = 1 次 exec 更新所有变更。
 """
-import sys, os, yaml, re, shutil, argparse
+import sys, os, yaml, re, shutil, argparse, difflib
 from pathlib import Path
 
 # I/O 纪律（硬性）：本脚本读写一律 UTF-8——Windows 缺省 locale（GBK）读中文 yaml 必炸、
@@ -242,9 +242,69 @@ def _normalize_file_key(key: str) -> str:
     return k
 
 
+def _char_target_name(key: str) -> str:
+    """从 CHAR_ 文件 key 提取角色名（去 CHAR_ 前缀与 _state 后缀）——简写容错的比较基准。"""
+    k = _normalize_file_key(key)
+    if k.startswith(CHAR_STATE_PREFIX):
+        k = k[len(CHAR_STATE_PREFIX):]
+    if k.endswith("_state"):
+        k = k[:-len("_state")]
+    return k.strip()
+
+
+def _known_char_names(world_dir: Path, existing: dict) -> list[str]:
+    """已存在的角色状态名（只取 discover_files 已注册的 CHAR_state 文件）。"""
+    return list(dict.fromkeys(
+        stem[len(CHAR_STATE_PREFIX):-len("_state")]
+        for stem in existing
+        if stem.startswith(CHAR_STATE_PREFIX) and stem.endswith("_state")
+    ))
+
+
+def _char_fuzzy_hits(target: str, known: list[str]) -> list[str]:
+    """已知角色名中与 target 包含/分词匹配的候选（双向包含·或 ≥3 字符 token 相等）。"""
+    nt = _norm_char_key(target)
+    if not nt:
+        return []
+    out = []
+    for name in known:
+        nn = _norm_char_key(name)
+        if nn and (nt == nn or nt in nn or nn in nt):
+            out.append(name)
+    return list(dict.fromkeys(out))
+
+
+def _canonical_role_label(label: str, world_dir: Path, existing: dict) -> str:
+    """把行动卡/META 中的角色标签归一到已存在的角色全名；多义或未知则保留原标签交给闸门报告。"""
+    raw = str(label or "").strip().replace("_", " ")
+    if not raw:
+        return raw
+    known = _known_char_names(world_dir, existing)
+    exact = [name for name in known if _norm_char_key(name) == _norm_char_key(raw)]
+    if len(exact) == 1:
+        return exact[0]
+    fuzzy = _char_fuzzy_hits(raw, known)
+    return fuzzy[0] if len(fuzzy) == 1 else raw
+
+
+def _char_refuse_message(key: str, target: str, known: list[str]) -> str:
+    """未命中时的拒绝信息：给出已存在的可能匹配 CHAR_ key（多义/疑似拼写错误分别列候选）。"""
+    hits = _char_fuzzy_hits(target, known)
+    if len(hits) > 1:
+        cands = " / ".join(f"CHAR_{h}_state" for h in hits[:6])
+        reason = f"匹配到多个角色（{len(hits)} 个）·无法判定落点"
+    else:
+        near = hits or difflib.get_close_matches(target, known, n=3, cutoff=0.6)
+        cands = " / ".join(f"CHAR_{h}_state" for h in near) if near else "无"
+        reason = "无任何已知角色与之匹配" if not near else "存在可能匹配·但未按猜测自动落点"
+    return (f"[ERR] 未知角色状态 key '{key}'——禁止新建（防同一角色产生两份状态文件·{reason}）\n"
+            f"      可能匹配: {cands}\n"
+            f"      确为新建角色时：先建档 characters/CHAR_<全名>.md，再用全名 `###FILE: CHAR_<全名>_state` 写入")
+
+
 def resolve_char_file(existing: dict, key: str, world_dir: Path):
-    """解析 CHAR_* 写入目标。已存在→直接映射；不存在→检查空格/下划线互换及缺失 _state 后缀的相似 key，
-    命中则映射到已有文件并警告（杜绝同一角色产生两份状态文件）；否则→按 key 新建。"""
+    """解析 CHAR_* 文件 key：真实文件或既有空格/下划线变体可映射，其余一律拒绝新建。
+    未命中时返回 (None, 含候选 CHAR_* key 的错误信息)，由调用方阻止写入。"""
     key = _normalize_file_key(key)
     if key in existing:
         return existing[key], None
@@ -259,7 +319,10 @@ def resolve_char_file(existing: dict, key: str, world_dir: Path):
         for v in variants:
             if v in existing:
                 return existing[v], f"[WARN] key '{key}' 与已有文件 '{existing[v].name}' 命名不一致(空格/下划线/_state)，已映射到已有文件，避免产生重复"
-        return world_dir / "states" / f"{key}.yaml", None
+        # 未命中真实角色状态文件：只返回候选，不自动猜测落点；候选必须由调用方改成真实 key 后重提。
+        target = _char_target_name(key)
+        known = _known_char_names(world_dir, existing)
+        return None, _char_refuse_message(key, target, known)
     return None, None
 
 def pending_actions_path(scene_dir: Path | None, create: bool = True) -> Path | None:
@@ -518,12 +581,17 @@ def cmd_write(world_dir: Path, full_replace: bool = False):
         print("[ERR] stdin 为空", file=sys.stderr); sys.exit(1)
 
     written = []
+    failures = []
     for key, new_data in delta.items():
         if key.startswith("_"):
             continue
         filepath, note = resolve_char_file(existing, key, world_dir)
         if filepath is None:
-            print(f"[WARN] 未知 key: {key}, 跳过", file=sys.stderr)
+            if note:
+                print(note, file=sys.stderr)
+            else:
+                print(f"[WARN] 未知 key: {key}, 跳过", file=sys.stderr)
+            failures.append(key)
             continue
         if note:
             print(note, file=sys.stderr)
@@ -534,6 +602,7 @@ def cmd_write(world_dir: Path, full_replace: bool = False):
                     existing_data = yaml.safe_load(f) or {}
             except Exception as e:
                 print(f"[ERR] {key} 解析失败，拒绝写入（防止静默清空）: {e}", file=sys.stderr)
+                failures.append(key)
                 continue
             merged = deep_merge(existing_data, new_data)
         else:
@@ -542,6 +611,9 @@ def cmd_write(world_dir: Path, full_replace: bool = False):
         write_yaml(filepath, merged)
         written.append(key)
 
+    if failures:
+        print(f"[FAIL] {len(failures)} 个文件未写入: {', '.join(failures)}", file=sys.stderr)
+        sys.exit(1)
     print(f"[OK] 已更新 {len(written)} 个文件: {', '.join(written)}")
 
 # ── 语义不变量（audit）─────────────────────────────────────────
@@ -852,6 +924,28 @@ def _batch_preceding(ops, idx, file_key, key_path_str, current):
     return val
 
 
+def _canonicalize_char_ops(ops, world_dir, existing):
+    """把批次内可解析的 CHAR_ 别名统一为真实 state 文件 stem。
+
+    check_batch 的 current/前置 op 对账必须使用同一个逻辑 key；否则同一角色用空格、
+    下划线或缺后缀写法时，升档门槛与轨迹覆盖检查会读不到真实旧值。未知 key 保留原文，
+    由后续 FILE/写入路径报告错误，不在此处猜测角色。
+    """
+    normalized = []
+    for op in ops:
+        if len(op) != 5:
+            normalized.append(op)
+            continue
+        kind, file_key, key_path, content, append = op
+        canonical = _normalize_file_key(file_key)
+        if canonical.startswith(CHAR_STATE_PREFIX):
+            fp, _ = resolve_char_file(existing, canonical, world_dir)
+            if fp is not None and fp.stem in existing:
+                canonical = fp.stem
+        normalized.append((kind, canonical, key_path, content, append))
+    return normalized
+
+
 def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, via="write"):
     """语义不变量检查（六阶段批次→硬性违规/软性警告分类）。
     ctx = parse_batch_entries 返回值（stage/storyline/beat/action/schedule/meta）——按阶段分化必含项。
@@ -879,6 +973,10 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             current[key] = yaml.safe_load(fp.read_text(encoding="utf-8")) or {}
         except Exception:
             current[key] = {}
+
+    # 先统一可解析的 CHAR_ 别名，再做所有跨 op/current 对账（多角色批次共用此规范化结果）。
+    # 原始 ops 只在本函数内替换；落盘仍使用原始批次，write_one 会再次解析并输出映射提示。
+    ops = _canonicalize_char_ops(ops, world_dir, existing)
 
     # 重置豁免预扫描（2026-08-12 加入）：批次内登记了角色重置（world_state.重置记录.{角色} KEY 写入）→
     # 该角色按 loop_machinery §4 联动表清空/压缩 记忆锚点/轨迹（脚本档全清·漂移压缩·觉醒/变质保留）。
@@ -914,6 +1012,12 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
     for idx, (kind, file_key, key_path_str, content, append) in enumerate(ops):
         if kind != "write":
             continue
+        # CHAR_ 未命中真实 state 文件属于硬性 FILE 错误：先在 check_batch 拦截，避免 write_one
+        # 失败后仍打印批次成功，或在多角色批次中悄悄漏掉一个角色。
+        if file_key.startswith(CHAR_STATE_PREFIX):
+            _char_fp, _char_note = resolve_char_file(existing, file_key, world_dir)
+            if _char_fp is None:
+                hard.append((idx, _char_note or f"未知 CHAR_state 文件 key: {file_key}——禁止新建"))
         key_path = key_path_str.split(".")
 
         # 嵌套记录字段类型校验（2026-08-17 加入·方案B·防复发）：记录类字段（world_state.重置记录.{角色}/时间线.{ID}/外部倒计时.{CD}
@@ -1336,8 +1440,15 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
 
     # ⑬c 角色覆盖声明（硬性——角色批必须显式说明行动角色是否落到 CHAR_state）
     if has_char_op:
-        coverage = _parse_role_coverage(meta_lines)
-        reaction_roles = _action_roles(action_lines)
+        coverage_raw = _parse_role_coverage(meta_lines)
+        coverage = {
+            _canonical_role_label(role, world_dir, existing): status
+            for role, status in coverage_raw.items()
+        }
+        reaction_roles = {
+            _canonical_role_label(role, world_dir, existing)
+            for role in _action_roles(action_lines)
+        }
         submitted_roles = set()
         for _kind, _file_key, _key_path, _content, _append in ops:
             if _kind != "write" or not _file_key.startswith(CHAR_STATE_PREFIX) or not _file_key.endswith("_state"):
@@ -1349,7 +1460,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             hard.append((-1, "###META 缺少角色覆盖声明：角色批必须写 `角色覆盖: Name=更新,Other=更新(在轨·轻量)`"))
         else:
             for role in sorted(reaction_roles):
-                normalized = role.replace("_", " ")
+                normalized = _canonical_role_label(role, world_dir, existing)
                 status = coverage.get(normalized)
                 if status is None:
                     hard.append((-1, f"角色覆盖声明缺少 ###ACTION 行动角色: {role}"))
@@ -1358,7 +1469,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                 elif status.startswith("更新") and normalized not in submitted_roles:
                     hard.append((-1, f"角色覆盖声明标记 {role}=更新，但批次缺 CHAR_state 写入"))
             for role in sorted(submitted_roles):
-                if role not in {r.replace("_", " ") for r in coverage}:
+                if role not in coverage:
                     hard.append((-1, f"CHAR_state 已写入但角色覆盖声明缺少: {role}"))
 
     # ⑭ 跨叙事提醒（软性——CROSS_NARRATIVES.md 存在时，完整推进轮应核对深匹配）
@@ -1382,14 +1493,15 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
         if _fp is not None:
             char_roles.add(_fp.stem[len(CHAR_STATE_PREFIX):-len("_state")])
     if char_roles:
-        meta_text = meta_lines[0] if meta_lines else ""
+        # 角色覆盖允许分布在多条 META；记忆✓ 也按全部 META 行解析，避免第二条 META 被静默忽略。
+        meta_text = " ".join(str(line or "") for line in meta_lines)
         traced = {}  # 角色 → 判定（已触发/未达）
-        m = re.search(r"记忆✓\s*(.*)$", meta_text)
-        if m:
+        for m in re.finditer(r"记忆✓\s*(.*?)(?=\s+记忆✓|$)", meta_text):
             for tok in m.group(1).split():
                 mm = re.match(r"^(.+?):(\d+)(?:·(已触发|未达))?$", tok)
                 if mm:
-                    traced[mm.group(1).replace("_", " ")] = mm.group(3) or "未达"
+                    role_label = _canonical_role_label(mm.group(1), world_dir, existing)
+                    traced[role_label] = mm.group(3) or "未达"
         for role in sorted(char_roles):
             if role not in traced:
                 hard.append((-1, f"###META 记忆✓ 留痕缺角色: {role}（逐角色同类计数必列·格式 `记忆✓ {{角色}}:{{计数}}·{{已触发|未达}}`·角色名以下划线代空格·查询轮豁免）"))
@@ -1410,7 +1522,11 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
     if stage == "角色" and (has_char_op or any("角色覆盖" in (ln or "") for ln in meta_lines)):
         sched_roles = _schedule_cast_roles(world_dir)
         if sched_roles:
-            coverage2 = _parse_role_coverage(meta_lines)
+            coverage2_raw = _parse_role_coverage(meta_lines)
+            coverage2 = {
+                _canonical_role_label(role, world_dir, existing): status
+                for role, status in coverage2_raw.items()
+            }
             submitted2 = set()
             for _kind, _fk, _kp, _c, _a in ops:
                 if _kind == "write" and _fk.startswith(CHAR_STATE_PREFIX) and _fk.endswith("_state"):
@@ -1561,6 +1677,8 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
     段级闸门（默认启用·--force 豁免）：带 ###STAGE 声明且属批次类五阶段（戏剧家/编剧/导演/角色/场记）的段，
     必含项缺失或硬性违规=该段整体拦截 exit 1 不落盘（作家段豁免·W4 走 gate writer --check）。
     单阶段批次与无 ###STAGE 声明的维护批行为不变（audit 仍为单字段顶回）。
+    单射批段完整性：合并批（≥2 个 ###STAGE 段·非 --resume-from·非 --force）必须五段齐备
+    （戏剧家/编剧/导演/角色/场记）——缺段=零副作用整体拦截（轻=最小维护批仍须出段·作家段不在合并批）。
     批次含场记段（轮末）时落盘后自动附跑 round-check（仅报告不拦截）。
     --force（显式回退专用·仅 --batch）：绕过 audit ④ 轮次单调 与 ⑬b 反应轨迹覆盖写——回退手工重建（无快照）时用；
     其余数据完整性硬性检查（① 角色反应四件套/② 载体/⑤ scene_state 落点）照常拦截。回退后必做残留扫描 + validate。
@@ -1583,6 +1701,10 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 print("[ERR] pending_actions 创建失败（缺场景目录或写盘失败）", file=sys.stderr)
                 return False
         elif filepath is None:
+            # CHAR_ key 未命中（多义/零命中）：拒绝新建并给出候选·note 已是可直接打印的完整 [ERR] 文本
+            if note:
+                print(note, file=sys.stderr)
+                return False
             # scene_state 解析失败：准确诊断焦点场景目录/文件状态（避免「未知文件 key」误导为 FILE key 写错）
             if file_key == "scene_state":
                 if scene_dir is None:
@@ -1791,16 +1913,23 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 for idx, (kind, file_key, key_path_str, content, append) in enumerate(ops):
                     if idx in blocked:
                         print(f"  [顶回] {file_key}.{key_path_str}")
+                        if file_key.startswith(CHAR_STATE_PREFIX):
+                            _blocked_fp, _blocked_note = resolve_char_file(existing, file_key, world_dir)
+                            if _blocked_note:
+                                print("    " + _blocked_note.replace("\n", "\n    "))
                         continue
                     if kind == "delete":
                         print(f"  [删除] {file_key}.{key_path_str}")
                         continue
-                    fp, _ = resolve_char_file(existing, file_key, world_dir)
+                    fp, _note = resolve_char_file(existing, file_key, world_dir)
                     if fp is None and file_key == "pending_actions":
                         fp = pending_actions_path(get_scene_dir(world_dir), create=False)
                     if fp is None:
                         unknown_keys += 1
-                        print(f"  [ERR] 未知文件 key: {file_key}（dry-run 拦截·实写将拒绝该字段）")
+                        if _note:
+                            print("  " + _note.replace("\n", "\n  "))
+                        else:
+                            print(f"  [ERR] 未知文件 key: {file_key}（dry-run 拦截·实写将拒绝该字段）")
                         continue
                     old_val = None
                     if fp.exists():
@@ -1842,10 +1971,17 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                                           if idx == -1 and msg.startswith(f"{ctx['stage']}批应含"))
                     # 空壳段（无写入/结构动作）：必含项引擎按「查询/维护豁免」跳过——但带 ###STAGE
                     # 的工作段不允许空壳（维护批应去声明；查询轮不出批次）
+                    # Option A 白名单：编剧轻量路径（META 双声明）零写入合法
                     if not ops and not ctx["storyline"] and not ctx["beat"]:
-                        seg_gate_fails.append(
-                            f"{ctx['stage']}段无任何写入操作与结构动作——空壳段"
-                            f"（维护/恢复批请去掉 ###STAGE 声明·阶段段必含本阶段产出）")
+                        is_storyliner_light = (
+                            ctx["stage"] == "编剧"
+                            and ctx["meta"]
+                            and any("张力基调" in m and "对账" in m for m in ctx["meta"])
+                        )
+                        if not is_storyliner_light:
+                            seg_gate_fails.append(
+                                f"{ctx['stage']}段无任何写入操作与结构动作——空壳段"
+                                f"（维护/恢复批请去掉 ###STAGE 声明·阶段段必含本阶段产出）")
                     if ctx["stage"] == "导演":
                         cv, _ck = _check_climax_exit(world_dir, ops, ctx["beat"])
                         seg_gate_fails.extend(cv)
@@ -1879,8 +2015,9 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                     sys.exit(1)
                 applied_ops.append((seg_no, f"###BEAT: {action}"))
 
-            # 逐条写入：顶回违规字段，其余照写
+            # 逐条写入：顶回违规字段，其余照写；任何实际写入失败都使该段失败，不能伪报成功。
             written_count = 0
+            write_failures = []
             for idx, (kind, file_key, key_path_str, content, append) in enumerate(ops):
                 if idx in blocked:
                     continue
@@ -1889,6 +2026,13 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                     continue
                 if write_one(file_key, key_path_str, content, append=append):
                     written_count += 1
+                else:
+                    write_failures.append((idx, file_key, key_path_str))
+            if write_failures:
+                print(f"[FAIL] {len(write_failures)} 个字段实际写入失败——批次不得报告成功:", file=sys.stderr)
+                for _idx, _fk, _kp in write_failures:
+                    print(f"  - op#{_idx}: {_fk}.{_kp}", file=sys.stderr)
+                sys.exit(1)
             op = "批量追加" if append_mode else "批量写入"
             # 结构/指针落盘结果置于收尾（tail 可见·无需重放批次确认）
             if ctx["storyline"] or ctx["beat"]:
@@ -1901,6 +2045,22 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
 
 
         segments = split_stage_segments(lines)
+        # 单射批段数完整性检查（防异常/重复段注入·机械兜底）：
+        # 仅当合并批含 ≥5 个 ###STAGE 段（异常形态）且非重提（--resume-from 时前段已落盘·缺失属预期）、
+        # 非回退批（--force 豁免）才拦截——2~4 段的任意阶段组合合并批直接放行，不再强制五段齐备。
+        # 各段内部 gate 仍逐段独立校验（戏剧家段需 CT op·角色段需行动卡四件套等），流程安全不受影响。
+        # 作家段不在合并批·经 write_narrative 独立落盘。
+        # 串行路径（每批单段）与无 ###STAGE 维护/回退批不受影响。
+        if len(segments) >= 5 and not force and resume_from is None:
+            _declared = [_seg[0][len("###STAGE:"):].strip()
+                         for _seg in segments if _seg and _seg[0].startswith("###STAGE:")]
+            _missing = [s for s in BATCH_GATE_STAGES if s not in _declared]
+            if _missing:
+                print("[BATCH-FAIL] 单射批段完整性检查未过——合并批（多 ###STAGE 段）必须五段齐备·缺段=流程违规:", file=sys.stderr)
+                print(f"  声明段: {'/'.join(_declared) if _declared else '（无）'}", file=sys.stderr)
+                print(f"  缺失段: {'/'.join(_missing)}", file=sys.stderr)
+                print("  补齐缺失段后整批重提（轻=最小维护批·仍须出段；--dry-run 同样受此检查）", file=sys.stderr)
+                sys.exit(1)
         # --resume-from <N>：只执行段 N 及其后（失败后的重提通道·免重跑已成功段）——
         # 仅当原始批次确有 ≥N 段时合法；段号按原始批次（1 起始）计。
         _tot = len(segments)
@@ -2006,7 +2166,10 @@ def cmd_delete(world_dir: Path, extra: list[str]):
     existing = discover_files(world_dir, scene_dir)
     filepath, note = resolve_char_file(existing, file_key, world_dir)
     if filepath is None:
-        print(f"[ERR] 未知文件 key: {file_key}", file=sys.stderr)
+        if note:
+            print(note, file=sys.stderr)
+        else:
+            print(f"[ERR] 未知文件 key: {file_key}", file=sys.stderr)
         return
     if note:
         print(note, file=sys.stderr)
@@ -3386,6 +3549,20 @@ def cmd_validate(world_dir: Path):
         _rname = cfp.stem[len(CHAR_STATE_PREFIX):-len("_state")]
         if isinstance(dev, list) and len(dev) >= 1 and _rname not in _law_ct_roles:
             warnings.append(f"{cname}: 偏离登记 {len(dev)} 次但无「法则」型 CT 承接本角色——行动级偏离 1 次即应注册「Host vs 法则」CT 并把 {_rname} 写入其 关联角色（冲突化窗口归零·loop_machinery §5.1）")
+        # 6k. 随身物品持有物一致性（通用）：可转移重要持有物取得后应进随身物品（非服饰）
+        _items = cdata.get("随身物品")
+        if isinstance(_items, str):
+            warnings.append(f"{cname}: 随身物品为字符串 '{str(_items)[:20]}'，应为 YAML 列表 [] / [- 物品]（类型污染·write-raw KEY 覆盖为列表）")
+        elif isinstance(_items, list):
+            _has_items = len([x for x in _items if str(x).strip()]) > 0
+            # 近3轮轨迹含取得类动词但持有清单为空 → 通用漏写告警
+            _track = cdata.get("连续行动轨迹") or []
+            if isinstance(_track, list) and _track:
+                _recent = _track[-3:] if len(_track) >= 3 else _track
+                _acq_re = re.compile(r"接过|递出|握起|装入|收入|捡起|拿起|领到|获得|交出|易手")
+                _has_acq = any(_acq_re.search(str(it.get("行动", "") or "")) for it in _recent if isinstance(it, dict))
+                if _has_acq and not _has_items:
+                    warnings.append(f"{cname}: 近3轮轨迹含取得/交出类动作但 随身物品 为空——可转移重要持有物（卡/契约/钥匙/武器/弹药/道具等）取得轮应全量重写随身物品并同步记忆锚点（phase_actor 条件写）")
 
     # 7. world_state.时间线 粗粒度摘要校验（脚本校验线：条目≤10 | 单场景≤3转折点 | 总字数≤2500——超限告警，提示场记执行压缩维护）
     ws_fp = world_dir / "states" / "world_state.yaml"
@@ -4710,9 +4887,17 @@ def cmd_precheck(world_dir: Path):
     _char_states = _load_char_states(world_dir)
     _loop_names = [n for n, d in _char_states if str(d.get("自主性", "") or "").strip() in AUTO_ORDER]
     if _loop_names:
-        findings.append(("●", f"循环世界：在轨循环角色 {'/'.join(_loop_names)}",
-                         "④角色本批：③调度单点名角色必须进『角色覆盖』声明（『无变化』通道已废止）；在轨循环角色走轻量推演——计划层不重新合成（当前计划=LOOPS 物化·不因轨迹『调整』覆盖）",
-                         "gate actor 拦（角色覆盖对账）/ 计划联动告警"))
+        _sched_roles = _schedule_cast_roles(world_dir)
+        # 仅本轮相关调度角色才需硬性覆盖（与 gate actor 同源）；其余在轨循环角色走轻量推演，按需不强制
+        _relevant = [n for n in _loop_names if n in _sched_roles]
+        if _relevant:
+            findings.append(("●", f"循环世界（本轮相关调度）：{'/'.join(_relevant)}",
+                             "④角色本批：③调度单点名角色必须进『角色覆盖』声明（『无变化』通道已废止）；在轨循环角色走轻量推演——计划层不重新合成（当前计划=LOOPS 物化·不因轨迹『调整』覆盖）",
+                             "gate actor 拦（角色覆盖对账）/ 计划联动告警"))
+        else:
+            findings.append(("○", f"循环世界（在轨{_loop_names.__len__()}名·本轮无循环角色调度）",
+                             "④角色走轻量推演·本轮无调度则不强制覆盖（有调度/升档关联时恢复 ●）",
+                             "—"))
     # ── 变质判定门槛已满足（④角色本批应升档·与 A0 硬检同门槛）──
     _promotable = [n for n, d in _char_states
                    if str(d.get("压力水平", "") or "").strip() == AUTO_PROMOTE_PRESSURE

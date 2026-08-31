@@ -102,7 +102,7 @@ WorldSim 什么世界都能造：中世纪的城堡、赛博朋克的雨夜、�
 在支持 Agent Skills 的 AI 客户端里，对它说一句（直接复制粘贴即可）：
 
 ```
-install worldsim skill from https://github.com/worldsimlife/worldsim.git
+install worldsim skill from https://github.com/worldsimlife/worldsim
 ```
 
 客户端会自行拉取仓库并把 skill 装到它的技能目录。若你的客户端不会自动安装，手动执行：

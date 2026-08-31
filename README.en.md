@@ -100,7 +100,7 @@ By default, world data is stored in `worlds/` inside the skill directory. To kee
 In any AI client that supports Agent Skills, just say (copy-paste as-is):
 
 ```
-install worldsim skill from https://github.com/worldsimlife/worldsim.git
+install worldsim skill from https://github.com/worldsimlife/worldsim
 ```
 
 The client fetches the repo and installs the skill into its own skills directory. If your client doesn't install skills on its own, do it manually:

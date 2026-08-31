@@ -30,7 +30,7 @@
 | storyline show | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline show [SL-XX]` | 读事件线（全部 / 指定·states/storylines.yaml） |
 | storyline add | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline add`（stdin=单条事件线 YAML：名称/类型/状态/拍序） | **storylines 唯一写入入口·②编剧**——建线（id 自动递增 SL-XX·脚本机械落盘+结构/枚举校验·LLM 不直接改 YAML·**顶点拍须含 `顶点约束`（关系主体≥2/核心张力/变化维度/非玩家爆破≥1·缺则拒绝 exit 1）**）；建线后起点指针由③导演 `beat set` 落 direction |
 | storyline rewrite | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline rewrite SL-XX`（stdin=新事件线 YAML） | 换线/重规划（现实不承接·前提取翻但问题仍重要·顶点拍同步重填·缺则拒绝） |
-| storyline close | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline close SL-XX`（批次中 `###STORYLINE: close SL-XX` 后跟一行 `收束摘要:`） | **收束（线已演完——按线自身状态判断·含指针已切走的遗留线）**——保留 名称/类型＋状态=已收束＋收束摘要·清拍序；当前线收束须当前拍=余波并复位指针（非余波/缺摘要 exit 1·当轮须 add 后继线并由③导演 set 新起点否则 round-check FAIL）；遗留线收束凭收束摘要留档·指针不动 |
+| storyline close | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline close SL-XX`（批次中 `###STORYLINE: close SL-XX` 后跟一行 `收束摘要:`） | **收束（顶点已出线进入余波拍·待收束（`direction.当前拍==余波`））**——保留 名称/类型＋状态=已收束＋收束摘要·清拍序；当前线收束须当前拍==余波（非余波/缺摘要 exit 1）；遗留线收束凭收束摘要留档·指针不动；close与add分别触发、可同批可分轮 |
 | storyline clear | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline clear SL-XX` | 废弃（不承接·三问全灭——前提崩塌/问题无意义/无承诺待兑现）——整条抹为空锚点·direction 指针自动复位；当前拍=余波时 WARN 提示应走 close 收束留档 |
 | beat show | `python3 {skill_dir}/scripts/worldctl.py <世界> beat show` | 读 direction（当前事件线/当前拍/演出状态/guidance） |
 | beat set | `python3 {skill_dir}/scripts/worldctl.py <世界> beat set SL-XX 拍名` | 初始指针（建线后③导演设定起点拍·进入顶点时自动记录基准快照） |
@@ -47,7 +47,7 @@
 | scan | `python3 {skill_dir}/scripts/worldctl.py <世界> scan <关键词> [--live]` | 全仓关键词扫描（worlds/<世界>/ 下 .md/.yaml·排除 narrative 轮转与 archive；`--live` 只扫现行文件）——残留扫描/修复验证用；退出码：0=无匹配（已清除）1=有匹配 2=用法错误 |
 
 > **批次自动执行（硬性）：** 批次中的 `###STORYLINE:`（②编剧·结构）与 `###BEAT:`（③导演·指针）由 write-raw --batch 自动执行对应子命令落盘（`add`/`rewrite` 后直接跟事件线 YAML 块直到下一个 `###` 行·失败=批次拦截 exit 1）——**LLM 不手动调用 storyline/beat 写命令**；下表命令保留用于查询（show）与维护。
-> **每轮触发（硬性·条件跳过）**：②编剧常态轻量（张力基调一行确认·仍出批次）·触发时 `###STORYLINE: add/rewrite/close/clear`（线演完→close 必带收束摘要·含指针已切走的遗留线·当轮建后继线；顶点拍预填 顶点约束·缺则拒绝）；③导演每轮回判——已兑现→`###BEAT: advance SL-XX 下一拍`（顶点=advance 余波·受 gate director 收束核验）·未兑现且问题正被逼近→`###BEAT: stay SL-XX`（承接判断须写出逼近路径·上轮节拍决策=继续当前拍而本轮仍 stay→本批必写 escalation_flags.停滞·gate 核验→①次轮加压/兜底·余波拍除外）·不承接/意外事件→escalation flag→②次轮三问定原线去向（保留+建新线接焦/rewrite/clear·判据见 phase_storyliner 职责2）；查询轮/维护轮豁免。
+> **每轮触发（硬性·条件跳过）**：②编剧常态轻量（张力基调一行确认·仍出批次）·触发时 `###STORYLINE: add/rewrite/close/clear`（顶点已出线进入余波拍·待收束（`direction.当前拍==余波`）；顶点拍预填 顶点约束·缺则拒绝）；③导演每轮回判——已兑现→`###BEAT: advance SL-XX 下一拍`（顶点=advance 余波·受 gate director 收束核验）·未兑现且问题正被逼近→`###BEAT: stay SL-XX`（承接判断须写出逼近路径·上轮节拍决策=继续当前拍而本轮仍 stay→本批必写 escalation_flags.停滞·gate 核验→①次轮加压/兜底·余波拍除外）·不承接/意外事件→escalation flag→②次轮三问定原线去向（保留+建新线接焦/rewrite/clear·判据见 phase_storyliner 职责2）；查询轮/维护轮豁免。
 
 ## Shell 脚本
 
@@ -77,10 +77,11 @@
 | 「创建世界 <名>」 | 走 session_recovery.md 第一章（create_world.py 脚手架 + 创作填充→校验→收尾提示启动世界） |
 | 「重置世界」/「/reset」 | reset_world.py——破坏性操作（自动存档可回滚）·重置后走启动世界（首次启动态） |
 | 「重置场景」/「/reset-scene [场景ID]」 | reset_scene.py——重置指定场景（缺省=当前焦点场景）到 start_snapshot 状态（自动存档可回滚） |
-| 「启动世界 <名>」「继续世界 <名>」（会话首轮·须带世界名） | 启动世界统一序列（首次启动/跨 Session 恢复）——走 session_recovery.md 第二章：物化→入场物化→分层加载→validate→循环核对→描绘→停住·不推进；用户只说「继续/恢复」而未指名世界 → 列出已有世界请其点名 |
+| 「启动世界 <名>」「继续世界 <名>」「进入世界 <名>」（会话首轮·须带世界名） | 启动世界统一序列（首次启动/跨 Session 恢复）——走 session_recovery.md 第二章：物化→入场物化→分层加载→validate→循环核对→描绘→停住·不推进；用户只说「继续/恢复」而未指名世界 → 列出已有世界请其点名 |
 | `/scene <ID>` / `/scene new <名>` | 场景切换 / 新建场景 |
 | `/conflicts` | 查看冲突 |
-| `/status` / `/status --full` | 状态摘要 / 完整状态 |
+| `/storylines` | 查看故事线 |
+| `/status [名]` / `/status --full` | 查看角色状态 / 完整状态 |
 | `/sync` / `/update` | 场记记录变化更新状态 |
 | `/save [名]` / `/load <名>` | 存档管理 |
 | `/silent` | 切回沉浸式模式（全局默认·沉浸·只推叙事正文）——world_state 写 `输出模式: 沉浸式` |

@@ -32,10 +32,13 @@ WORLDS_ROOT = worlds_root()
 
 
 def _extract_round(text: str) -> str:
-    """首行「轮次 N」→ 数字；无则空。"""
+    """首行「第N轮/轮次N」→ 数字；无则空。"""
     first = text.splitlines()[0] if text.strip() else ""
-    m = re.search(r"轮次\s*(\d+)", first)
-    return m.group(1) if m else ""
+    for pat in (r"第\s*(\d+)\s*轮", r"轮次\s*(\d+)"):
+        m = re.search(pat, first)
+        if m:
+            return m.group(1)
+    return ""
 
 
 def _world_state_round(world_dir: Path) -> str:
