@@ -16,6 +16,7 @@ Park 1 南部边境地带·接近墨西哥风情边境区
 ## 常驻NPC
 - CHAR_Hector Escaton（土匪帮派活跃大本营）
 - CHAR_Armistice
+- CHAR_Lawrence
 
 ## 本地法则
 无限制区（Unrestricted Zone）：道德伪装剥除，暴力与剥削被允许的"游戏"更露骨

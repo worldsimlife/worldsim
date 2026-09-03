@@ -20,6 +20,7 @@ Sweetwater 东西主轴线·镇中心
 
 ## 常驻NPC
 - CHAR_Dolores Abernathy（每日绘画/捡牛奶罐循环）
+- CHAR_Teddy Flood （从车站走向主街碰见 Dolores/捡牛奶罐循环）
 - CHAR_Sheriff Pickett（治安）
 
 ## 本地法则

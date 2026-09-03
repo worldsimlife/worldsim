@@ -21,7 +21,8 @@ Park 1 中心区域·蒸汽列车（Train No. 39）入园的第一站
 - CHAR_Teddy Flood（循环）
 - CHAR_Clementine Pennyfeather（循环）
 - CHAR_Sheriff Pickett（治安官）
-- CHAR_Rebus / CHAR_Walter / CHAR_Lawrence（镇内 Host）
+- CHAR_Rebus 
+- CHAR_Walter 
 
 ## 本地法则
 乐园核心区·监控全面；绝大多数游客的体验起点；大部分 Host 日常剧情循环的发生地

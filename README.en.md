@@ -1,6 +1,6 @@
 # WorldSim — Where Worlds Come to Life
 
-> World Simulation · Narrative Engine · Live Drama · Roleplay
+> World Simulation · Narrative Engine · Improvisation · Roleplay
 
 > WorldSim is more than roleplay — it's a world that breathes: characters are flesh and blood, making trade-offs under pressure; in corners no one watches, fates keep rising and falling. Walk in — you are part of the story.
 > For players who want deep roleplay and creators chasing dramatic tension.

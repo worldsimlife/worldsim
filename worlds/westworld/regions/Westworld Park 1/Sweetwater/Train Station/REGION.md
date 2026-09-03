@@ -16,7 +16,7 @@ Main Street 西端
 西部火车站月台：蒸汽、木结构、列车停靠
 
 ## 常驻NPC
-无
+- CHAR_Teddy Flood （08:00抵达甜水镇，从车站走向主街）
 
 ## 本地法则
 入园第一站：Train No. 39 终点，游客由此步入 Sweetwater Main Street

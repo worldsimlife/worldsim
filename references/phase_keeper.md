@@ -6,7 +6,7 @@
 
 ## 数据就绪（本阶段开头·读记录依据）
 
-- **③导演 → direction.调度单**：焦内活跃/背景/焦外·焦外→焦内（含 in-track 循环角色预设·决定出场摘要/焦外记录的归属）
+- **③导演 → direction.调度单**：焦内活跃/背景/焦外·焦外→焦内（含 precheck SNAPSHOT §1b 循环角色预设·决定出场摘要/焦外记录的归属）
 - **④角色 → 各 CHAR_state 本轮更新**：焦内活跃角色行动与结果 · 焦外角色自推演状态（事件/摘要/焦外事实的记录依据）
 - **scene_state / world_state 旧值**：当前场景事实（锚点/道具/时间线）/ 时间 / 焦点场景 / 倒计时（推进基准·加本轮已耗时间）
 - **scene_management.md（场景管理完整手册·本阶段先读对齐）**：出场/位置/登场退场/焦外/场景切换——全程对齐，不只场景切换处引用。
@@ -23,6 +23,7 @@
 4. **重置联动补写**（reset-cycle 调用后）：world_state 侧补写＋保留候选确认（脚本已做机械部分）。
 5. **场景切换机械执行**（③导演 transition 决策 → 落地）：冻结旧场景（终态入 scene_state+时间线压缩）→ INDEX 旧场景 COMPLETED → init_scene 建新场景（同物理地点必用 `--from` 继承锚点/道具）→ world_state.焦点场景 更新（唯一权威源）→ 连续性核查（服装/道具/伤口）→ world_map 登记。细则见 scene_management.md §场景切换流程。**已获剧照授权**（进入确认时取得·会话内有效）→ 生成新场景剧照（聚焦新出场角色）并发送用户。 
 6. **轮完整性收尾检查**：`worldctl.py <世界> round-check`——direction/世界三件套/场景时间线/区域一致性（POV 位置节点 vs 焦点场景区域节点·空间已变未切场景即 FAIL）/引用对账逐项核对；FAIL=本阶段修复或上报。
+   - 据待揭示事实写入pending_actions活跃中，缺推进池关联CT的焦外活跃中则拦截。
 7. **场记三问收尾自查**（每轮·写后）：①痕迹完整——场景时间线/道具线索→scene_state · 焦外→pending_actions · 伏笔→foreshadow（触发即登记·缺文件按模板建·规则 references/foreshadow.md）· 知情差异→knowledge_index（触发即收录·references/knowledge_index.md）；②落点=焦点场景目录；③连续性=时间/轮次/存档一致。validate 通过 ≠ 自查通过。
 
 ## 写入

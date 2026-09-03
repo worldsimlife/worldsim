@@ -30,14 +30,14 @@
 | storyline show | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline show [SL-XX]` | 读事件线（全部 / 指定·states/storylines.yaml） |
 | storyline add | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline add`（stdin=单条事件线 YAML：名称/类型/状态/拍序） | **storylines 唯一写入入口·②编剧**——建线（id 自动递增 SL-XX·脚本机械落盘+结构/枚举校验·LLM 不直接改 YAML·**顶点拍须含 `顶点约束`（关系主体≥2/核心张力/变化维度/非玩家爆破≥1·缺则拒绝 exit 1）**）；建线后起点指针由③导演 `beat set` 落 direction |
 | storyline rewrite | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline rewrite SL-XX`（stdin=新事件线 YAML） | 换线/重规划（现实不承接·前提取翻但问题仍重要·顶点拍同步重填·缺则拒绝） |
-| storyline close | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline close SL-XX`（批次中 `###STORYLINE: close SL-XX` 后跟一行 `收束摘要:`） | **收束（顶点已出线进入余波拍·待收束（`direction.当前拍==余波`））**——保留 名称/类型＋状态=已收束＋收束摘要·清拍序；当前线收束须当前拍==余波（非余波/缺摘要 exit 1）；遗留线收束凭收束摘要留档·指针不动；close与add分别触发、可同批可分轮 |
+| storyline close | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline close SL-XX`（批次中 `###STORYLINE: close SL-XX` 后跟一行 `收束摘要:`） | **收束（进入余波拍·待收束（`direction.当前拍==余波`））**——保留 名称/类型＋状态=已收束＋收束摘要·清拍序；当前线收束须当前拍==余波（非余波/缺摘要 exit 1）；遗留线收束凭收束摘要留档·指针不动；close与add分别触发、可同批可分轮 |
 | storyline clear | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline clear SL-XX` | 废弃（不承接·三问全灭——前提崩塌/问题无意义/无承诺待兑现）——整条抹为空锚点·direction 指针自动复位；当前拍=余波时 WARN 提示应走 close 收束留档 |
 | beat show | `python3 {skill_dir}/scripts/worldctl.py <世界> beat show` | 读 direction（当前事件线/当前拍/演出状态/guidance） |
 | beat set | `python3 {skill_dir}/scripts/worldctl.py <世界> beat set SL-XX 拍名` | 初始指针（建线后③导演设定起点拍·进入顶点时自动记录基准快照） |
-| beat stay | `python3 {skill_dir}/scripts/worldctl.py <世界> beat stay SL-XX` | 保持当前拍，在当前拍继续精彩展开（③导演回判确认·指针不动）；stay 的意图=把当前拍演透、演到该爆发的节点，不是什么都不做 |
-| beat advance | `python3 {skill_dir}/scripts/worldctl.py <世界> beat advance SL-XX 拍名` | 推进指针（校验拍名在拍序中·**禁回退**·顶点出线=advance SL-XX 余波 受 gate director 收束核验；尚不推进时用 stay 保持当前拍） |
-| in-track | `python3 {skill_dir}/scripts/worldctl.py <世界> in-track` | 只读查询——按各 CHAR_.md「默认循环时间线」表+world_state 当前时间，输出此刻各循环角色应在哪/做什么（③导演调度单输入之一·循环世界用；无时间线角色报「无可用时间线」·不改任何状态） |
-| **precheck** | `python3 {skill_dir}/scripts/worldctl.py <世界> precheck` | **本轮义务预检（只读·exit 0 恒过·不拦截）**——把 gate/round-check 必然强制的**机械义务**前置暴露（顶点拍/停滞旗标/不承接旗标/空表建线/切场景/跨天/连续stay），让 LLM 第一射即满足·避免 gate 失败整轮重提；只覆盖**状态可导出的机械义务**（用户指令/重大事件/回判张力等推断类触发仍由 LLM 判定·输出末尾明示）；本轮编排前跑·与 `--dry-run`（批内预演）/`gate --check`（单段复验）互补 |
+| beat deepen | `python3 {skill_dir}/scripts/worldctl.py <世界> beat deepen SL-XX` | 续演当前拍——指针不动，在这一拍里继续演深、演到该爆发的节点（③导演回判确认·无写入·旧名 stay 保留一个版本） |
+| beat advance | `python3 {skill_dir}/scripts/worldctl.py <世界> beat advance SL-XX 拍名` | 推进指针（校验拍名在拍序中·**禁回退**·顶点出线=advance SL-XX 余波 受 gate director 收束核验；尚不推进时用 deepen 续演当前拍） |
+| in-track | `python3 {skill_dir}/scripts/worldctl.py <世界> in-track` | 只读查询——按各 CHAR_.md「默认循环时间线」表+world_state 当前时间，输出此刻各循环角色应在哪/做什么（③导演调度单输入之一·循环世界用；无时间线角色报「无可用时间线」·不改任何状态）。**已并入 precheck SNAPSHOT §1b·保留为独立查询手段** |
+| **precheck** | `python3 {skill_dir}/scripts/worldctl.py <世界> precheck` | **本轮义务预检（只读·exit 0 恒过·不拦截）**——把 gate/round-check 必然强制的**机械义务**前置暴露（顶点拍/停滞旗标/不承接旗标/空表建线/切场景/跨天/连续同拍），让 LLM 第一射即满足·避免 gate 失败整轮重提；只覆盖**状态可导出的机械义务**（用户指令/重大事件/回判张力等推断类触发仍由 LLM 判定·输出末尾明示）；**输出末尾附 SNAPSHOT 数据快照**（参考数据·非义务）：§1a 临近互锁事件（LOOPS 跨角色互锁时刻表·与窗口重叠·窗口=time_window 缺省 30min·③调度单「即将触发事件」预判）·§1b 循环轨道对照（预设 vs 实际·偏离基线·范围=调度单点名循环角色∪当前焦点区 REGION 常驻NPC∪§1a互锁涉及角色）·§2 元素注册索引（scene_state 元素名·替代⑥多次 grep）·§3 骨架待物化角色（本轮相关）；各阶段取数优先引用快照·上下文已有→跳过重复读/grep；本轮编排前跑·与 `--dry-run`（批内预演）/`gate --check`（单段复验）互补 |
 | round-check | `python3 {skill_dir}/scripts/worldctl.py <世界> round-check` | **⑤场记轮完整性收尾**——direction/世界三件套/场景时间线/区域一致性（POV 位置节点 vs 焦点场景区域节点·空间已变未切即 FAIL）/引用对账逐项核对·FAIL exit 1 |
 | migrate | `python3 {skill_dir}/scripts/worldctl.py <世界> migrate` | **存量旧世界数据迁移**（节拍表→storylines·CT.当前节拍→direction·旧字段清除+LLM 辅助报告·自动存档可回滚·幂等）——存量旧世界首次使用时提示执行 |
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |
@@ -47,7 +47,7 @@
 | scan | `python3 {skill_dir}/scripts/worldctl.py <世界> scan <关键词> [--live]` | 全仓关键词扫描（worlds/<世界>/ 下 .md/.yaml·排除 narrative 轮转与 archive；`--live` 只扫现行文件）——残留扫描/修复验证用；退出码：0=无匹配（已清除）1=有匹配 2=用法错误 |
 
 > **批次自动执行（硬性）：** 批次中的 `###STORYLINE:`（②编剧·结构）与 `###BEAT:`（③导演·指针）由 write-raw --batch 自动执行对应子命令落盘（`add`/`rewrite` 后直接跟事件线 YAML 块直到下一个 `###` 行·失败=批次拦截 exit 1）——**LLM 不手动调用 storyline/beat 写命令**；下表命令保留用于查询（show）与维护。
-> **每轮触发（硬性·条件跳过）**：②编剧常态轻量（张力基调一行确认·仍出批次）·触发时 `###STORYLINE: add/rewrite/close/clear`（顶点已出线进入余波拍·待收束（`direction.当前拍==余波`）；顶点拍预填 顶点约束·缺则拒绝）；③导演每轮回判——已兑现→`###BEAT: advance SL-XX 下一拍`（顶点=advance 余波·受 gate director 收束核验）·未兑现且问题正被逼近→`###BEAT: stay SL-XX`（承接判断须写出逼近路径·上轮节拍决策=继续当前拍而本轮仍 stay→本批必写 escalation_flags.停滞·gate 核验→①次轮加压/兜底·余波拍除外）·不承接/意外事件→escalation flag→②次轮三问定原线去向（保留+建新线接焦/rewrite/clear·判据见 phase_storyliner 职责2）；查询轮/维护轮豁免。
+> **每轮触发（硬性·条件跳过）**：②编剧常态轻量（张力基调一行确认·仍出批次）·触发时 `###STORYLINE: add/rewrite/close/clear`（add 取材按 phase_storyliner 建线取材表——扫描冲突池与焦点场景·NPC-NPC 与玩家 CT 同权；进入余波拍·待收束（`direction.当前拍==余波`）；顶点拍预填 顶点约束·缺则拒绝）；③导演每轮回判——已兑现→`###BEAT: advance SL-XX 下一拍`（顶点=advance 余波·受 gate director 收束核验）·未兑现且问题正被逼近→`###BEAT: deepen SL-XX`＋`节拍决策=继续当前拍`（承接判断须写出逼近路径·上轮与本批 节拍决策 均=继续当前拍→本批必写 escalation_flags.停滞·gate 核验→①次轮加压/兜底）·不承接/意外事件→escalation flag→②次轮三问定原线去向（保留+建新线接焦/rewrite/clear·判据见 phase_storyliner 职责2）；查询轮/维护轮豁免。
 
 ## Shell 脚本
 
@@ -60,7 +60,7 @@
 | snap.py delete | `python3 {skill_dir}/scripts/snap.py <世界> delete <快照名>` | 破坏性操作（不可恢复）——交互提示确认 / 非交互加 `--force` |
 | init_scene.py | `python3 {skill_dir}/scripts/init_scene.py <世界> <场景ID> <场景名> [--from <旧场景ID>] [--type <类型>] [--time <时间>] [--cast <出场角色>]`（--from：继承旧场景 scene_state 的物理锚点/道具清单——**同物理地点切换必用**，防止漏继承；--type/--time/--cast 自动填充 scene_card 与 INDEX 行，缺省标「待填」） |
 | reset_scene.py | `python3 {skill_dir}/scripts/reset_scene.py <世界> [<场景ID>] [--force]` | **重置场景到 start_snapshot 状态**——清空场景内动态叙事（narrative 轮转归档 + scene_state 场景时间线/核心状态重置），静态基线（物理锚点/道具/关键场景信息）保留；场景ID 缺省=当前焦点场景；破坏性操作（重置前自动存档可回滚）——交互提示确认 / 非交互加 `--force` |
-| reset-cycle | `python3 {skill_dir}/scripts/worldctl.py <世界> reset-cycle [--asset <角色名>]` | 循环世界重置一键命令——**周期重置（缺省）**：全员重置+登记重置记录+重建周期倒计时（write-raw ④b 顶回后调用·豁免判定含于其中·无需前置确认）；**事件触发重置（`--asset <角色名>`）**：叙事中角色被系统强制重置（回收/死亡修复/「校准」）时调用——只重置指定角色+登记事件触发重置记录+**不重建周期倒计时**（叙事事件不移动周期重置点）。两者都：脚本自动存档+联动表压缩/清空/回基线+行为轨道回归占位。**单角色豁免：** 预先在 `world_state.重置记录.{角色}` 写 `触发: 豁免` + `重置日期: 第N日` → 该角色在登记的重置点被跳过（园区维护人员按指示跳过该资产·loop_machinery §4）——豁免一次性（按重置日期精确匹配·后续重置点照常重置·由后续重置登记自然覆盖）；豁免角色不登记周期记录（保留豁免标记·validate 8b 跳过）；audit ④b 覆盖判定排除豁免记录（豁免不算全员重置已执行·其他循环角色仍须重置）。调用后 LLM：保留候选微调 / 状态按 LOOPS 补写 / CT 节拍核查 / 重置叙事。幂等（当日已重置则重跑无害） |
+| reset-cycle | `python3 {skill_dir}/scripts/worldctl.py <世界> reset-cycle [--asset <角色名>]` | 循环世界重置一键命令——**周期重置（缺省）**：全员重置+登记重置记录+重建周期倒计时（write-raw ④b 顶回后调用·豁免判定含于其中·无需前置确认）；**事件触发重置（`--asset <角色名>`）**：叙事中角色被系统强制重置（回收/死亡修复/「校准」）时调用——只重置指定角色+登记事件触发重置记录+**不重建周期倒计时**（叙事事件不移动周期重置点）。两者都：脚本自动存档+联动表压缩/清空/回基线+行为轨道回归占位。**单角色豁免：** 预先在 `world_state.重置记录.{角色}` 写 `触发: 豁免` + `重置日期: 第N日` → 该角色在登记的重置点被跳过（园区维护人员按指示跳过该资产·loop_machinery §4）——豁免一次性（按重置日期精确匹配·后续重置点照常重置·由后续重置登记自然覆盖）；豁免角色不登记周期记录（保留豁免标记·validate 8b 跳过）；audit ④b 覆盖判定排除豁免记录（豁免不算全员重置已执行·其他循环角色仍须重置）。调用后 LLM：保留候选微调 / 状态按 CHAR_.md 默认循环时间线补写 / CT 节拍核查 / 重置叙事。幂等（当日已重置则重跑无害） |
 | index.py add | `python3 {skill_dir}/scripts/index.py <世界> add <ID> <名> [类型] [时间] [出场] [状态]`（动作在前 `index.py add <世界> …` 同样支持） |
 | index.py activate | `python3 {skill_dir}/scripts/index.py <世界> activate <场景ID>`（动作在前同样支持） |
 | index.py update | `python3 {skill_dir}/scripts/index.py <世界> update <场景ID> [--type/--time/--cast/--status]`（动作在前 `index.py update <世界> <场景ID> …` 同样支持） |
