@@ -42,22 +42,12 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _paths import worlds_root
+from _paths import resolve_world
 
-WORLDS_ROOT = worlds_root()
 INVALID_FILENAME_CHARS = re.compile(r'[\\/:*?"<>|]')
 
 # 与 WorldSim 引擎语义冲突、永不注入引擎的字段（仍写入 tmp 素材供 LLM 审读时过滤）
 NOT_IMPORTED = ["system_prompt", "post_history_instructions"]
-
-
-def get_world_dir(world: str) -> Path:
-    wd = WORLDS_ROOT / world
-    if not wd.is_dir():
-        print(f"[ERR] 世界 '{world}' 不存在: {wd}", file=sys.stderr)
-        print(f"      提示: 先执行 'python3 scripts/create_world.py <世界名>' 创建世界，或确认世界名正确", file=sys.stderr)
-        sys.exit(1)
-    return wd
 
 
 def sanitize_name(name: str, fallback: str) -> str:
@@ -207,7 +197,7 @@ def main():
         sys.exit(2)
     world = args[0]
     paths = args[1:]
-    world_dir = get_world_dir(world)
+    world_dir = resolve_world(world)
     bad = 0
     for p in paths:
         pp = Path(p)

@@ -28,9 +28,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _paths import worlds_root
-
-WORLDS_ROOT = worlds_root()
+from _paths import assert_no_links, resolve_world, validate_name
 
 
 def _extract_round(text: str) -> str:
@@ -85,15 +83,11 @@ def main():
     if not world or not scene_id:
         print("用法: write_narrative.py <世界名> <场景ID> [content_file | --file content.md]", file=sys.stderr)
         sys.exit(1)
-    if "/" in world or "\\" in world or ".." in world:
-        print(f"[ERR] 非法世界名 '{world}'（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
-        sys.exit(1)
-    if "/" in scene_id or "\\" in scene_id or ".." in scene_id:
-        print(f"[ERR] 非法场景ID '{scene_id}'（禁止路径分隔符）", file=sys.stderr)
-        sys.exit(1)
+    validate_name(scene_id, "场景ID")
 
-    world_dir = WORLDS_ROOT / world
+    world_dir = resolve_world(world)
     scenes_root = world_dir / "scenes"
+    assert_no_links(scenes_root)
     scene_dir = scenes_root / scene_id
     if not scene_dir.is_dir():
         matches = sorted(scenes_root.glob(scene_id + "-*")) if scenes_root.is_dir() else []

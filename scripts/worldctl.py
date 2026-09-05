@@ -58,7 +58,7 @@ for _s in (sys.stdout, sys.stderr):
 
 # 路径推导单一事实源（skill 根 / worlds 根 / 世界目录解析 / 破坏性删除安全网）——见 _paths.py
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _paths import SKILL_DIR, require_world_marker, resolve_world, safe_rmtree
+from _paths import SKILL_DIR, assert_no_links, require_world_marker, resolve_world, safe_rmtree
 CHAR_STATE_PREFIX = "CHAR_"
 CHAR_STATE_SUFFIX = "_state.yaml"
 
@@ -195,8 +195,12 @@ def _read_input_utf8(input_file: str | None) -> str:
 # ── 文件发现 ──────────────────────────────────────────────────────
 def get_world_dir(world: str) -> Path:
     """世界目录解析统一走 _paths.resolve_world：
-    名称校验（允许中文）→ 存在性 → 链接拦截 → realpath 越界校验。"""
-    return resolve_world(world)
+    名称校验（允许中文）→ 存在性 → 链接拦截 → realpath 越界校验。
+    states/scenes 树内嵌套链接会让下游 glob/写 YAML/场景定位写穿到世界外——打开世界即整体校验。"""
+    wd = resolve_world(world)
+    assert_no_links(wd / "states")
+    assert_no_links(wd / "scenes")
+    return wd
 
 def get_scene_dir(world_dir: Path) -> Path | None:
     """从 world_state.yaml 顶层「焦点场景」（唯一权威源）定位当前场景目录。

@@ -16,9 +16,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _paths import worlds_root
-
-WORLDS_ROOT = worlds_root()
+from _paths import assert_no_links, resolve_world, resolve_within, validate_name
 
 INDEX_HEADER = "# 场景索引\n\n| ID | 场景名称 | 类型 | 基准时间 | 出场 | 状态 |\n|----|------|------|------|------|------|\n"
 SROW_RE = re.compile(r"^\|\s*[A-Z][0-9][0-9]*\s*\|")
@@ -55,19 +53,21 @@ def main():
             print(f"[ERR] 未知参数: {a}（支持: --from <旧场景ID> / --place <档案路径> / --type <类型> / --time <时间> / --cast <出场角色>）", file=sys.stderr)
             sys.exit(1)
 
-    if "/" in world or "\\" in world or ".." in world:
-        print(f"[ERR] 非法世界名 '{world}'（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
-        sys.exit(1)
     if "/" in scene_name or "\\" in scene_name:
         print(f"[ERR] 场景名不能含 / 或 \\（场景名=目录名，含分隔符会破坏目录结构）: {scene_name}", file=sys.stderr)
         sys.exit(1)
+    if not re.fullmatch(r"S[0-9]+", scene_id):
+        print(f"[ERR] 非法场景ID '{scene_id}'（必须形如 S01：S+数字递增，目录名/索引/焦点场景均以该 ID 定位）", file=sys.stderr)
+        sys.exit(1)
 
-    world_dir = WORLDS_ROOT / world
+    world_dir = resolve_world(world)
+    assert_no_links(world_dir / "scenes")
     scene_dir = world_dir / "scenes" / f"{scene_id}-{scene_name}"
 
     # ── 继承预检：--from 源场景必须存在且 YAML 可解析（在任何文件创建之前检查，失败即退出·不留半成品）──
     src_dir = None
     if inherit_from:
+        validate_name(inherit_from, "旧场景ID")
         if (world_dir / "scenes" / inherit_from).is_dir():
             src_dir = world_dir / "scenes" / inherit_from
         else:
@@ -84,7 +84,7 @@ def main():
 
     # ── --place 预检：档案指针必须存在（相对世界目录·如 regions/甜水镇/REGION.md）──
     if place_archive:
-        place_fp = world_dir / place_archive
+        place_fp = resolve_within(world_dir, place_archive, "--place 档案")
         if not place_fp.is_file():
             print(f"[ERR] --place 档案不存在（{place_fp}）——检查 regions/ 路径或补建档案（模板: templates/REGION.md）", file=sys.stderr)
             sys.exit(1)
@@ -114,10 +114,11 @@ def main():
                             break
                 except Exception:
                     pass
-        if cur_arch and (world_dir / cur_arch).is_file():
+        cur_fp = resolve_within(world_dir, cur_arch, "区域档案") if cur_arch else None
+        if cur_fp and cur_fp.is_file():
             print(f"  当前场景区域档案: {cur_arch}")
             try:
-                for line in (world_dir / cur_arch).read_text(encoding="utf-8").splitlines():
+                for line in cur_fp.read_text(encoding="utf-8").splitlines():
                     if not line.startswith("- "):
                         continue
                     name = re.split(r"[（(]", line[2:])[0].strip()

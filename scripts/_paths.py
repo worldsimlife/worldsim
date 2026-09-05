@@ -87,6 +87,35 @@ def require_world_marker(world_dir: Path) -> None:
         _die(f"目录不是 WorldSim 世界（缺 {WORLD_MARKER}），拒绝破坏性操作: {world_dir}")
 
 
+def resolve_within(base: Path, relative: str, kind: str = "路径") -> Path:
+    """base 下相对路径的安全解析（允许含 / 的相对子路径）：拒绝绝对路径/盘符/根引用/穿越/控制字符，
+    逐组件拦截 symlink/junction；返回 base 内的拼接路径（不要求存在）。"""
+    p = Path(relative)
+    if p.is_absolute() or p.drive or p.root:
+        _die(f"非法{kind} '{relative}'（禁止绝对路径/盘符/根引用）")
+    if any(part == ".." for part in p.parts):
+        _die(f"非法{kind} '{relative}'（禁止相对路径穿越）")
+    if any(ord(c) < 32 for c in relative):
+        _die(f"非法{kind}（禁止控制字符）")
+    cur = base
+    for part in p.parts:
+        cur = cur / part
+        if is_link(cur):
+            _die(f"{kind}路径含链接组件，拒绝执行: {cur}")
+    return cur
+
+
+def assert_no_links(root: Path) -> None:
+    """递归校验目录树内无 symlink/junction（快照等整树搬运前必查——嵌套链接会让读写逃逸出世界目录）。"""
+    if not root.is_dir():
+        return
+    for dp, dn, fn in os.walk(root):
+        for name in dn + fn:
+            p = Path(dp) / name
+            if is_link(p):
+                _die(f"目录树内存在链接，拒绝执行: {p}（symlink/junction 会让整树搬运读写逃逸出 {root}）")
+
+
 def safe_rmtree(path: Path) -> None:
     """删除目录树：顶层为链接时直接拒绝（不依赖解释器行为）。"""
     if is_link(path):

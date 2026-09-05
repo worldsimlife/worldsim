@@ -22,9 +22,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _paths import SCRIPT_DIR, worlds_root
-
-WORLDS_ROOT = worlds_root()
+from _paths import SCRIPT_DIR, assert_no_links, resolve_world, validate_name
 
 
 def main():
@@ -41,20 +39,14 @@ def main():
     if not world:
         print("用法: python3 scripts/reset_scene.py <世界名> [<场景ID>] [--force]", file=sys.stderr)
         sys.exit(1)
-    if "/" in world or "\\" in world or ".." in world:
-        print(f"[ERR] 非法世界名 '{world}'（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
-        sys.exit(1)
-    world_dir = WORLDS_ROOT / world
-    if not world_dir.is_dir():
-        print(f"[ERR] 世界 '{world}' 不存在: {world_dir}", file=sys.stderr)
-        sys.exit(1)
+    world_dir = resolve_world(world)
+    assert_no_links(world_dir / "states")
+    assert_no_links(world_dir / "scenes")
 
     # ── 解析场景目录（缺省=焦点场景；短 ID 前缀匹配完整目录名）──
     scene_dir = None
     if scene_id:
-        if "/" in scene_id or "\\" in scene_id or ".." in scene_id:
-            print(f"[ERR] 非法场景 ID '{scene_id}'（禁止路径分隔符）", file=sys.stderr)
-            sys.exit(1)
+        validate_name(scene_id, "场景 ID")
         if (world_dir / "scenes" / scene_id).is_dir():
             scene_dir = world_dir / "scenes" / scene_id
         else:

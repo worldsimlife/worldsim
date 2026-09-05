@@ -22,7 +22,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _paths import resolve_world, safe_rmtree, validate_name
+from _paths import assert_no_links, resolve_world, safe_rmtree, validate_name
 
 # 快照顶层除 states 平铺文件与 scenes/ 外还有 MANIFEST.md——恢复/对账时排除
 SNAP_META = ["MANIFEST.md"]
@@ -116,6 +116,8 @@ def main():
             snapname = re.sub(r"--+", "-", snapname).strip("-")
             print(f"未指定存档名，自动生成: {snapname}")
         validate_name(snapname)
+        assert_no_links(world_dir / "states")
+        assert_no_links(world_dir / "scenes")
         outdir = snap_dir / snapname
         if outdir.exists():
             safe_rmtree(outdir)
@@ -150,6 +152,10 @@ def main():
         srcdir = snap_dir / snapname
         if not srcdir.is_dir():
             print(f"ERROR: 快照 '{snapname}' 不存在", file=sys.stderr); sys.exit(1)
+        assert_no_links(srcdir)
+        assert_no_links(world_dir / "states")
+        assert_no_links(world_dir / "scenes")
+        assert_no_links(archive_dir)
         confirm_destructive(world, "load", snapname, force, f"载入快照 '{snapname}' 将覆盖当前世界状态（当前状态会自动备份到 _before_）")
 
         # 加载前自动备份当前状态

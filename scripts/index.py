@@ -25,9 +25,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _paths import worlds_root
-
-WORLDS_ROOT = worlds_root()
+from _paths import resolve_world
 
 ACTIONS = {"add", "update", "activate", "remove", "show"}
 INDEX_HEADER = "# 场景索引\n\n| ID | 场景名称 | 类型 | 基准时间 | 出场 | 状态 |\n|----|------|------|------|------|------|\n"
@@ -80,14 +78,8 @@ def main():
     if not world or not action:
         print("用法: index.py <世界名> <add|update|activate|remove|show> [...]", file=sys.stderr)
         sys.exit(1)
-    if "/" in world or "\\" in world or ".." in world:
-        print(f"[ERR] 非法世界名 '{world}'（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
-        sys.exit(1)
 
-    world_dir = WORLDS_ROOT / world
-    if not world_dir.is_dir():
-        print(f"[ERR] 世界 '{world}' 不存在", file=sys.stderr)
-        sys.exit(1)
+    world_dir = resolve_world(world)
     filepath = world_dir / "scenes" / "INDEX.md"
 
     rest = argv[2:] if argv[0] in ACTIONS else argv[2:]
