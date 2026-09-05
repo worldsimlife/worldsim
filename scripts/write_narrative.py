@@ -2,10 +2,12 @@
 # write_narrative.py — 写入叙事正文，存在则自动轮转（改名为 narrative.{时间戳}.md）
 # 用法:
 #   python3 scripts/write_narrative.py <世界名> <场景ID> [content_file]
+#   python3 scripts/write_narrative.py <世界名> <场景ID> --file content.md
 #   cat content.md | python3 scripts/write_narrative.py <世界名> <场景ID>
 #
 # 示例:
 #   python3 scripts/write_narrative.py westworld S01-甜水镇主街 narrative.txt
+#   python3 scripts/write_narrative.py westworld S01-甜水镇主街 --file worlds/westworld/tmp/narrative_r3.md
 #   cat narrative.txt | python3 scripts/write_narrative.py westworld S01-甜水镇主街
 #
 # 注意: 本脚本只负责落盘轮转——W4 锚点核对已在阶段2 推送前由 gate writer --check 执行（SKILL.md 执行顺序）。
@@ -14,7 +16,7 @@
 #
 # 编码（硬性）：内容经原始字节写入（content_file cp / stdin.buffer.read）——UTF-8 字节原样保留，
 #       与 write-raw --batch 同款，避免 CLI 参数/文本 stdin 的 locale 解码损坏。
-import os, re, shutil, sys
+import os, re, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -58,12 +60,30 @@ def _world_state_round(world_dir: Path) -> str:
 
 def main():
     argv = sys.argv[1:]
-    world = argv[0] if len(argv) >= 1 else ""
-    scene_id = argv[1] if len(argv) >= 2 else ""
-    content_file = argv[2] if len(argv) >= 3 else ""
+    positional = []
+    content_file = ""
+    i = 0
+    while i < len(argv):
+        a = argv[i]
+        if a == "--file":
+            if i + 1 >= len(argv):
+                print("[ERR] --file 需要跟一个内容文件路径", file=sys.stderr)
+                sys.exit(1)
+            content_file = argv[i + 1]
+            i += 2
+        elif a.startswith("--file="):
+            content_file = a[len("--file="):]
+            i += 1
+        else:
+            positional.append(a)
+            i += 1
+    world = positional[0] if len(positional) >= 1 else ""
+    scene_id = positional[1] if len(positional) >= 2 else ""
+    if not content_file and len(positional) >= 3:
+        content_file = positional[2]
 
     if not world or not scene_id:
-        print("用法: write_narrative.py <世界名> <场景ID> [content_file]", file=sys.stderr)
+        print("用法: write_narrative.py <世界名> <场景ID> [content_file | --file content.md]", file=sys.stderr)
         sys.exit(1)
     if "/" in world or "\\" in world or ".." in world:
         print(f"[ERR] 非法世界名 '{world}'（禁止路径分隔符/../相对路径穿越）", file=sys.stderr)
@@ -86,11 +106,19 @@ def main():
     narrative = scene_dir / "narrative.md"
     tmp = scene_dir / f".narrative.check.{os.getpid()}.md"
 
-    # 内容先入临时文件（原子写入：避免直接覆盖时中断留下半截文件）——原始字节，UTF-8 无损
-    if content_file and Path(content_file).is_file():
-        shutil.copy2(content_file, tmp)
+    # 内容先读入内存校验（文件/stdin 为空=拦截退出·防空叙事覆盖+旧叙事被误归档）——原始字节，UTF-8 无损
+    if content_file:
+        src = Path(content_file)
+        if not src.is_file():
+            print(f"[ERR] 内容文件不存在: {content_file}", file=sys.stderr)
+            sys.exit(1)
+        data = src.read_bytes()
     else:
-        tmp.write_bytes(sys.stdin.buffer.read())
+        data = sys.stdin.buffer.read()
+    if not data.strip():
+        print("[ERR] 叙事内容为空（文件/stdin 无有效内容），已拦截不写入", file=sys.stderr)
+        sys.exit(1)
+    tmp.write_bytes(data)
 
     # 落盘：已存在且非空则改名归档（带轮次号·精确到秒）；空占位（init_scene 骨架）直接覆盖·不留伪归档
     if narrative.exists() and narrative.stat().st_size > 0:

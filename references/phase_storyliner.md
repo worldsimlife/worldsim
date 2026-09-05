@@ -46,7 +46,7 @@ conflicts（①刚写）＋ storylines ＋ direction（**escalation_flags.不承
    - `基准快照`：脚本进入顶点拍时自动记录（私有落档·LLM 不填不读）
 4. **LOOPS 融入（循环世界）**：在轨节拍并入事件线规划——**不标记来源**（角色层永不知晓事件线哪些部分来自预设循环）。
 
-**storylines 是结构蓝图**——不含当前拍（指针权威=direction·③导演）；提供**结构问题，而不是角色行动脚本**。
+**storylines 是结构蓝图**——不含当前拍（指针权威=direction·③导演）；提供**结构问题，而不是角色行动脚本**。落点争议以④角色自治为准。
 
 ## 写入（storylines 唯一写者·###STORYLINE 自动执行）
 
@@ -86,7 +86,7 @@ conflicts（①刚写）＋ storylines ＋ direction（**escalation_flags.不承
 SL-02
 ```
 
-建线后起点指针由③导演 `###BEAT: set SL-XX <起点拍>` 落 direction（本阶段不碰 direction）。CT.事件线引用 由①戏剧家在下轮结算时补挂。故事弧线 经 write-raw `###FILE: storylines`＋`###KEY: 故事弧线.*` 点路径写入（顶层键白名单已放行·随重路径同批·LLM 不直接改 YAML）。
+建线后起点指针由③导演 `###BEAT: set 新线 <起点拍>` 落 direction（本阶段不碰 direction）。**「新线」= 本次批次 add 刚建的那条线（add 的 SL-XX 由脚本自动分配·LLM 不需预知编号·同批/合批均可引用）**；若为已有线（切换指针/重锚）则写实际 `SL-XX`。CT.事件线引用 由①戏剧家在下轮结算时补挂。故事弧线 经 write-raw `###FILE: storylines`＋`###KEY: 故事弧线.*` 点路径写入（顶层键白名单已放行·随重路径同批·LLM 不直接改 YAML）。
 
 收束格式（进入余波拍·待收束时——add 取材按建线取材表·本例收束玩家线后从未引用 CT 建旁观线）：
 

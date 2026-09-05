@@ -28,6 +28,7 @@ worldctl.py — WorldSim 批量状态管理 V2
   worldctl.py <世界名> reset-cycle [--asset <角色>]
                                          ← 循环世界周期重置（全员机械重置+登记+重建倒计时）
   worldctl.py <世界名> round-check       ← 轮完整性检查（⑤场记收尾：direction/world_state 三件套/场景时间线/区域一致性/引用对账）
+  worldctl.py <世界名> cast-baseline      ← 场景 cast 基线查询（只读·exit 0 恒过·切场景 init_scene 后运行·scene_card「出场角色/焦外/在场」两栏照此填）
   worldctl.py <世界名> migrate           ← 旧版数据迁移（节拍表→storylines·CT.当前节拍→direction·旧字段清除+迁移报告）
   worldctl.py <世界名> init-states      ← 首次启动物化缺失动态文件（幂等·模板+SEED+CHAR_state 骨架·LF·有 regions/ 自动对账）
   worldctl.py <世界名> map-sync         ← world_map 镜像层对账（regions/ 目录树 → 补缺失节点）
@@ -88,6 +89,10 @@ DIRECTION_KEYS = {"当前事件线", "当前拍", "当前戏剧问题", "当前�
                   "承接判断", "节拍决策", "guidance", "转场", "escalation_flags", "时间窗口", "调度单"}
 DECISION_SUBFIELDS = ("核心诉求", "当前计划", "当前行动", "行动驱动", "行动对象", "行动窗口", "失败后续", "未完成意图")
 DECISION_RUNTIME_FIELDS = ("当前行动", "行动驱动", "行动对象", "行动窗口", "失败后续", "未完成意图")
+# 有 ACTION 才查的行动前置物化字段（字符串型·空值/[占位]均视为未物化——位置无落点/核心状态不明/
+# 妆扮服饰未建基线/压力防御缺档位时行动决策无依据·见 keys.md 骨架物化规则/phase_actor 先决状态转换）
+ACTION_SKELETON_STR_FIELDS = ("位置", "核心状态", "妆扮", "压力水平", "防御有效性")
+# 服饰为列表型（模板初始 []·物化后应按 CHAR_.md 外在特征填充基线）——空列表视为未物化·单独判定
 STORYLINES_TOP_KEYS = {"故事弧线", STORYLINE_TOP_KEY}
 PERF_STATES = ("上升", "持续", "转折", "收束", "停滞")
 # 施压方向（CT 子字段 CT-{XX}.施压方向·①戏剧家每轮随推进池逐条标注——瞄准声明·非结算字段非行动脚本；旧版顶层键已废弃）
@@ -868,30 +873,95 @@ def _direction_schedule_text(world_dir: Path) -> str:
     return str(d.get("调度单", "") or "")
 
 
+def _split_schedule_segments(segment: str) -> list[str]:
+    """调度单分档文本切独立人名段（全等点名用·与子串提醒共享切分口径）。"""
+    parts = re.split(r"[·,，、;；]", segment or "")
+    return [p.strip() for p in parts if p.strip()]
+
+
+def _schedule_body_text(schedule_text: str | None, bucket: str) -> str:
+    """取调度单中某桶的正文文本（不含桶头与后续桶）。与 _schedule_roles_by_bucket
+    使用同一「桶头位置切片」口径：桶头仅作分界，正文 = 桶头到下一桶头之间。"""
+    sched = str(schedule_text or "")
+    if not sched:
+        return ""
+    buckets = ("焦内活跃", "背景", "焦外→焦内", "焦外")
+    heads = [(m.start(), m.end(), b) for b in buckets for m in re.finditer(rf"\b{re.escape(b)}\s*[=:：]", sched)]
+    heads.sort()
+    for i, (_pos, seg_start, b) in enumerate(heads):
+        if b != bucket:
+            continue
+        seg_end = heads[i + 1][0] if i + 1 < len(heads) else len(sched)
+        return sched[seg_start:seg_end].strip()
+    return ""
+
+
 def _schedule_roles_by_bucket(world_dir: Path, schedule_text: str | None = None) -> dict[str, set[str]]:
-    """从调度单提取三档角色；复用档案名匹配，供导演与角色阶段共享。"""
+    """从调度单提取四档角色；复用档案名匹配，供导演与角色阶段共享。
+
+    四层（与 phase_director 职责7 / phase_actor 调度单 同构）：焦内活跃 / 背景 / 焦外 / 焦外→焦内。
+    口径（硬性）：独立人名段与档案全名全等才命中（归一化去空格/大小写后比）；
+    子串/token 别名命中只记软提醒、不计入命中（防同姓/同 token 连带，如 Dolores
+    Abernathy 段连带 Peter Abernathy）。提醒文本由调用方经
+    _schedule_substring_hints 统一拼装。
+
+    分桶采用「桶头位置切片」而非正则 lookahead：避免 `焦外` 段把 `焦外→焦内=Teddy`
+    整段吞入（实测旧正则 `焦外` 命中到 `D（可揭示）· 焦外→焦内=Teddy`）。"""
     sched = str(schedule_text if schedule_text is not None else _direction_schedule_text(world_dir) or "")
     known = set()
     for fp in world_dir.glob("characters/CHAR_*.md"):
         name = fp.stem[len("CHAR_"):].strip()
         if name:
             known.add(name)
-    result = {"焦内活跃": set(), "背景": set(), "焦外": set()}
-    for bucket in result:
-        match = re.search(rf"{re.escape(bucket)}\s*[=:：]\s*(.*?)(?=\s*·\s*(?:焦内活跃|背景|焦外)\s*[=:：]|$)", sched, re.S)
-        if not match:
-            continue
-        segment = match.group(1)
-        for name in known:
-            aliases = {" ".join(name.split())}
-            aliases.update(word for word in name.split() if len(word) >= 3)
-            if any(alias in segment for alias in aliases):
-                result[bucket].add(name)
+    buckets = ("焦内活跃", "背景", "焦外→焦内", "焦外")
+    result = {b: set() for b in buckets}
+    if not sched:
+        return result
+    # 按桶头出现位置从左到右切片（桶头仅作分界，不再吞后续桶）
+    heads = [(m.start(), m.end(), b) for b in buckets for m in re.finditer(rf"\b{re.escape(b)}\s*[=:：]", sched)]
+    heads.sort()
+    for i, (_pos, seg_start, bucket) in enumerate(heads):
+        seg_end = heads[i + 1][0] if i + 1 < len(heads) else len(sched)
+        body = sched[seg_start:seg_end]
+        for seg in _split_schedule_segments(body):
+            for name in known:
+                if _norm_char_key(seg) == _norm_char_key(name):
+                    result[bucket].add(name)
     return result
 
 
+def _schedule_substring_hints(world_dir: Path, schedule_text: str | None = None) -> list[str]:
+    """子串/别名连带命中提醒（软提醒·不拦截）：独立段未全等命中、但段内含档案
+    全名子串或单 token 别名的角色逐条列出，供 LLM 确认是否为独立点名笔误。"""
+    sched = str(schedule_text if schedule_text is not None else _direction_schedule_text(world_dir) or "")
+    known = set()
+    for fp in world_dir.glob("characters/CHAR_*.md"):
+        name = fp.stem[len("CHAR_"):].strip()
+        if name:
+            known.add(name)
+    exact = _schedule_roles_by_bucket(world_dir, sched)
+    exact_all = set().union(*exact.values()) if any(exact.values()) else set()
+    hints: list[str] = []
+    for bucket in ("焦内活跃", "背景", "焦外→焦内", "焦外"):
+        match = re.search(rf"{re.escape(bucket)}\s*[=:：]\s*(.*?)(?=\s*·\s*(?:焦内活跃|背景|焦外→焦内|焦外)\s*[=:：]|$)", sched, re.S)
+        if not match:
+            continue
+        for seg in _split_schedule_segments(match.group(1)):
+            for name in sorted(known):
+                if name in exact_all:
+                    continue
+                aliases = {" ".join(name.split())}
+                aliases.update(word for word in name.split() if len(word) >= 3)
+                if any(alias in seg for alias in aliases):
+                    hints.append(f"{bucket}段‘{seg}’疑似连带命中‘{name}’（子串/别名·非独立点名·请确认）")
+    return hints
+
+
 def _schedule_cast_roles(world_dir: Path) -> set:
-    """从 调度单 提取点名/提及的已知角色名（焦内活跃/背景/焦外段·用于角色覆盖对账）。"""
+    """从 调度单 提取点名/提及的已知角色名（焦内活跃/背景/焦外段·用于角色覆盖对账）。
+
+    口径与 _schedule_roles_by_bucket 一致：只认独立人名段全等命中；子串命中
+    走 _schedule_substring_hints 软提醒、不计入覆盖名单。"""
     buckets = _schedule_roles_by_bucket(world_dir)
     if any(buckets.values()):
         return set().union(*buckets.values())
@@ -921,6 +991,208 @@ def _schedule_cast_roles(world_dir: Path) -> set:
         if any(c in seg_text for c in cands):
             cast.add(char)
     return cast
+
+
+def _focus_region_markers(world_dir: Path) -> list[str]:
+    """当前焦点场景区域的中文/名称标记（用于角色时间线位置与场景归属匹配）。
+
+    焦点区域 REGION 路径为英文（如 `Westworld Park 1/Sweetwater/Main Street`），
+    而 CHAR_.md 时间线位置为中文（如 `甜水镇·主街/酒馆外`、`甜水镇·Mariposa等`），
+    两者无法直接字符串匹配。故取两类表面：
+    - 焦点场景 REGION.md 标题中 ` / ` 后的中文名（如 `主街`）；
+    - 焦点场景 scene_card 场景名（如 `甜水镇主街`）及区域行链上的中文片段。
+    返回可参与 `in` 子串匹配的中文标记列表（含 '·' 切分的中文段）。"""
+    markers: list[str] = []
+    _focus = _focus_region_node(world_dir)
+    if _focus:
+        fp = world_dir / "regions" / _focus / "REGION.md"
+        if fp.exists():
+            try:
+                in_sub = False
+                for ln in fp.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    s = ln.strip()
+                    if s.startswith("## "):
+                        in_sub = bool(re.match(r"^##\s*子区域", s))
+                    elif in_sub and s.startswith("-"):
+                        # 子区域行形如 `- Mariposa（主街中段北侧·…）`——取子区域名
+                        _nm = re.sub(r"^-\s*", "", s).split("（")[0].split("(")[0].strip()
+                        if _nm:
+                            markers.append(_nm)
+                    elif s.startswith("# ") and "/" in s:
+                        # 标题形如 `# Main Street / 主街`——取中/英文两侧非空白段
+                        for _part in s.lstrip("#").split("/"):
+                            _p = _part.strip()
+                            if _p:
+                                markers.append(_p)
+            except Exception:
+                pass
+    # 场景名（scene_card「场景名」中文）
+    sc_fp = get_scene_dir(world_dir)
+    if sc_fp is not None:
+        card = sc_fp / "scene_card.md"
+        if card.exists():
+            try:
+                m = re.search(r"^\|\s*场景名\s*\|\s*([^|]+?)\s*\|", card.read_text(encoding="utf-8", errors="ignore"), re.M)
+                if m:
+                    for _part in re.split(r"[·,，、]", m.group(1).strip()):
+                        if _part.strip():
+                            markers.append(_part.strip())
+            except Exception:
+                pass
+    return [mk for mk in markers if mk]
+
+
+def _scene_cast_baseline(world_dir: Path) -> set:
+    """本场景应出现的角色基线（precheck 义务区 / gate keeper cast 覆盖 共用，单一来源）。
+
+    基线 = POV ∪ 本场常驻NPC ∪ conflicts 关联角色 ∪ 调度单四层角色。
+
+    「本场常驻NPC」判定（NPC 会动，非静态全员硬入）：仅取 REGION.常驻NPC 中
+    —— 其 CHAR_.md「默认循环时间线」在当前时刻命中位置 ∈ 焦点场景区域（或该角色无时间线解析
+    —— 此时按 REGION 静态归属保守纳入，本场景是它的注册地）；
+    —— 时间线命中别处者（如 Dolores 12:00-14:00=牧场·不在主街）→ 本场景基线**不纳入**（他处仍
+       在世界的角色不视为本场缺席），只入 precheck §3 待物化清单（④物化）。
+    判据完全复用 _char_timeline_preset / _focus_region_node，不新增机制。"""
+    baseline = set()
+    # POV（用户角色·直接从 world_state 叙事约定解析，避免依赖 existing 上下文）
+    try:
+        _ws = yaml.safe_load((world_dir / "states" / "world_state.yaml").read_text(encoding="utf-8")) or {}
+        _pov = re.search(r"POV\s*=\s*([^；;\n]*)", str(_ws.get("叙事约定", "") or ""))
+        if _pov:
+            _pov_tok = _pov.group(1).strip()
+            # 优先取括号内实际角色名（如 `游客(Guest)` → Guest；`游客` 是视角标签非角色名）
+            _paren = re.search(r"[（(]([^（）()]+)[)）]", _pov_tok)
+            _pov_name = (_paren.group(1).strip() if _paren else _pov_tok.split("(")[0].strip())
+            if _pov_name:
+                baseline.add(_pov_name.replace("_", " "))
+        else:
+            for _cfp in world_dir.glob("characters/CHAR_Guest*.md"):
+                _n = _cfp.stem[len("CHAR_"):].strip().replace("_state", "").strip()
+                if _n:
+                    baseline.add(_n.replace("_", " "))
+                    break
+    except Exception:
+        pass
+    # 调度单四层角色（导演已声明的画面成员）
+    baseline.update(_schedule_cast_roles(world_dir))
+    # conflicts 关联角色：仅当「当前时刻物理在本场」才强制入 cast 义务——
+    #   其 CHAR_state.位置（或时间线命中位置）在本场，或已被调度单点名。
+    #   否则他处仍在世界的冲突角色不构成「本场 cast 缺失」，由④/⑤焦外管道跟踪。
+    _focus = _focus_region_node(world_dir)
+    _timelines = _parse_char_timeline(world_dir)
+    _cur_min, _t = _parse_world_current_min(world_dir)
+    _markers = _focus_region_markers(world_dir)
+    _char_states = dict(_load_char_states(world_dir))
+    try:
+        _cd = yaml.safe_load((world_dir / "states" / "conflicts.yaml").read_text(encoding="utf-8")) or {}
+        for _ct, _cv in _cd.items() if isinstance(_cd, dict) else []:
+            if not isinstance(_cv, dict):
+                continue
+            for _r in (_cv.get("关联角色") or []):
+                if not isinstance(_r, str) or not _r.strip():
+                    continue
+                _rn = _r.strip()
+                if _in_region(_rn, _focus, _markers, _timelines, _cur_min, _char_states):
+                    baseline.add(_rn)
+    except Exception:
+        pass
+    # 本场常驻NPC（按当前时刻时间线命中本场）
+    if _focus:
+        for npc in _region_record_npcs(world_dir, _focus):
+            _rows = _timelines.get(npc) or []
+            if not _rows:
+                # 无时间线解析 → 按 REGION 静态归属保守纳入（本场景是注册地）
+                baseline.add(npc)
+                continue
+            _loc, _ac, _inwin = _char_timeline_preset(_rows, _cur_min)
+            if _inwin and _loc and any(_mk in _loc for _mk in _markers):
+                # 时间线命中且位置含焦点场景中文标记 → 纳入本场
+                baseline.add(npc)
+            # 时间线命中但位置在别的区域 → 不纳入（他在别处）
+    return baseline
+
+
+def _cast_overlap_missing(world_dir: Path, baseline: set) -> list[str]:
+    """返回 baseline 中未被 scene_card cast 覆盖的角色（缺名·按规范名归一）。
+
+    覆盖面 = scene_card「出场角色」(焦内) + 「焦外/在场」(焦外)。判定时不要求面面俱到：
+    baseline 里的角色只要在任一栏以具名（或以可归一到的档案全名）出现即视为覆盖；
+    仅无 CHAR_.md 的纯背景「群像」才允许占位——若 baseline 角色被「群像/外部者/游客/守卫」
+    等虚词替代（未具名），视为缺名（虚词不可替代具名角色）。
+    角色可能以简称（如 Dolores/Teddy）出现在 cast——用档案全名+token 别名归一到 baseline。
+    """
+    sc_fp = get_scene_dir(world_dir)
+    if sc_fp is None:
+        return sorted(baseline)
+    card = sc_fp / "scene_card.md"
+    if not card.exists():
+        return sorted(baseline)
+    try:
+        txt = card.read_text(encoding="utf-8", errors="ignore")
+    except Exception:
+        return sorted(baseline)
+    covered_raw: list[str] = []
+    for col in ("出场角色", "焦外/在场"):
+        m = re.search(rf"^\|\s*{re.escape(col)}\s*\|\s*([^|]+?)\s*\|", txt, re.M)
+        if m:
+            for _seg in re.split(r"[·,，、;；]", m.group(1)):
+                _s = _seg.strip().lstrip("-")
+                if _s and _s.lower() not in ("无", "none", "-"):
+                    covered_raw.append(_s)
+    # 虚词：以下 token 不能替代具名档案角色
+    VAGUE = ("群像", "外部者", "游客", "守卫", "群众", "背景", "路人", "纯背景")
+    known = set()
+    for fp in world_dir.glob("characters/CHAR_*.md"):
+        nm = fp.stem[len("CHAR_"):].strip().replace("_state", "").strip()
+        if nm:
+            known.add(nm)
+    missing = []
+    for role in sorted(baseline):
+        rk = _norm_char_key(role)
+        hit = False
+        for cand in covered_raw:
+            ck = _norm_char_key(cand.split("(")[0].strip())
+            # 虚词不可替代具名角色
+            if any(v in cand for v in VAGUE):
+                continue
+            if rk == ck:
+                hit = True
+                break
+            # token 别名：角色全名或 ≥3 字符 token 在候选段中出现
+            toks = {_norm_char_key(w) for w in role.split() if len(w) >= 3}
+            toks.add(rk)
+            if any(t and t in ck for t in toks):
+                hit = True
+                break
+        if not hit:
+            # 虚词替代已建档角色 → 缺名
+            missing.append(role)
+    return sorted(missing)
+
+
+def _in_region(role_name: str, focus_region: str | None, markers: list[str],
+               timelines: dict, cur_min, char_states: dict) -> bool:
+    """角色当前是否物理在本场（focus_region）。
+
+    判据（按序取可靠）：① CHAR_state.位置 命中焦点区域标记；② 时间线命中位置命中标记；
+    ③ 已被调度单点名（画面成员·无论位置）——由调用方并入 baseline（此处只判物理位置）。
+    无任何定位线索 → 不视为本场（避免把全局冲突角色误判为在场）。"""
+    if not focus_region or not markers:
+        return False
+    # ① CHAR_state.位置
+    for _cn, _cd in char_states.items():
+        if _norm_char_key(_cn) == _norm_char_key(role_name):
+            _pos = str(_cd.get("位置", "") or "").strip()
+            if _pos and any(_mk in _pos for _mk in markers):
+                return True
+            break
+    # ② 时间线命中位置
+    _rows = timelines.get(role_name) or []
+    if _rows:
+        _loc, _ac, _inwin = _char_timeline_preset(_rows, cur_min)
+        if _inwin and _loc and any(_mk in _loc for _mk in markers):
+            return True
+    return False
 
 
 def _loop_relevant_roles(world_dir: Path) -> set:
@@ -1041,7 +1313,38 @@ def _canonicalize_char_ops(ops, world_dir, existing):
     return normalized
 
 
-def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, via="write"):
+def _pov_role_names(world_dir: Path, existing: dict) -> set:
+    """用户角色名集合（POV 定位·与 _region_consistency 同源）：world_state.叙事约定 POV=… 优先·
+    括号内名/token 逐一归一到已知状态名·命中即收；读不到回退 CHAR_Guest* 首个。
+    供角色段缺 ACTION 豁免与调度单覆盖豁免（第二人称无指令可无决策无行动·不代笔）。"""
+    try:
+        ws = yaml.safe_load((world_dir / "states" / "world_state.yaml").read_text(encoding="utf-8")) or {}
+    except Exception:
+        ws = {}
+    if not isinstance(ws, dict):
+        ws = {}
+    known = set(_known_char_names(world_dir, existing))
+    names = set()
+    mm = re.search(r"POV\s*=\s*([^；;\n]*)", str(ws.get("叙事约定", "") or ""))
+    if mm:
+        seg = mm.group(1)
+        cands = re.findall(r"[（(]([^（）()]+)[)）]", seg) + [t for t in re.split(r"[·,，、\s]+", seg) if t]
+        for c in cands:
+            c = c.strip()
+            if not c:
+                continue
+            canon = _canonical_role_label(c, world_dir, existing)
+            if canon in known:
+                names.add(canon)
+                break
+    if not names:
+        guests = sorted((world_dir / "states").glob(f"{CHAR_STATE_PREFIX}Guest*{CHAR_STATE_SUFFIX}"))
+        if guests:
+            names.add(guests[0].stem[len(CHAR_STATE_PREFIX):-len("_state")])
+    return names
+
+
+def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, via="write", resume_from=False):
     """语义不变量检查（六阶段批次→硬性违规/软性警告分类）。
     ctx = parse_batch_entries 返回值（stage/storyline/beat/action/schedule/meta）——按阶段分化必含项。
     enforce_scene_dir=False（gate/audit 预检路径）：scene_state 落点检查降级为软提示——
@@ -1198,17 +1501,20 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
         # ④ 轮次单调（时间只增不减）——显式回退（--force）豁免：轮次可回退，但必须仍为整数
         # via="gate" 为闸门终检：落盘在闸门之前（SKILL 顺序：产出→写→gate），磁盘轮次已=新值，
         #   故用防倒退语义（new<old 才拦·new==old 放行=已落盘正常）；via="write"（write-raw/audit）为落盘前校验，用推进语义（new>old）。
+        # via="write" 且 resume_from=True（--resume-from 重提失败段）：部分成功落盘后重提——磁盘轮次可能已=新值
+        #   （批次先前写过·写入失败却已落盘轮次），重提同一批属"继续完成"非回退→沿用防倒退语义（new<old 才拦）。
+        #   区分三类语义：推进（新轮·new>old）｜防倒退（重提/gate·new>=old 放行·仅拦真回退 new<old）｜--force 回退（任意）。
         if file_key == "world_state" and key_path == ["轮次"]:
             try:
                 new_val = int(_strip_wrapping_quotes(content))
                 old_val = int(_strip_wrapping_quotes(str(current.get("world_state", {}).get("轮次") or 0)))
                 if not force:
-                    if via == "gate":
+                    if via == "gate" or (via == "write" and resume_from):
                         if new_val < old_val:
-                            hard.append((idx, f"world_state.轮次: {new_val} < 当前值 {old_val}（时间只增不减·防回退）"))
+                            hard.append((idx, f"world_state.轮次: {new_val} < 当前值 {old_val}（时间只增不减·防回退——{('重提完成' if via == 'write' else '闸门终检')}语义·仍禁止真回退）"))
                     else:
                         if new_val <= old_val:
-                            hard.append((idx, f"world_state.轮次: {new_val} 必须 > 当前值 {old_val}（时间只增不减·显式回退用 write-raw --batch --force）"))
+                            hard.append((idx, f"world_state.轮次: {new_val} 必须 > 当前值 {old_val}（时间只增不减·重提同轮用 --resume-from <本段号>·显式回退用 write-raw --batch --force）"))
             except ValueError:
                 hard.append((idx, f"world_state.轮次: 非整数 '{content.strip()}'"))
 
@@ -1457,12 +1763,32 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             if _missing:
                 hard.append((-1, f"循环世界 ①戏剧家批——META 压力扫描「轨道✓(...)」逐角色结论未覆盖: {'/'.join(_missing)}（必须覆盖: {'/'.join(sorted(_required))}——范围=调度单点名循环角色 ∪ 当前焦点区 REGION 常驻NPC ∪ §1a互锁涉及角色·即本轮相关循环角色；缺名=本层未扫描→偏离检测可被静默合并进 CT 状态更新（phase_dramatist 职责2 循环轨道 + 写入节轨道✓；loop_machinery §1: 循环轨道每轮必查·不依赖主路是否已有 CT 推进）。裸勾/只写「无偏离」/只写部分角色=本层未扫描·--force 豁免）"))
     elif ops and stage == "场记":
+        # 轮次+1 豁免：跨场景轮入场帧批（META 标「同轮续批」且本批确写场景时间线）——轮次已由旧场景收尾批推进
+        _continue_round = any("同轮续批" in str(m) for m in meta_lines) and has_scene_timeline
         for flag, msg in ((has_ws_time, "场记批应含 world_state.时间.具体时间 推进"),
-                          (has_ws_round, "场记批应含 world_state.轮次 +1"),
+                          (has_ws_round or _continue_round, "场记批应含 world_state.轮次 +1"),
                           (has_ws_summary, "场记批应含 world_state.前情描述（≤100字状态短语）"),
                           (has_scene_timeline, "场记批应含 scene_state.场景时间线 追加")):
             if not flag:
                 soft.append((-1, msg + "——查询轮豁免"))
+        # 场景基线 cast 覆盖硬拦（转场/新场景入画·与 precheck 义务区同源 _scene_cast_baseline）
+        #   触发（任一）：① direction.转场.目标场景 非空；② 本批写 scene_card；
+        #   ③ 入场帧批——本批写 scene_state.场景时间线 且盘上该字段为空（场景创建后/重置后首条剧情
+        #      落盘时刻）。scene_card 由场记在 init_scene 后批外手写（不在任何批次里），导演未写
+        #      转场.目标场景而由场记自行检测切换（scene_management 流程第1步）时，①②均不命中——
+        #      唯一可闸的时刻就是入场帧批：此时 init_scene 已切焦点，基线取盘上焦点场景即新场景。
+        #   常驻NPC 只取按当前时刻时间线命中本场者（NPC 会动·别处不硬套）；时间线命中别处者不构成缺失。
+        _keeper_trans = _load_direction(world_dir).get("转场") or {}
+        _keeper_target = _keeper_trans.get("目标场景") if isinstance(_keeper_trans, dict) else None
+        _writes_scene_card = any(
+            _kind == "write" and "scene_card" in str(_file_key) for _kind, _file_key, _kp, _c, _a in ops
+        )
+        _entry_frame = bool(has_scene_timeline) and not (current.get("scene_state") or {}).get("场景时间线")
+        if _keeper_target or _writes_scene_card or _entry_frame:
+            _bl = _scene_cast_baseline(world_dir)
+            _miss = _cast_overlap_missing(world_dir, _bl)
+            if _miss:
+                hard.append((-1, f"场景基线 cast 覆盖：本场景应出现角色未入 cast（缺: {'/'.join(_miss)}）——常驻NPC 按当前时刻时间线命中本场者须入『出场角色』(焦内) 或『焦外/在场』(焦外)·时间线命中别处者按 REGION 静态归属复核（见 scene_management 场景切换流程第6步）"))
     elif stage == "编剧":
         _sl_map = (_load_storylines(world_dir).get(STORYLINE_TOP_KEY) or {})
         _dr_sl = _load_direction(world_dir)
@@ -1580,10 +1906,46 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             _sched_text = _direction_schedule_text(world_dir)
         _sched_buckets = _schedule_roles_by_bucket(world_dir, _sched_text)
         _active_cast = _sched_buckets["焦内活跃"]
+        for _hint in _schedule_substring_hints(world_dir, _sched_text):
+            soft.append((-1, f"调度单{_hint}"))
         if not _active_cast:
             hard.append((-1, "导演批调度单缺焦内活跃=1-2个具名角色——焦内活跃是本拍行动主体，背景不得替代"))
         elif not 1 <= len(_active_cast) <= 2:
             hard.append((-1, f"导演批焦内活跃须为1-2个具名角色（当前 {len(_active_cast)}: {'/'.join(sorted(_active_cast))}）——先完成主次裁决"))
+        # 四层调度单具名核验（背景/焦外/焦外→焦内 段——虚词不得替代已建档角色）
+        # 正向规则见 phase_director 职责7：调度单一律写具名条目；仅无 CHAR_.md 的纯背景可标群像。
+        VAGUE = ("群像", "外部者", "游客", "守卫", "群众", "背景", "路人", "纯背景")
+        _known_char = set()
+        for _cfp in world_dir.glob("characters/CHAR_*.md"):
+            _nm = _cfp.stem[len("CHAR_"):].strip().replace("_state", "").strip()
+            if _nm:
+                _known_char.add(_nm)
+        for _bucket in ("背景", "焦外", "焦外→焦内"):
+            _body = _schedule_body_text(_sched_text, _bucket)
+            if _body and _body.lower() not in ("无", "none"):
+                for _seg in _split_schedule_segments(_body):
+                    _s = _seg.strip().lstrip("-")
+                    if not _s:
+                        continue
+                    # 虚词段：仅当该段确实无对应档案角色才放行；含已建档角色名 → 视为替代违例
+                    if any(v in _s for v in VAGUE):
+                        # 检查虚词段内是否偷偷带着已建档角色（如「群像(Dolores)」）
+                        _named_in_vague = any(
+                            _norm_char_key(n) in _norm_char_key(_s) for n in _known_char
+                        )
+                        if _named_in_vague:
+                            hard.append((-1, f"调度单 {_bucket} 段‘{_s}’用虚词（群像/外部者等）替代已建档角色——须写具名 CHAR_ 条目（仅无 CHAR_.md 的纯背景可标群像）"))
+                        continue
+                    # 具名段：可归一到已知档案才放行；不可解析（既非已知角色亦非纯背景名）→ 软警告
+                    if _canonical_role_label(_s, world_dir, existing) is None:
+                        soft.append((-1, f"调度单 {_bucket} 段‘{_s}’无法归一为已建档角色名——确认是具名条目（可解析）还是纯背景虚词"))
+        # 焦外→焦内 过渡桶：角色必须在该轮落到「焦内活跃」或「背景」最终桶（完成状态更新）
+        _transit = _sched_buckets.get("焦外→焦内") or set()
+        if _transit:
+            _final = (_sched_buckets.get("焦内活跃") or set()) | (_sched_buckets.get("背景") or set())
+            _unlanded = _transit - _final
+            if _unlanded:
+                hard.append((-1, f"调度单 焦外→焦内 角色未落到最终桶（焦内活跃/背景）·状态更新无法完成: {'/'.join(sorted(_unlanded))}——过渡桶须本轮完成迁移"))
         if any(str(line).startswith("deepen") for line in beat_lines):
             _writes_handoff = any(
                 _kind == "write" and _file_key.strip().lower() == "direction"
@@ -1609,7 +1971,12 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
         _action_roles_canonical = {
             _canonical_role_label(role, world_dir, existing) for role in _action_roles(action_lines)
         }
-        _missing_active_actions = _active_roles - _action_roles_canonical
+        # 用户角色（POV）缺 ACTION 豁免：第二人称无指令可无决策无行动·不代笔（见 phase_actor POV 路径）；
+        # A4 人工核授权（行动卡 vs 用户本轮输入逐条核对）不受影响·仍执行。
+        _pov_roles = _pov_role_names(world_dir, existing)
+        _pov_norm = {_norm_char_key(p) for p in _pov_roles}
+        _missing_active_actions = {a for a in _active_roles - _action_roles_canonical
+                                   if _norm_char_key(a) not in _pov_norm}
         if _missing_active_actions:
             hard.append((-1, f"焦内活跃角色必须各自产 ACTION 并进入行动链，缺: {sorted(_missing_active_actions)}"))
 
@@ -1646,6 +2013,58 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             if _missing:
                 _phase = "首次物化" if _old_missing else "运行层更新"
                 hard.append((-1, f"角色 {_role} 的 decision {_phase}不完整，缺: {sorted(_missing)}——先有实体决策，再进入角色路由或产 ACTION/轨迹"))
+        # ⑫b 行动前置物化（硬性·仅有 ACTION 的非 POV 角色）：位置/核心状态/妆扮/压力水平/防御有效性须为实体值
+        #     （空值/[占位]均视为未物化）；服饰须为非空列表（模板初始 []·物化后按 CHAR_.md 外在特征填充基线）。
+        #     首次物化门（decision 八项）不动·本门只查行动依据（无落点/无状态/无档位即行动=决策空转）。
+        #     同批物化有效（磁盘值＋本批最后写入叠加后判定）；POV 豁免（用户角色从简·有 ACTION 亦不查）。
+        _disk_by_norm = {_norm_char_key(_n): (_d if isinstance(_d, dict) else {})
+                         for _n, _d in _states_by_name.items()}
+        _skel_writes = {}
+        for _kind, _file_key, _key_path, _content, _append in ops:
+            if _kind != "write" or not _file_key.startswith(CHAR_STATE_PREFIX) or _append:
+                continue
+            _fp2, _ = resolve_char_file(existing, _file_key, world_dir)
+            if _fp2 is None:
+                continue
+            _nm2 = _fp2.stem[len(CHAR_STATE_PREFIX):-len("_state")]
+            _skel_writes[(_norm_char_key(_nm2), _key_path)] = _content
+        for _role in sorted(_action_roles_canonical):
+            _nk = _norm_char_key(_role)
+            if _nk in _pov_norm:
+                continue
+            _disk = _disk_by_norm.get(_nk, {})
+            _miss = []
+            for _f in ACTION_SKELETON_STR_FIELDS:
+                _eff = _skel_writes.get((_nk, _f), None)
+                if _eff is None:
+                    _eff = _disk.get(_f)
+                if _eff is None or (isinstance(_eff, str) and _is_template_value(_eff)) \
+                        or (not isinstance(_eff, str) and not str(_eff).strip()):
+                    _miss.append(_f)
+            _fc = _skel_writes.get((_nk, "服饰"), None)
+            if _fc is not None:
+                try:
+                    _parsed = yaml.safe_load(_fc)
+                except Exception:
+                    _parsed = None
+                if isinstance(_parsed, list):
+                    _dress_ok = any(str(x).strip() for x in _parsed)
+                elif isinstance(_parsed, str):
+                    _dress_ok = not _is_template_value(_parsed)
+                else:
+                    _dress_ok = _parsed is not None and bool(str(_parsed).strip())
+            else:
+                _dv = _disk.get("服饰")
+                if isinstance(_dv, list):
+                    _dress_ok = any(str(x).strip() for x in _dv)
+                elif isinstance(_dv, str):
+                    _dress_ok = not _is_template_value(_dv)
+                else:
+                    _dress_ok = _dv is not None and bool(str(_dv).strip())
+            if not _dress_ok:
+                _miss.append("服饰")
+            if _miss:
+                hard.append((-1, f"角色 {_role} 有 ACTION 但行动前置字段未物化，缺: {sorted(_miss)}——位置/核心状态/妆扮/服饰/压力/防御须先有实体值（同批物化有效·见 keys.md 骨架物化规则/phase_actor 先决状态转换）"))
         # ⑬ 计划-动作联动（值域化·phase_actor/keys 同步）：轨迹 `计划变化` 含 `调整` 前缀 = 计划已改变
         #     → 同角色本批必须覆盖 decision.当前计划；循环角色豁免（当前计划由 CHAR_.md 默认循环时间线物化·走偏离检测 loop_machinery §5.1）
         _plan_changed, _plan_overwritten = set(), set()
@@ -1788,8 +2207,14 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
     # ⑬c-2 导演调度单点名角色覆盖（硬性——③调度单的 焦内活跃/背景/焦外 cast 必须被角色覆盖声明）
     # 复用 角色覆盖 对账：调度单命名的已知角色 = 更新(→CHAR_state 写) 或 更新(在轨·轻量)(→CHAR_state 写)；
     # 「无变化」通道废止（歧义=易执行为无反应冻结）；未覆盖 → 拦。
+    # POV 豁免：用户角色（第二人称无指令可无决策无行动）不强制覆盖声明/CHAR_state 写。
     if stage == "角色" and (has_char_op or any("角色覆盖" in (ln or "") for ln in meta_lines)):
         sched_roles = _schedule_cast_roles(world_dir)
+        try:
+            _pov_skip = {_norm_char_key(p) for p in _pov_role_names(world_dir, existing)}
+        except Exception:
+            _pov_skip = set()
+        sched_roles = {r for r in sched_roles if _norm_char_key(r) not in _pov_skip}
         if sched_roles:
             coverage2_raw = _parse_role_coverage(meta_lines)
             coverage2 = {
@@ -1946,8 +2371,9 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
     段级闸门（默认启用·--force 豁免）：带 ###STAGE 声明且属批次类五阶段（戏剧家/编剧/导演/角色/场记）的段，
     必含项缺失或硬性违规=该段整体拦截 exit 1 不落盘（作家段豁免·W4 走 gate writer --check）。
     单阶段批次与无 ###STAGE 声明的维护批行为不变（audit 仍为单字段顶回）。
-    单射批段完整性：合并批（≥2 个 ###STAGE 段·非 --resume-from·非 --force）必须五段齐备
-    （戏剧家/编剧/导演/角色/场记）——缺段=零副作用整体拦截（轻=最小维护批仍须出段·作家段不在合并批）。
+    合批白名单：多段合批仅限 [戏剧家编剧导演] 结构合批；角色段/场记段必须单段独批——
+    同批同时含 角色+他段、或 场记+他段 = 跨层合批 [BATCH-FAIL] 零副作用整体拦截
+    （--resume-from 重提 / --force 回退豁免）。
     批次含场记段（轮末）时落盘后自动附跑 round-check（仅报告不拦截）。
     --force（显式回退专用·仅 --batch）：绕过 audit ④ 轮次单调 与 ⑬b 反应轨迹覆盖写——回退手工重建（无快照）时用；
     其余数据完整性硬性检查（① 角色反应四件套/② 载体/⑤ scene_state 落点）照常拦截。回退后必做残留扫描 + validate。
@@ -2146,13 +2572,15 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
         raw_stdin = _read_input_utf8(input_file)
         lines = raw_stdin.split("\n")
 
-        def run_batch_segment(seg_lines, seg_no, applied_ops):
+        def run_batch_segment(seg_lines, seg_no, applied_ops, new_line_ids):
             lines = seg_lines
 
             # 解析 + 语义不变量检查（audit）——硬性违规 → 单字段顶回（不整批拒绝）
             ctx = parse_batch_entries(lines)
             ops, parse_errors = ctx["ops"], ctx["errors"]
-            hard, soft = check_batch(ops, world_dir, ctx, force=force)
+            # resume_from 重提语义：外层已切片为「失败段及其后」——这些段全部属重提（磁盘可能已部分落盘·如轮次）
+            # → 轮次单调走防倒退语义（new==old 放行·仍禁真回退 new<old），其余硬性检查照常（不改 force 全局豁免）
+            hard, soft = check_batch(ops, world_dir, ctx, force=force, resume_from=(resume_from is not None))
             blocked = {idx for idx, _ in hard}
             if ctx["stage"]:
                 print(f"[AUDIT] ###STAGE 回显: {ctx['stage']}", file=sys.stderr)
@@ -2263,6 +2691,9 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 sys.exit(1)
 
             # ── ###STORYLINE / ###BEAT 自动执行（结构/指针落盘·失败拦批——LLM 不手动调用）──
+            # 「新线」引用（方案A·2026-09-04）：###STORYLINE: add 的 SL-XX 由脚本自动递增分配——
+            # LLM 无法在写批次时预知实际 ID。本批 add 的真实 ID 记入 new_line_ids 队列，
+            # 后续 ###BEAT: set 新线 <拍> 时替换为该 ID（跨段可见：②段 add → ③段 set 新线）。
             for action, payload in ctx["storyline"]:
                 parts = action.split()
                 if not parts or parts[0] not in ("add", "rewrite", "close", "clear"):
@@ -2270,13 +2701,21 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                     sys.exit(1)
                 stdin_text = "\n".join(payload) if payload is not None else None
                 try:
-                    cmd_storyline(world_dir, parts, stdin_text=stdin_text)
+                    _ret = cmd_storyline(world_dir, parts, stdin_text=stdin_text)
                 except SystemExit as e:
                     print(f"[FAIL] ###STORYLINE 执行失败: {action}（exit {e.code}）——storylines 未更新·批次拦截·修正后重提", file=sys.stderr)
                     sys.exit(1)
+                if parts[0] == "add" and _ret is not None:
+                    new_line_ids.append(str(_ret))
                 applied_ops.append((seg_no, f"###STORYLINE: {action}"))
             for action in ctx["beat"]:
                 parts = action.split()
+                # 「新线」占位替换：add 刚建的那条线（脚本分配 ID·LLM 不需预知）；未消费可重复引用同批新线
+                if len(parts) >= 2 and parts[1] == "新线":
+                    if not new_line_ids:
+                        print(f"[FAIL] ###BEAT 引用「新线」但本批无已建事件线（###STORYLINE: add 先于 ###BEAT·或结构动作已随此前段成功落盘——重提时 read states/storylines.yaml 填实际 SL-XX）——批次拦截", file=sys.stderr)
+                        sys.exit(1)
+                    parts[1] = new_line_ids[-1]
                 try:
                     cmd_beat(world_dir, parts)
                 except SystemExit as e:
@@ -2314,21 +2753,22 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
 
 
         segments = split_stage_segments(lines)
-        # 单射批段数完整性检查（防异常/重复段注入·机械兜底）：
-        # 仅当合并批含 ≥5 个 ###STAGE 段（异常形态）且非重提（--resume-from 时前段已落盘·缺失属预期）、
-        # 非回退批（--force 豁免）才拦截——2~4 段的任意阶段组合合并批直接放行，不再强制五段齐备。
-        # 各段内部 gate 仍逐段独立校验（戏剧家段需 CT op·角色段需行动卡四件套等），流程安全不受影响。
+        # 合批白名单（角色自治防火墙·机械兜底）：
+        # 允许多段合批仅限 [戏剧家编剧导演] 结构合批；角色段/场记段必须单段独批。
+        # 同批同时含 角色+他段、或 场记+他段 = 跨层合批——零副作用整体拦截。
+        # 各段内部 gate 仍逐段独立校验（戏剧家段需 CT op·角色段需行动卡四件套等）。
         # 作家段不在合并批·经 write_narrative 独立落盘。
-        # 串行路径（每批单段）与无 ###STAGE 维护/回退批不受影响。
-        if len(segments) >= 5 and not force and resume_from is None:
+        # 逐段单批（每批一段）与无 ###STAGE 维护/回退批不受影响。
+        if len(segments) >= 2 and not force and resume_from is None:
             _declared = [_seg[0][len("###STAGE:"):].strip()
                          for _seg in segments if _seg and _seg[0].startswith("###STAGE:")]
-            _missing = [s for s in BATCH_GATE_STAGES if s not in _declared]
-            if _missing:
-                print("[BATCH-FAIL] 单射批段完整性检查未过——合并批（多 ###STAGE 段）必须五段齐备·缺段=流程违规:", file=sys.stderr)
+            _has_actor = any("角色" in _d for _d in _declared)
+            _has_keeper = any("场记" in _d for _d in _declared)
+            _cross = (_has_actor and len(_declared) > 1) or (_has_keeper and len(_declared) > 1)
+            if _cross:
+                print("[BATCH-FAIL] 跨层合批拦截——角色段/场记段必须单段独批（允许多段合批仅限[戏剧家编剧导演]）:", file=sys.stderr)
                 print(f"  声明段: {'/'.join(_declared) if _declared else '（无）'}", file=sys.stderr)
-                print(f"  缺失段: {'/'.join(_missing)}", file=sys.stderr)
-                print("  补齐缺失段后整批重提（轻=最小维护批·仍须出段；--dry-run 同样受此检查）", file=sys.stderr)
+                print("  拆批重提：[①②③]结构合批 → ④角色独批 → ⑤场记独批（--dry-run 同样受此检查）", file=sys.stderr)
                 sys.exit(1)
         # --resume-from <N>：只执行段 N 及其后（失败后的重提通道·免重跑已成功段）——
         # 仅当原始批次确有 ≥N 段时合法；段号按原始批次（1 起始）计。
@@ -2338,20 +2778,21 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 print(f"[ERR] --resume-from {resume_from} 越界（本批次段总数 {_tot}）", file=sys.stderr)
                 sys.exit(1)
             segments = segments[resume_from - 1:]
-        # 轮末判定：批次含「场记」段（串行单阶段轮中仅场记阶段附跑 round-check——
+        # 轮末判定：批次含「场记」段（场记单独一批时仅场记阶段附跑 round-check——
         # 其他阶段的批次收尾时 world_state 三件套未写，round-check FAIL 属预期噪音，跳过）
         _keeper_round = any(
             _seg and _seg[0].startswith("###STAGE:") and "场记" in _seg[0]
             for _seg in segments
         )
         applied_ops = []  # 已成功落盘的结构动作（###STORYLINE/###BEAT·重提时必须剔除·防非幂等重复）
+        new_line_ids = []  # 本批 add 实际分配的 SL-XX（「新线」引用解析队列·跨段共享）
         _start_no = resume_from if resume_from is not None else 1
         for _i, _seg in enumerate(segments):
             seg_no = _start_no + _i
             if len(segments) > 1:
                 print(f"[BATCH] ── 段 {seg_no}/{_tot}（重提从 {_start_no} 起） ──", file=sys.stderr)
             try:
-                run_batch_segment(_seg, seg_no, applied_ops)
+                run_batch_segment(_seg, seg_no, applied_ops, new_line_ids)
             except SystemExit:
                 _done = sorted({n for n, _ in applied_ops})
                 print(f"[BATCH-FAIL] 段 {seg_no}/{_tot} 中止——后续段未执行·批次失败", file=sys.stderr)
@@ -2853,6 +3294,65 @@ def _load_audit_words(world_dir: Path) -> tuple[set, list, set]:
     return default_anchor, default_loc, default_known
 
 
+def _split_narr_sentences(text: str) -> list[str]:
+    """W5 复读检测·分句（与 gate writer --check 同一套逻辑）：去首行场景头·按句末标点切分·短句过滤。"""
+    lines = text.splitlines()
+    if lines and ("·" in lines[0] and "轮" in lines[0]):
+        lines = lines[1:]
+    body = "\n".join(lines)
+    parts = re.split(r"[。！？\n]+", body)
+    out = []
+    for p in parts:
+        p = re.sub(r"\s+", "", p.strip())
+        if len(p) >= 12:
+            out.append(p)
+    return out
+
+
+def _check_writer_repetition(raw: str, world_dir: Path) -> list[str]:
+    """W5 复读机械拦截：本轮正文 vs 最近 3 个叙事轮转文件。
+    整句原文复用 ≥2 句，或长分句（连续 15 字）复用 ≥3 处 → 拦截。
+    循环世界合法重复（短称谓/专名）因短句过滤与阈值不受影响；史料不足（<1 个旧文件）跳过。"""
+    scenes_dir = world_dir / "scenes"
+    if not scenes_dir.is_dir():
+        return []
+    cands = sorted(scenes_dir.glob("*/narrative.r*.*.md"), key=lambda p: p.stat().st_mtime)
+    if not cands:
+        return []
+    prev_files = cands[-3:]
+    prev_sents: set[str] = set()
+    prev_combined = []
+    for fp in prev_files:
+        try:
+            txt = fp.read_text(encoding="utf-8")
+        except Exception:
+            continue
+        sents = _split_narr_sentences(txt)
+        prev_sents.update(sents)
+        prev_combined.append("".join(sents))
+    if not prev_sents:
+        return []
+    combined = "".join(prev_combined)
+    cur_sents = _split_narr_sentences(raw)
+    exact = [s for s in cur_sents if s in prev_sents]
+    clause_hits = []
+    for s in cur_sents:
+        if s in prev_sents or len(s) < 15:
+            continue
+        for i in range(0, len(s) - 15 + 1, 5):
+            if s[i:i + 15] in combined:
+                clause_hits.append(s)
+                break
+    fails = []
+    if len(exact) >= 2:
+        shown = " / ".join("「" + s[:20] + "…」" for s in exact[:3])
+        fails.append(f"整句复用 {len(exact)} 句：{shown}")
+    if len(clause_hits) >= 3:
+        shown = " / ".join("「" + s[:20] + "…」" for s in clause_hits[:3])
+        fails.append(f"长分句复用 {len(clause_hits)} 处：{shown}")
+    return fails
+
+
 def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False, input_file: str | None = None):
     """gate: 六阶段流程闸门——各阶段批次出口核验。
     用法: worldctl.py <世界> gate dramatist|storyliner|director|actor|keeper|writer [--check] [--file 批次文件]
@@ -2903,9 +3403,10 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False, input_
         ],
         "writer": [
             "W1 POV 过滤: 单镜头·只写 POV 感知·焦外不进正文",
-            "W2 代价在纸上 + 特异性（换人测试）",
+            "W2 代价在纸上 + 特异性（换人测试·复读机械拦截见 --check）",
             "W3 一致性: 行动卡骨架如实呈现·行为偏移落地不解释来源",
             "W4 锚点约束: 元素/人物存在性（代码化核对）",
+            "W6 de-AI 自查: 对照 narrative_style_sepia（三并列/连词堆叠/抽象大词簇/反思尾·句长参差·朗读·白名单先查·人工项）",
         ],
     }
     if phase not in PHASE_CN:
@@ -3049,6 +3550,12 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False, input_
                 print(f"[GATE] W1/W2 显影失败——叙事含上帝视角/引擎术语直说: {_w1_fails}（W1禁上帝视角+引擎术语不入文；W2代价须写成可观察显影，见 phase_writer.md W1/W2）", file=sys.stderr)
                 sys.exit(1)
             print("[GATE] W1 显影核验通过（无抽象失去宣言·无引擎术语入叙述句）", file=sys.stderr)
+            # W5 复读机械拦截（代码化·注意力零负担）：本轮 vs 最近 3 个叙事轮转文件
+            _w5_fails = _check_writer_repetition(raw, world_dir)
+            if _w5_fails:
+                print(f"[GATE] W5 特异性失败——叙事复用前文句式: {_w5_fails}（按 phase_writer.md W5 取材管道重写：只写本轮新变量·环境余光限一句且换感官通道）", file=sys.stderr)
+                sys.exit(1)
+            print("[GATE] W5 特异性核验通过（无跨轮整句/长分句复用）", file=sys.stderr)
             print("[GATE] 回合收尾提醒（静默模式）：正文只含叙事·回合结束零正文输出（状态摘要/执行汇报/叙事复述/下一步引导一律禁止）", file=sys.stderr)
             return
 
@@ -4053,7 +4560,7 @@ def cmd_validate(world_dir: Path):
 def _storyline_usage():
     print("用法: worldctl.py <世界> storyline <子命令> [参数]   ← 事件线结构（states/storylines.yaml·②编剧唯一通道）", file=sys.stderr)
     print("  show [SL-XX]       读事件线（全部 / 指定）", file=sys.stderr)
-    print("  add                stdin YAML 建线（id 自动递增 SL-XX·结构蓝图无当前拍——指针由③导演 ###BEAT: set 落 direction）", file=sys.stderr)
+    print("  add                stdin YAML 建线（id 自动递增 SL-XX·结构蓝图无当前拍——指针由③导演 ###BEAT: set 新线 落 direction·同批 add 用「新线」·跨批读后写实际 SL-XX）", file=sys.stderr)
     print("  rewrite SL-XX      stdin YAML 重规划（现实不承接·前提取翻但戏剧问题仍重要时）", file=sys.stderr)
     print("  close SL-XX        收束（线已演完：当前线须当前拍=余波·遗留线指针已切走凭摘要留档）——stdin YAML 必含一行 收束摘要；保留 名称/类型＋状态=已收束·清拍序·当前线收束时复位指针", file=sys.stderr)
     print("  clear SL-XX        废弃（不承接·三问全灭——前提崩塌/问题无意义/无承诺待兑现）——整条抹为空锚点·direction 指针自动复位", file=sys.stderr)
@@ -4079,7 +4586,7 @@ def _storyline_usage():
 def _beat_usage():
     print("用法: worldctl.py <世界> beat <子命令> [参数]        ← 演出指针（states/direction.yaml·③导演唯一通道）", file=sys.stderr)
     print("  show               读 direction（当前事件线/当前拍/演出状态/guidance）", file=sys.stderr)
-    print("  set SL-XX 拍名     初始指针（建线后由③导演设定起点拍·进入顶点时自动记录基准快照）", file=sys.stderr)
+    print("  set SL-XX 拍名     初始指针（建线后由③导演设定起点拍·进入顶点时自动记录基准快照·同批 add 用「新线」·跨批写实际 SL-XX）", file=sys.stderr)
     print("  deepen SL-XX       续演当前拍（问题未兑现·正逼近临界·指针不动·无写入·旧名 stay）", file=sys.stderr)
     print("  advance SL-XX 拍名 推进指针（校验拍名在拍序中·禁回退·重规划走 storyline rewrite）", file=sys.stderr)
 
@@ -4108,6 +4615,10 @@ def _validate_storyline(line) -> str | None:
             return f"拍名 '{nm}' 缺戏剧问题（本拍必须回答的、有边界的戏剧问题·禁止空值）"
         if any(word in ev for word in ("加剧", "深化", "持续", "不断")) and not any(mark in ev for mark in ("？", "?")):
             return f"拍名 '{nm}' 的戏剧问题是无界持续描述（改写为可回答的戏剧问题）"
+    if len(names) == 1:
+        return "拍序仅1拍——新线从铺垫/接触起拍·至少含2拍·余波由 advance 推进到达"
+    if names and names[0] == "余波":
+        return "首拍为余波——新线从铺垫/接触起拍·余波由 advance 推进到达"
     return None
 
 
@@ -4167,14 +4678,14 @@ def _empty_beat_warnings(line) -> list[str]:
         missing = [f for f in ("空间", "时间", "戏剧问题") if not str(b.get(f, "")).strip()]
         if missing:
             warns.append(f"拍 '{nm}' 内容不完整（缺: {'/'.join(missing)}）——建线应预设完整拍序·现实与空拍无法承接·需 rewrite 补填")
-    # 首拍即终点提醒（软性·复用本检查位·不硬拦）：单拍余波 / 首拍为余波·顶点 = 起点即终点·应从铺垫/接触起拍
+    # 存量提醒（validate/遗留数据·新建由 _validate_storyline 硬拦）：单拍/首拍余波·顶点
     if isinstance(seq, list) and seq:
         _first = seq[0] if isinstance(seq[0], dict) else {}
         _first_beat = str(_first.get("拍名", "") or "").strip()
         if len(seq) == 1 and _first_beat == "余波":
-            warns.append("单拍余波线（起点即终点·新线应从铺垫/接触起拍·余波只能走出来不能add出来）")
+            warns.append("单拍余波线——新线从铺垫/接触起拍·至少含2拍·余波由 advance 推进到达（存量线走 rewrite 补拍序）")
         elif _first_beat in ("余波", "顶点"):
-            warns.append(f"首拍为'{_first_beat}'（起点即终点嫌疑·新线应从铺垫/接触起拍）")
+            warns.append(f"首拍为'{_first_beat}'——新线从铺垫/接触起拍·余波由 advance 推进到达（存量线走 rewrite 补拍序）")
     return warns
 
 
@@ -4226,7 +4737,7 @@ def cmd_storyline(world_dir: Path, extra: list[str], stdin_text: str | None = No
         write_yaml(fp, data)
         print(f"[OK] {STORYLINE_TOP_KEY} 事件线 {n} 已建（{sub}）——起点指针由③导演 ###BEAT: set {n} <起点拍> 落 direction")
         _warn_empty_beats(n, line)
-        return
+        return n
 
     if sub in ("rewrite", "close", "clear"):
         if len(extra) < 2:
@@ -4351,7 +4862,13 @@ def cmd_beat(world_dir: Path, extra: list[str]):
         cur_line = str(dr.get("当前事件线", "") or "").strip()
         cur = str(dr.get("当前拍", "") or "").strip()
         if cur_line == sid and cur and cur in names and names.index(cur) > names.index(target):
-            print(f"[ERR] 当前拍回退（{cur}→{target}）不允许——节拍只向前推进（重规划走 ###STORYLINE: rewrite {sid}）", file=sys.stderr)
+            print(f"[ERR] 当前拍回退（{cur}→{target}）不允许——节拍只向前推进（重规划走 ###STORYLINE: rewrite {sid}；误推进走快照恢复 snap.py load / 无快照手工重建 write-raw --batch --force＋残留扫描＋validate·见 rollback.md）", file=sys.stderr)
+            sys.exit(1)
+    if sub == "set":
+        cur_line = str(dr.get("当前事件线", "") or "").strip()
+        cur = str(dr.get("当前拍", "") or "").strip()
+        if cur_line == sid and cur and target != cur:
+            print(f"[ERR] set 仅用于跨线切换/空指针初始/同拍重锚——当前指针已在事件线 {sid}（当前拍={cur}）·同线换拍用 advance {sid} <下一拍>/续演用 deepen {sid}（禁以 set 同线指拍·防绕过 advance 禁回退与顶点出线核验；rewrite 后重建顶点基线用同拍 set {sid} {cur} 重锚）", file=sys.stderr)
             sys.exit(1)
     dr["当前事件线"] = sid
     dr["当前拍"] = target
@@ -5016,10 +5533,29 @@ def _region_consistency(world_dir: Path) -> str | None:
     if pos_node != scene_node:
         pov_name = pov_fp.name[len(CHAR_STATE_PREFIX):-len(CHAR_STATE_SUFFIX)]
         return (
-            f"区域一致性 FAIL——POV '{pov_name}' 所在区域节点 '{pos_node}' ≠ 焦点场景 {scene_dir.name} "
+            f"区域一致性 FAIL——POV '{pov_name}' 所在区域节点 '{pos_node}' ≠ 焦点场景 {get_scene_dir(world_dir).name} "
             f"区域节点 '{scene_node}'（空间已变·场景切换未执行——按 scene_management §移动场景协议 主判据先执行场景切换流程再继续落盘）"
         )
     return None
+
+
+def cmd_cast_baseline(world_dir: Path):
+    """场景 cast 基线查询（只读·exit 0 恒过）——输出当前焦点场景的基线名单与 scene_card 两栏覆盖情况。
+
+    口径与 gate keeper cast 覆盖检查同源（_scene_cast_baseline / _cast_overlap_missing）：
+    调度单四层点名角色无条件入基线；常驻NPC/关联角色按当前时刻时间线命中本场者入基线
+    （子区域位置命中计入本场）。scene_management §6：init_scene 焦点切换后、写 scene_card 前运行，
+    基线名单照填「出场角色」/「焦外/在场」两栏。"""
+    baseline = _scene_cast_baseline(world_dir)
+    missing = _cast_overlap_missing(world_dir, baseline)
+    scene_dir = get_scene_dir(world_dir)
+    print(f"[CAST-BASELINE] 焦点场景: {scene_dir.name if scene_dir else '（无焦点场景）'}")
+    print(f"  基线名单({len(baseline)}): {'、'.join(sorted(baseline)) if baseline else '（空）'}")
+    if missing:
+        print(f"  缺失(须补入「出场角色」或「焦外/在场」两栏之一·具名·虚词不算覆盖): {'、'.join(missing)}")
+    else:
+        print("  cast 覆盖完整 ✅")
+    return 0
 
 
 def cmd_round_check(world_dir: Path):
@@ -5187,7 +5723,7 @@ def cmd_precheck(world_dir: Path):
                 if isinstance(_b, dict) and str(_b.get("拍名", "") or "").strip() == "顶点":
                     cons = _b.get(CLIMAX_CONSTRAINT_KEY)
                     break
-        req = "③导演按顶点出线核验（advance 余波须带 爆破结算+张力结算 双表态）；⑥作家本轮=顶点轮（叙事下限 +300 字）"
+        req = "③导演按顶点出线核验（advance 余波须带 爆破结算+张力结算 双表态）；⑥作家本轮=顶点轮（动笔前定靶：长度目标 +300 字·见 phase_writer「长度与风格」）"
         if isinstance(cons, dict):
             findings.append(("●", f"当前拍=顶点（{cur_sl}）·顶点约束齐备", req, "gate director 出线核验"))
         else:
@@ -5221,6 +5757,16 @@ def cmd_precheck(world_dir: Path):
             findings.append(("○", f"循环世界（在轨{_loop_names.__len__()}名·本轮无循环角色调度）",
                              "④角色走轻量推演·本轮无调度则不强制覆盖（有调度/升档关联时恢复 ●）",
                              "—"))
+    # ── 场景基线 cast 覆盖（⑤场记义务·本场景应出现角色须入 scene_card cast）──
+    #   判据与 gate keeper 同源：_scene_cast_baseline（POV∪本场常驻NPC∪conflicts关联∪调度单）。
+    #   常驻NPC 只取按当前时刻时间线命中本场者（NPC 会动·时间线命中别处不硬套），无时间线者按注册地保守纳入。
+    #   本阶段=机械义务清单（只报「缺不缺」·不替导演/场记决定排哪层——去向由各自层内正向规则定）。
+    _bl_roles = _scene_cast_baseline(world_dir)
+    _scene_missing = _cast_overlap_missing(world_dir, _bl_roles)
+    if _scene_missing:
+        findings.append(("●", f"进入/处于场景基线：本场景应出现角色未入 cast（缺: {'/'.join(sorted(_scene_missing))}）",
+                         "⑤场记本批按 cast 派生源物化 scene_card cast——常驻NPC 入『出场角色』(焦内) 或『焦外/在场』(焦外)·时间线命中别处的角色不入 cast（按 REGION 静态归属保守纳入者需复核当前时刻）",
+                         "gate keeper 转场后硬拦"))
     # ── 变质判定门槛已满足（④角色本批应升档·与 A0 硬检同门槛）──
     _promotable = [n for n, d in _char_states
                    if str(d.get("压力水平", "") or "").strip() == AUTO_PROMOTE_PRESSURE
@@ -5675,7 +6221,7 @@ def cmd_migrate(world_dir: Path, world_name: str):
 def main():
     parser = argparse.ArgumentParser(description="WorldSim 批量状态管理 V2")
     parser.add_argument("world", help="世界名")
-    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "storyline", "beat", "reset-cycle", "round-check", "migrate", "tmp-clean", "map-sync", "init-states", "lint", "fix", "in-track", "precheck"])
+    parser.add_argument("action", choices=["read", "write", "write-raw", "append-raw", "delete", "convert", "validate", "audit", "grep", "scan", "gate", "storyline", "beat", "reset-cycle", "round-check", "migrate", "tmp-clean", "map-sync", "init-states", "lint", "fix", "in-track", "precheck", "cast-baseline"])
     parser.add_argument("--files", help="read 时限定文件 key 列表，逗号分隔")
     parser.add_argument("--full", action="store_true", help="write 时全量覆写")
     parser.add_argument("--batch", action="store_true", help="write-raw/append-raw 批量模式：stdin 为 ###FILE/###KEY/###APPEND 记录格式（⚠非幂等：APPEND 重复执行会重复追加·同一批次只执行一次·验证用 read/validate/--dry-run）")
@@ -5734,6 +6280,8 @@ def main():
         sys.exit(cmd_reset_cycle(world_dir, args.world, asset=args.asset))
     elif args.action == "round-check":
         cmd_round_check(world_dir)
+    elif args.action == "cast-baseline":
+        sys.exit(cmd_cast_baseline(world_dir))
     elif args.action == "precheck":
         sys.exit(cmd_precheck(world_dir))
     elif args.action == "migrate":
