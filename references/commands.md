@@ -20,6 +20,7 @@
 | write-raw（批量·预演） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --dry-run` | 解析+audit+对比磁盘差异（新增/覆盖/无变化/顶回），**不落盘**——重跑批次/脚本改过 change set 后先跑这个 |
 | write-raw（批量·回退） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --force` | **显式回退专用**——绕过 audit ④ 轮次单调/⑬b 轨迹覆盖写（无快照手工重建时用·见 rollback.md）；其余硬性检查照常·非幂等同前·回退后必做残留扫描+validate |
 | write-raw（批量·重提） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --resume-from <段N>` | **合并批失败后重提**：只执行段 N 及其后（段号按原始批次 1 起始·免重跑已成功段）；须先按 stderr 的 `[BATCH-FAIL]` 报告，把已落盘的 `###STORYLINE/###BEAT` 从重提内容中剔除，再先 `--dry-run` 预演确认无 `[无变化]` 误报 |
+| write-raw（批量·维护） | `python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --maintenance --file <临时文件>` | **同轮续批/字段修复/数据归一专用**——豁免段级完整性闸（角色覆盖/ACTION↔decision 共现/必含项/施压方向/轨道/cast），op 级合法性照常（格式/白名单/单写者/结构化 APPEND/轮次单调）。一批只含增量 op（已落盘 KEY 幂等重写、APPEND 靠查重）·不得用于常规六阶段推进 |
 | append-raw（单字段追加） | `python3 {skill_dir}/scripts/worldctl.py <世界> append-raw <文件key> <YAML键> "内容"` |
 | audit（预检） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> audit` | 只校验不落盘；通过 → `AUDIT OK`；硬性违规 → 列出全部 exit 1；仅软性警告 → 打印警告 exit 0 |
 | validate | `python3 {skill_dir}/scripts/worldctl.py <世界> validate` | YAML 格式报错 + 内容级警告（load 后/跨 Session 恢复后必跑；含同物理地点场景元素继承检查） |

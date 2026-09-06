@@ -1,7 +1,7 @@
 ---
 name: worldsim
 description: 世界模拟器 · 故事引擎 · 即兴戏剧 · 角色扮演。本地持久化世界状态（运行会在 worlds 数据目录下创建、修改和删除本地文件——缺省 worlds/，可由环境变量 WORLDSIM_WORLDS_DIR 指向你自己的目录）、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟、且请求指向具体世界（如启动/继续/进入XXXX世界，或明确要求创建XXXX世界/导入角色卡至XXXX世界）时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活，与已有世界无关的泛化扮演/role-play 请求也不激活。
-version: 0.26.3
+version: 0.27.0
 metadata:
   openclaw:
     requires:
@@ -114,7 +114,7 @@ metadata:
 | Result | ⑤场记 `scene_state` `world_state` / ⑥作家 `narration` |
 | Re-plan | 下一轮①戏剧家结算/压力注册 + ②编剧重规划 + ③导演回判 + ④角色React |
 
-**角色层 React**（阶段④内部微循环，详见 references/phase_actor.md）：
+**角色层 React**（阶段④内部微循环·编排见 references/phase_actor.md·决策环 1.1–1.5 细则见 references/actor_decision.md）：
 
 | 环节 | 现有承载 |
 |---|---|
@@ -157,6 +157,7 @@ worlds/{世界名}/
 | 文件 | 何时读 |
 |---|---|
 | references/phase_*.md（dramatist/storyliner/director/actor/keeper/writer） | 本会话首次到达该阶段前必读该阶段文件；此后仅重路径命中（建线/close/clear/顶点出线/explicit/对话轮）或被该阶段 gate 连续拦截 2 次时重读 |
+| references/actor_decision.md | ④角色决策环/写入/批次格式执行时（单窗口路径由主 agent 加载·子 agent 路径由子 agent 自读） |
 | references/gates.md | 标准模式人工审计 |
 | references/disclosures.md | 会话首轮进入模拟 / 破坏性操作前 |
 | references/keys.md | 写字段不确定时（键表/写语义） |

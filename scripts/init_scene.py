@@ -84,6 +84,27 @@ def main():
 
     # ── --place 预检：档案指针必须存在（相对世界目录·如 regions/甜水镇/REGION.md）──
     if place_archive:
+        # 路径兼容归一（先归一再安全解析）：
+        #   ① 绝对路径 → 相对世界目录（越界即拒）；② 误带世界根前缀 worlds/<世界名>/... → 剥离；
+        #   ③ 传目录 → 自动补 REGION.md。三种写法等价：目录 / 相对REGION.md / 绝对REGION.md。
+        _pa = place_archive.strip().strip('"').replace("\\", "/")
+        _ws_abs = Path(os.path.abspath(world_dir))
+        if Path(_pa).is_absolute() or (len(_pa) > 1 and _pa[1] == ":"):
+            try:
+                _pa = os.path.relpath(os.path.abspath(_pa), _ws_abs)
+            except ValueError:
+                print("[ERR] --place 绝对路径无法相对化到世界目录——拒绝", file=sys.stderr)
+                sys.exit(1)
+            if _pa.startswith(".."):
+                print(f"[ERR] --place 绝对路径不在世界目录内（{place_archive}）——拒绝", file=sys.stderr)
+                sys.exit(1)
+        _parts = [p for p in Path(_pa).parts if p not in (".", "")]
+        if len(_parts) >= 2 and _parts[0] == "worlds" and _parts[1] == world_dir.name:
+            _parts = _parts[2:]
+        _cand = Path(*_parts) if _parts else Path()
+        if (world_dir / _cand).is_dir() and (world_dir / _cand / "REGION.md").is_file():
+            _cand = _cand / "REGION.md"
+        place_archive = str(_cand)
         place_fp = resolve_within(world_dir, place_archive, "--place 档案")
         if not place_fp.is_file():
             print(f"[ERR] --place 档案不存在（{place_fp}）——检查 regions/ 路径或补建档案（模板: templates/REGION.md）", file=sys.stderr)
