@@ -163,7 +163,7 @@ WorldSim can import **SillyTavern-compatible character cards** (`.png` with embe
 | Become a character, live through their eyes | 「switch to Dolores」 |
 | Switch / create scenes | `/scene <ID>` · `/scene new <name>` |
 | Sync the log (tell the engine the latest changes) | `/sync` |
-| Save / load (auto-backup `_before_` before load, rollback-able) | `/save [name]` · `/load <name>` |
+| Save / load (⚠ load overwrites current state — auto-backup `_before_`, rollback-able) | `/save [name]` · `/load <name>` |
 | Reopen a scene | `/reset-scene [scene ID]` |
 | Restart the whole world | `/reset` |
 | Import a ready-made character card | `/import-card <card.png...>` |

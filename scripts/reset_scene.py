@@ -3,14 +3,14 @@
 # 用法: python3 scripts/reset_scene.py <世界名> [<场景ID>] [--force]
 #   <场景ID> 缺省 = 当前焦点场景（world_state.焦点场景）；支持短 ID（S05）或完整目录名
 # 回退体系：L1 世界级 snap.py load（快照·主动存档）/ L2 场景级本脚本 / L3 手工重建（详见 references/rollback.md）
-# 破坏性操作（重置前自动存档·可回滚）：
+# 破坏性操作（重置前自动存档·可回滚；存档失败即中止）：
 #   - narrative.md → 轮转归档为 narrative.r{轮次}.<时间戳>.md（保留历史叙事·轮次=叙事内容首行或 world_state 顶层轮次·无轮次时纯时间戳），新 narrative.md 置空
 #   - scene_state.yaml：场景时间线 → ''；核心状态 → 待填充占位（按 start_snapshot.md 恢复开场状态）
 #   - 静态基线保留：物理锚点/道具/关键场景信息/出场角色摘要（场景物理定义，不因重置销毁）
 #   - world_state 时间/轮次回退至场景开场（start_snapshot 冻结时间/开场轮次）——「时间只增不减」只约束正常推进·显式重置是主动回退例外
 # 重置后：按 start_snapshot.md 重新填充 scene_state 核心状态并继续叙事（世界时间/轮次已与场景开场一致）
 # 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
-import os, re, subprocess, sys, yaml
+import os, re, sys, yaml
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -22,7 +22,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _paths import SCRIPT_DIR, assert_no_links, resolve_world, validate_name
+from _paths import assert_no_links, resolve_world, snapshot_or_abort, validate_name
 
 
 def main():
@@ -81,10 +81,9 @@ def main():
             print("已取消")
             sys.exit(0)
 
-    # ── 安全网：自动存档（可回滚）──
+    # ── 安全网：自动存档（可回滚·存档失败即中止——不可回滚就不执行破坏性重置）──
     snapname = f"_before_reset_scene_{scene_base}_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    p = subprocess.run([sys.executable, str(SCRIPT_DIR / "snap.py"), world, "save", snapname], capture_output=True)
-    print((p.stdout or b"").decode("utf-8", "replace") + (p.stderr or b"").decode("utf-8", "replace"), end="")
+    snapshot_or_abort(world, snapname)
 
     # ── 1. narrative.md 轮转归档 + 置空 ──
     narr_file = scene_dir / "narrative.md"
@@ -199,7 +198,7 @@ def main():
     print("下一步: 戏剧家按 start_snapshot.md 重新填充 scene_state 核心状态，继续叙事")
     print("")
     print("【回退后必查·脚本不自动处理·LLM 按 references/rollback.md 涉及文件清单逐项核对】:")
-    print("  1. conflicts.yaml         CT 关系状态/内部状态/相位回退·拍指针对照 snapshot 开场态重设")
+    print("  1. conflicts.yaml         CT 上轮结算.关系状态/上轮结算.内部状态/相位回退·拍指针对照 snapshot 开场态重设")
     print("  2. direction.yaml         写作指针对照 snapshot 开场态重设·escalation_flags 清空/重估")
     print("  3. CHAR_*_state.yaml      核心状态/情绪/位置恢复开场形态；记忆锚点/连续行动轨迹/信念演化/偏离登记按开场轮次裁剪")
     print("                            （外部者如 Guest 必须裁剪未来记忆·Host 可保留作既视感/碎片素材）")

@@ -2,7 +2,7 @@
 # _paths.py — 路径推导单一事实源（worlds 根 / 世界目录解析 / 破坏性删除安全网）
 # scripts/ 下所有脚本一律经本模块推导路径，禁止各脚本自行推导 worlds 根。
 # I/O 纪律（硬性）：stdout/stderr 显式 UTF-8（Windows 缺省 GBK）；路径禁止硬编码。
-import os, re, shutil, sys
+import os, re, shutil, subprocess, sys
 from pathlib import Path
 
 for _s in (sys.stdout, sys.stderr):
@@ -131,3 +131,22 @@ def safe_unlink(path: Path) -> None:
         _die(f"待删除路径是目录，请用 safe_rmtree: {path}")
     if path.exists() or path.is_symlink():
         path.unlink()
+
+
+def snapshot_or_abort(world: str, snapname: str, timeout: int = 120) -> None:
+    """破坏性操作前置安全网：存档快照，失败即中止（fail-closed）。
+
+    快照是破坏性操作唯一的回滚锚点——创建失败仍继续执行 = 不可恢复的数据丢失，
+    且对用户承诺的「自动存档可回滚」不成立。故无法执行 / 超时 / 非 0 退出
+    （含残破快照目录）一律中止。
+    """
+    try:
+        p = subprocess.run(
+            [sys.executable, str(SCRIPT_DIR / "snap.py"), world, "save", snapname],
+            capture_output=True, timeout=timeout,
+        )
+    except Exception as e:
+        _die(f"安全存档无法执行（{e}），已中止破坏性操作——快照名: {snapname}")
+    print((p.stdout or b"").decode("utf-8", "replace") + (p.stderr or b"").decode("utf-8", "replace"), end="")
+    if p.returncode != 0:
+        _die(f"安全存档失败（exit {p.returncode}），已中止破坏性操作——快照名: {snapname}")

@@ -97,10 +97,13 @@ def process(path):
     return replaced, skipped
 
 if __name__ == '__main__':
-    # worlds 根经 _paths 单一事实源推导（缺省 {skill_dir}/worlds），禁止硬编码绝对路径
+    # 世界目录经 _paths 单一事实源收敛（名称校验/链接拦截/越界拒绝）——禁止任意路径参数
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    from _paths import worlds_root
-    snaps = sys.argv[1] if len(sys.argv) > 1 else os.path.join(worlds_root(), 'westworld', 'snaps')
+    from _paths import resolve_world
+    if len(sys.argv) != 2:
+        print("用法: clean_conflicts_pronouns.py <世界名>（清洗 {世界}/snaps/*/conflicts.yaml）", file=sys.stderr)
+        sys.exit(2)
+    snaps = resolve_world(sys.argv[1]) / 'snaps'
     total_r = total_s = 0
     for p in sorted(glob.glob(os.path.join(snaps, '*', 'conflicts.yaml'))):
         r, s = process(p)

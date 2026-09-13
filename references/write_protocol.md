@@ -15,21 +15,25 @@
 3. **收尾自查（每轮必做·write-raw 后）：** 按 references/phase_keeper.md「场记三问收尾自查」逐条核对——①痕迹完整：时间/轮次/前情→world_state · CT→conflicts · 出场/退场角色逐一→CHAR_state（退场=位置转焦外）· 道具线索→scene_state · 焦外→pending_actions · 新区域→world_map；②落点=焦点场景目录；③连续性=时间/轮次/存档一致。**validate 通过 ≠ 自查通过**（audit 只查格式违规，查不出「该写的角色没写」这类语义漏痕）。
 4. **回退是低频例外·每轮零额外动作**——回退不走 write-raw（audit 拦截「轮次非单调」）；回退 = `snap.py load`（快照·主动存档）或手工重建（详见 references/rollback.md）。关键节点（场景切换/剧情转折）主动 `snap.py save` 一次，比任何自动机制都便宜。
 
-**audit 语义不变量（对应闸门中可代码化的部分）：** 硬性（写入时单字段顶回）——① 行动卡三件套（`###ACTION:` 行 驱动/情绪/强度 缺一拒绝）+ 有条件代价（关联CT∈①推进池且施压方向∈四爆破或当前拍戏剧问题∈资源/关系/控制权/认知类时`代价:`必填且后非空·其余过渡豁免软警·④角色批）+ 行动角色 decision 就绪（骨架首次物化写全八项，已物化角色更新运行层六项）；② 被争夺资源必须含 `当前载体=`/`当前持有者=`；④ `world_state.轮次` 单调递增；⑤ `scene_state` 落点必须有焦点场景目录——**落点校验在执行路径（write-raw 写入时）强制**；独立 audit 预检与 gate 仅软提示（场景目录由启动序列入场物化（初始场景）/⑤场记 init_scene（切换场景）创建·先于批次写入·见 session_recovery.md 第二章 / scene_management.md §场景切换流程）。软性（不拦截·validate 汇总）——③ 记忆锚点单条 ≤100 字、写入后总量 ≤3000。
+**audit 语义不变量（对应闸门中可代码化的部分）：** 硬性（写入时单字段顶回）——① 行动卡三件套（`###ACTION:` 行 驱动/情绪/强度 缺一拒绝）＋ `代价:` 写了即须非空且不含不可核验抽象词 ＋ 行动角色 decision 就绪（骨架首次物化写全八项，已物化角色更新运行层六项）；② 被争夺资源必须含 `当前载体=`/`当前持有者=`；④ `world_state.轮次` 单调递增；⑤ `scene_state` 落点必须有焦点场景目录——**落点校验在执行路径（write-raw 写入时）强制**；独立 audit 预检与 gate 仅软提示（场景目录由启动序列入场物化（初始场景）/⑤场记 init_scene（切换场景）创建·先于批次写入·见 session_recovery.md 第二章 / scene_management.md §场景切换流程）。软性（不拦截·validate 汇总）——③ 记忆锚点单条 ≤100 字、写入后总量 ≤3000；④ **有条件代价缺省**（关联CT∈①推进池且施压方向∈四爆破、或当前拍戏剧问题∈资源/关系/控制权/认知类可回答问题时应写·过渡/寒暄/轻量刷新豁免·④角色批）。
 
-stdout 回传无需任何处理，直接忽略。不向用户发送消息。**唯一例外：回显含 `?` 替身（如 `回显: ???`）= 内容已在管道中损坏——立即中止本批自查修正，禁止继续写入。** 沉浸模式（全局默认）下回复正文同样不输出（见 SKILL.md「输出模式」）——各阶段写入照常执行，落盘错误（[FAIL]/[ERR]）必须报告，不可静默。
+stdout 回传无需任何处理，直接忽略。**写入过程不向用户发送消息**（输出模式与回合终点口径见 SKILL.md「输出模式」·单一权威）。**唯一例外：回显含 `?` 替身（如 `回显: ???`）= 内容已在管道中损坏——立即中止本批自查修正，禁止继续写入。** 各阶段写入照常执行，落盘错误（[FAIL]/[ERR]）必须报告，不可静默。
 
 ---
 
 ## 阶段批次规范（每阶段直写各自文件）
 
-> **每阶段产出自己的 write-raw --batch 批次（默认形态·Single Writer per State）**——批次首行 `###STAGE: <阶段名>`（戏剧家/编剧/导演/角色/场记·声明后 audit 按该阶段必含项与写入矩阵检查·越权硬拦）；段级闸门内嵌落盘前执行（必含项缺失/硬性违规=整批拦截 exit 1 不落盘·作家除外）。各阶段格式与示例见对应 phase_*.md。
-> **运行时合并（仅限结构层）：** 单批多段（批次内重复出现 `###STAGE:` 行即切段，audit 与闸门逐段独立执行，检查项/写入矩阵/单字段顶回语义均不变）。**允许多段合批仅限 `[①戏剧家②编剧③导演]` 结构合批；④角色与⑤场记必须单段独批**——`[①-④]`/`[④⑤]`/`[①-⑤]` 跨层合批=`[BATCH-FAIL]` 零副作用整体拦截（`--resume-from` 重提·`--force` 回退豁免）。④读已落盘 direction/conflicts 后决策，⑤读已落盘④ CHAR_state 后记录；合批投机生成一律拒绝。**失败语义**：段级原子——闸门拦截=该段零副作用、后续段未执行；单字段顶回=其余照写本段仍 `[OK]`；重提用 `--resume-from` 只跑失败段及其后，已落盘段不重放（APPEND `[SKIP]` 去重兜底）。**部分落盘重提（轮次防卡死·方案一）：** write_one 执行阶段失败（如 scene_state 解析错/落点错）时——轮次/时间等**已先落盘**，磁盘轮次已=新值；重提（`--resume-from <本段号>`）时 `world_state.轮次` 走**防倒退语义**（`new==old` 放行=继续完成本轮·`new<old` 仍拦=禁止真回退）；不加 `--resume-from` 直接重提仍按推进语义拦（`new<=old` 拦·错误消息提示加 `--resume-from`）。**注意区分**：重提完成（轮次相同放行）≠ 显式回退（`--force`·轮次可回退·见 rollback.md）。
+> **写批次前先读 keys.md 对应节**——字段写语义（键表/值域/格式约束）以 keys.md 为权威；本节只列「本阶段写哪些字段、走哪条通道」。
+
+> **每阶段产出自己的 write-raw --batch 批次（默认形态·Single Writer per State）**——批次首行 `###STAGE: <阶段名>`（戏剧家/编剧/导演/角色/场记·声明后 audit 按该阶段必含项与写入矩阵检查·越权硬拦）；段级闸门内嵌落盘前执行（必含项缺失/硬性违规=整批拦截 exit 1 不落盘·作家除外）。**v0.28 调度口径（详见 runtime_scheduler.md）：** ①/② 为条件段——被调度指令/基线/兜底唤醒才批（**触发批必含**相应必含项）；③ 恒跑——**日常轮最小批（META「回判 无结构信号·复用」·无其他 write）放行**，结构轮/初始化轮全量批；④⑤⑥ 每轮批（快路径）。各阶段格式与示例见对应 phase_*.md。
+> **运行时合并（仅限结构层）：** 单批多段（批次内重复出现 `###STAGE:` 行即切段，audit 与闸门逐段独立执行，检查项/写入矩阵/单字段顶回语义均不变）。**允许多段合批仅限 `[①戏剧家②编剧③导演]` 结构合批；④角色与⑤场记必须单段独批**——`[①-④]`/`[④⑤]`/`[①-⑤]` 跨层合批=`[BATCH-FAIL]` 零副作用整体拦截（`--resume-from` 重提·`--force` 回退豁免）。④读已落盘 direction/conflicts 后决策，⑤读已落盘④ CHAR_state 后记录；合批投机生成一律拒绝。**失败语义**：段级原子——闸门拦截=该段零副作用、后续段未执行；**解析失败**（空值 `###KEY:` 覆盖 / `###DELETE` 格式错 / 内容行内嵌标记）=该批零副作用整体拦截（任何模式含 `--dry-run`/`--force`/`--maintenance`·不静默跳过）；单字段顶回=其余照写本段仍 `[OK]`；重提用 `--resume-from` 只跑失败段及其后，已落盘段不重放（APPEND `[SKIP]` 去重兜底）。**部分落盘重提（轮次防卡死·方案一）：** write_one 执行阶段失败（如 scene_state 解析错/落点错）时——轮次/时间等**已先落盘**，磁盘轮次已=新值；重提（`--resume-from <本段号>`）时 `world_state.轮次` 走**防倒退语义**（`new==old` 放行=继续完成本轮·`new<old` 仍拦=禁止真回退）；不加 `--resume-from` 直接重提仍按推进语义拦（`new<=old` 拦·错误消息提示加 `--resume-from`）。**注意区分**：重提完成（轮次相同放行）≠ 显式回退（`--force`·轮次可回退·见 rollback.md）。
 > **无 `###STAGE:` 声明的批次**（恢复轮/维护批/回退批）按整批处理：不切段、不跑阶段闸门、仅 audit 通用检查（`--force` 回退批全程跳过阶段闸门）。
 > **场记批自动附跑（信息性）：** 场记批次落盘后脚本自动附跑 round-check 报告（仅报告不拦截）——FAIL=按 phase_keeper「轮完整性收尾检查」修复或上报；其他阶段的批次不附跑。
-> **批次级元数据行（不产生写入 ops·不落盘）**：`###STAGE:` 阶段声明｜`###META:` 静默自查锚点｜`###STORYLINE:` 结构动作（add/rewrite 后跟事件线 YAML 块·②编剧·写 storylines）｜`###BEAT:` 演出指针动作（set/deepen/advance·③导演·写 direction）｜`###ACTION:` 行动卡（四件套+耗时·④角色·audit ①/①b/⑨ 检查对象）｜`###SCHEDULE:` 行动链留痕（④角色·不落盘·不裁决调度——调度权威=③ direction.调度单）。`###STORYLINE/###BEAT` 由 write-raw 自动执行对应子命令（失败=批次拦截 exit 1·LLM 不手动调用）。**「新线」引用（硬性）：** `###STORYLINE: add` 的事件线编号（SL-XX）由脚本自动递增分配（LLM 不可预知）——同批/合批内对刚建线的指针操作一律写 `###BEAT: set 新线 <起点拍>`；「新线」由脚本替换为本批 add 实际分配的 SL-XX（跨段可用：②段 add → ③段 set 新线）。**禁止**在 add 前预写 `SL-XX`（编号猜错=`[ERR] 事件线不存在`·批次拦截）；跨批引用已建线/非本批新线写实际 `SL-XX`（read states/storylines.yaml 后填）。
-> **KEY / APPEND 语义边界（硬性）：** `###KEY:` = **字段级全量替换**——结构化列表字段（记忆锚点/已知地点/信念演化/偏离登记）content 为合法 yaml 列表文本（`- item` / `[]`）时解析为列表写入，否则原始文本覆盖；`###APPEND:` = **结构化增量**（列表元素 `- item` / 串行元素 `· item`）。列表初值：APPEND（空字段=建列表）或 KEY 全量替换；列表全量重写：KEY 覆盖列表文本；列表清空：KEY 覆盖 `[]`（禁用 `''`——会留空串·被后续 APPEND 误解为旧锚点·生成脏 dict）。
-> **白名单之外的结构化字段（硬性）：** 上述四个列表字段之外、值为 `- item` 列表的字段（`world_map.已探索区域` 及其子区域）**禁用 write-raw**——content 会被当原始文本覆盖，把列表写成字符串（类型损坏）→ 一律走 `write`（YAML diff 合并·见 §⑤/§结构化短字段）。
+> **批次级元数据行（不产生写入 ops·不落盘）**：`###STAGE:` 阶段声明｜`###META:` 静默自查锚点｜`###STORYLINE:` 结构动作（add/rewrite 后跟事件线 YAML 块·②编剧·写 storylines）｜`###BEAT:` 演出指针动作（set/deepen/advance·③导演·写 direction）｜`###MUSE:` 角色心流（④角色·不落盘·排在对应 `###ACTION:` 之前·条件化随后的行动）｜`###ACTION:` 行动卡（三件套+有条件代价+耗时·④角色·audit ①/①b/⑨ 检查对象）｜`###SCHEDULE:` 行动链留痕（④角色·不落盘·不裁决调度——调度权威=③ direction.调度单）。`###STORYLINE/###BEAT` 由 write-raw 自动执行对应子命令（失败=批次拦截 exit 1·LLM 不手动调用）。**「新线」引用（硬性）：** `###STORYLINE: add` 的事件线编号（SL-XX）由脚本自动递增分配（LLM 不可预知）——同批/合批内对刚建线的指针操作一律写 `###BEAT: set 新线 <起点拍>`；「新线」由脚本替换为本批 add 实际分配的 SL-XX（跨段可用：②段 add → ③段 set 新线）。**禁止**在 add 前预写 `SL-XX`（编号猜错=`[ERR] 事件线不存在`·批次拦截）；跨批引用已建线/非本批新线写实际 `SL-XX`（read states/storylines.yaml 后填）。
+> **KEY / APPEND 语义边界（硬性）：** `###KEY:` = **字段级全量替换**——结构化列表字段（记忆锚点/信念演化/偏离登记/伏笔/连续行动轨迹/场景时间线/道具）content 为合法 yaml 列表文本（`- item` / `[]`）时解析为列表写入，否则原始文本覆盖；**字符串列表字段（`物理锚点`/`已知地点`）走归一通道**——列表文本与多行散文**两种输入一律由脚本归一为 `list[str]`**（类型统一·见 keys.md「物理锚点」·散文按行切分不做 YAML 折叠）。`###APPEND:` = **结构化增量**（列表元素 `- item` / 串行元素 `· item`）。列表初值：APPEND（空字段=建列表）或 KEY 全量替换；列表全量重写：KEY 覆盖列表文本；列表清空：KEY 覆盖 `[]`（禁用 `''`——会留空串·被后续 APPEND 误解为旧锚点·生成脏 dict）。
+>
+> **APPEND 去重判据（通用兜底）：** 结构化元素判重 = **规范化后全元素相等**（无专属判据的字段一律走此；`连续行动轨迹`=轮次+行动 · `场景时间线`=轮次+时间 · `伏笔`=线索 · `道具`=ID · 字符串列表=元素相等）。**禁止用「轮次+内容」这类可能缺省的键做判据**——无「内容」键的字段（信念演化/偏离登记）两侧恒取空串恒等，判据会退化成「同一轮次只准 1 条」，把同轮次的合法第二条静默 `[SKIP]` 掉。
+> **白名单之外的结构化字段（硬性）：** 上述列表字段之外、值为 `- item` 列表的字段（`world_map.已探索区域` 及其子区域）**禁用 write-raw**——content 会被当原始文本覆盖，把列表写成字符串（类型损坏）→ 一律走 `write`（YAML diff 合并·见 §⑤/§结构化短字段）。
 > 顺序 = 工作流顺序：决策先行（conflicts），世界收尾（world_state）。write-raw --batch 本身无执行顺序要求（代码按分组写盘），本顺序是规范层约定——让 LLM 按工作流组织输出，降低决策与执行脱节风险。
 
 ### ① conflicts.yaml（决策·完整推进轮 ≥1 条）
@@ -39,7 +43,7 @@ stdout 回传无需任何处理，直接忽略。不向用户发送消息。**�
 | CT 推进 | CT-XX.{上轮结算.关系状态/上轮结算.内部状态/相位/被争夺资源/紧迫度} | KEY 覆盖 | 每轮至少一条（①戏剧家·D1 硬性·上轮结算为快照） |
 | 事件线引用 | CT-XX.事件线引用（如 [SL-01]） | KEY | 关联结构（①每轮推进 CT 时核对·缺则同批补挂·validate 对账·悬空告警） |
 | CT 列表字段 | CT-XX.关联角色 / CT-XX.事件线引用 | KEY 覆盖·多行 YAML 列表（逐行 `- 名字` / `[SL-XX]`·全量含保留项+新增项）——单行文本/###APPEND 被 audit ⑮ 硬拦；名单与 characters/ 档案自动对账（无唯一匹配=软警告） | 补挂关联角色 / 建线后补挂引用 |
-| CT 注册 | CT-XX（六字段全量） | KEY | 扫描发现/兜底/目击增殖 |
+| CT 注册 | CT-XX（全字段） | KEY | 扫描发现/兜底/目击增殖 |
 | 紧迫度冷却/升级 | CT-XX.紧迫度 | KEY 覆盖（🔴→🟡→🟢→休眠） | 本轮未推进降级；客观紧急直接🔴 |
 | 删除（休眠2轮/解决） | CT-XX | DELETE | 生命周期到期 |
 | Value Boundary 标记 | CT-XX.紧迫度=🔴 + 相位=🔄 | KEY 覆盖 | 行为动词命中 |
@@ -123,15 +127,17 @@ S01
 
 ### FILE key 注册表（###FILE: 取值）
 
-| 文件 | 注册表 key | 兼容写法（自动归一化） |
-|------|-----------|----------------------|
+| 文件 | 注册表 key | 额外别名 |
+|------|-----------|---------|
 | states/conflicts.yaml | `conflicts` | — |
 | states/ 各 CHAR_state | `CHAR_{全名}_state`（空格/下划线通用） | 缺 `_state` 后缀自动补 |
 | 焦点场景 scene_state.yaml | `scene_state` | — |
 | states/world_state.yaml | `world_state` | — |
 | states/world_map.yaml | `world_map` | — |
-| scenes/{焦点场景}/pending_actions.yaml | `pending_actions` | `scenes/{焦点场景}/pending_actions` / `scenes/{焦点场景}/pending_actions.yaml` |
-| states/ 其他 *.yaml | 文件名 stem | 带路径/扩展名写法自动剥离 |
+| scenes/{焦点场景}/pending_actions.yaml | `pending_actions` | — |
+| states/ 其他 *.yaml | 文件名 stem | — |
+
+> **FILE key 统一归一化（硬性）：** 所有 key 一律先剥 `.yaml`/`.yml` 扩展名与 `states/`、`scenes/{场景}/` 等路径前缀，再查注册表——`conflicts.yaml`、`states/conflicts.yaml` 与 `conflicts` 完全等价（写入、删除、审计三条路径同源归一化）。表内「额外别名」列只列简写别名，不含此统一归一化。
 
 > 未知 FILE key 不再静默丢弃——正式写入报 `[ERR]` + 批量收尾 stdout `[FAIL]` 汇总 + exit 1；DRY-RUN 标 `[未知文件]` 并计入失败统计。注册表外 key 会被拒绝。
 >
@@ -162,7 +168,7 @@ S01
 >
 > **`###STORYLINE:` / `###BEAT:` 行：** 结构/指针动作声明（write-raw 自动执行对应子命令）；`###STORYLINE: add/rewrite` 后跟事件线 YAML 块直到下一个 `###` 行。缺失时对应阶段 gate 硬性拦截（gate storyliner/director --check）。
 >
-> **`###ACTION:` / `###SCHEDULE:` 行：** ④角色批行动卡与行动链留痕——audit ①/①b/⑨（四件套/代价可核验）与角色档案存在性检查对象；不落盘（持久记录=CHAR_state.连续行动轨迹）。
+> **`###ACTION:` / `###SCHEDULE:` 行：** ④角色批行动卡与行动链留痕——audit ①/①b/⑨（三件套/有条件代价可核验）与角色档案存在性检查对象；不落盘（持久记录=CHAR_state.连续行动轨迹）。
 
 查询轮（/status 等）整份豁免。
 
@@ -170,11 +176,11 @@ S01
 
 ## 批量写入格式（heredoc），无执行顺序要求。
 
-> **以下示例均为 bash 语法**——Windows/PowerShell 下禁止 `$var | python` 形式，一律走上方「批次文本双通道」（`--file` 引用 UTF-8 临时文件）。
+> **以下示例均为 bash 语法**——无 heredoc 的 shell（如 Windows PowerShell）禁止变量管道直喂 python，一律走下方「批次文本双通道」。
 
 ### 批次文本双通道（stdin heredoc / --file）
 
-**默认：** bash/Git Bash 下批次与叙事 stdin 直通（heredoc·`'EOF'` 免转义），不落临时文件；**PowerShell 等无 heredoc 环境：批次文本先写 UTF-8 临时文件，再一律用 `--file` 引用**（见下方 Windows 平台）。
+**默认：** bash/Git Bash 下批次与叙事 stdin 直通（heredoc·`'EOF'` 免转义），不落临时文件；**无 heredoc 的 shell（如 PowerShell）：批次文本先写 UTF-8 临时文件，再一律用 `--file` 引用**（见下方「无 heredoc 的 shell」）。
 
 ```
 bash/Git Bash : cat << 'EOF' | python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch
@@ -185,11 +191,11 @@ PowerShell    : python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --bat
 
 **行尾硬性（所有平台·统一 LF·防值污染）：** 所有写盘（临时文件与持久文件）必须 LF 行尾——脚本写盘统一 `newline=""`（见 scripts/ 各脚本），LLM/手工写临时文件同样必须 LF。**Windows 下缺 LF = 写出 CRLF，worldctl 批次解析器只按 `\n` 切（`raw_stdin.split("\n")`），每行尾部残留 `\r` 污染值（实测：字段值带 `\r`，后续 YAML 解析/校验出错）。** 写临时文件时若用代码生成，须显式 `newline=""`；禁止依赖 os.linesep。
 
-**编码硬性（所有平台·防文件损坏）：** 中文/多行内容**一律经编码安全通道写入**（`write-raw --batch` 的 stdin heredoc 或 `--file` 批次文件）——**禁止把中文内容作为 CLI 参数传给 write-raw / write 单字段**（CLI 参数与 stdin 文本读取随 locale 解码·在非干净 UTF-8 环境会把文件写成非法字节·实测 `0x8c` 损坏致 world_state 拒绝写入）；**编码安全通道 = `--batch` + `--file`**（原始字节显式 UTF-8 解码·单字段/`write` 均走 locale 解码·脆弱）。
+**编码硬性（所有平台·防文件损坏）：** 中文/多行内容**一律经 `write-raw --batch` 写入**（stdin heredoc 或 `--file` 批次文件·原始字节显式 UTF-8 解码）——**禁止把中文内容作为 CLI 参数传给 write-raw / write 单字段**（CLI 参数与 stdin 文本读取随 locale 解码·在非干净 UTF-8 环境会把文件写成非法字节·实测 `0x8c` 损坏致 world_state 拒绝写入）。
 
-**Windows 平台（PowerShell·UTF-8 中文经控制台 GBK 码页被破坏·写入内容变 `?`）：** 首选 `--file`——批次文本先写 UTF-8 临时文件（落点/命名见下），再 `python3 {skill_dir}/scripts/worldctl.py {世界名} write-raw --batch --file <临时文件>`；备选 `cmd /c "… write-raw --batch < 临时文件"` 重定向喂 stdin。**禁止 PowerShell 管道**（`Get-Content <文件> \| python3 …` 会先经 `$OutputEncoding` 转码·5.1 缺省 ASCII·中文必损坏）。
+**无 heredoc 的 shell（如 Windows PowerShell·UTF-8 中文经控制台 GBK 码页被破坏·写入内容变 `?`）：** 首选 `--file`——批次文本先写 UTF-8 临时文件（落点/命名见下），再 `python3 {skill_dir}/scripts/worldctl.py {世界名} write-raw --batch --file <临时文件>`；备选 `cmd /c "… write-raw --batch < 临时文件"` 重定向喂 stdin。**禁止 PowerShell 管道**（`Get-Content <文件> \| python3 …` 会先经 `$OutputEncoding` 转码·5.1 缺省 ASCII·中文必损坏）。
 
-**可选保险（Windows·`PYTHONUTF8=1`）：** 运行脚本前设置 `set PYTHONUTF8=1`（PowerShell：`$env:PYTHONUTF8='1'`）——Python UTF-8 模式使 stdin/stdout 与文件默认编码全为 UTF-8（locale GBK 失效），即使个别地方漏写显式编码也不损坏。
+**可选保险（无 heredoc 的 shell·`PYTHONUTF8=1`）：** 运行脚本前设置 `set PYTHONUTF8=1`（PowerShell：`$env:PYTHONUTF8='1'`）——Python UTF-8 模式使 stdin/stdout 与文件默认编码全为 UTF-8（locale GBK 失效），即使个别地方漏写显式编码也不损坏。
 
 - **落点：** 临时文件一律写 `worlds/{世界名}/tmp/`（世界内目录·无需额外权限）；禁止系统临时目录等 skill 外落点（写入需授权）
 - **命名：** `cs_r{轮次}.txt`（批次）/ `narrative_r{轮次}.txt`（叙事）·用后即删
@@ -236,9 +242,8 @@ cat << 'EOF' | python3 {skill_dir}/scripts/worldctl.py {世界名} write-raw --b
 EOF
 ```
 
-> **Windows 平台（PowerShell）备注：** 首选 `--file`（UTF-8 临时文件直读·编码安全）；备选 `cmd /c` `<` 重定向——详见上文「批次文本双通道」小节。
 >
-> **`--force`（显式回退专用·仅 `--batch`）：** 回退手工重建（无快照）时追加——`write-raw --batch --force` 绕过 audit ④ 轮次单调（轮次可回退）与 ⑬b 轨迹覆盖写（可覆盖裁剪）；其余硬性检查（行动卡四件套/载体/scene_state 落点/记忆留痕）照常拦截。非幂等同前（同一批次只执行一次·验证用 `--dry-run`/read/validate）；回退后必做残留扫描 + validate（见 references/rollback.md）。
+> **`--force`（显式回退专用·仅 `--batch`）：** 回退手工重建（无快照）时追加——`write-raw --batch --force` 绕过 audit ④ 轮次单调（轮次可回退）与 ⑬b 轨迹覆盖写（可覆盖裁剪）；其余硬性检查（行动卡三件套/载体/scene_state 落点/记忆留痕）照常拦截。非幂等同前（同一批次只执行一次·验证用 `--dry-run`/read/validate）；回退后必做残留扫描 + validate（见 references/rollback.md）。
 
 `###FILE:` 开始一个文件分组，`###KEY:` 开始一个字段（支持点分隔路径），内容原样写入至下一个 `###FILE`/`###KEY` 或 EOF。**内容允许带 YAML 风格成对包裹引号（`'…'`/`"…"`），解析器自动剥净后再落盘（多层累积一并归一，单行多行同规则）**（时间线事件等多行字符串可放心加引号书写，不会触发「· 」检测误判）；引号本身作为值的一部分时用「」或不加包裹引号。
 
@@ -261,7 +266,7 @@ EOF
 事件: ...
 ```
 
-**内容行内嵌标记（硬性错误）：** `###FILE:`/`###KEY:`/`###APPEND:`/`###STORYLINE:`/`###BEAT:` 等全部批次标记必须独占行首。内容行内出现这些标记（不在行首）= 上一字段内容与标记拼接（如脚本替换缺换行）→ audit 报「内容行内嵌标记」，该字段拒绝写入。**用脚本修改批次后必须过 audit 再落盘。**
+**内容行内嵌标记（硬性错误）：** `###FILE:`/`###KEY:`/`###APPEND:`/`###STORYLINE:`/`###BEAT:` 等全部批次标记必须独占行首。内容行内出现这些标记（不在行首）= 上一字段内容与标记拼接（如脚本替换缺换行）→ audit 报「内容行内嵌标记」，整批零副作用拦截。**用脚本修改批次后必须过 audit 再落盘。**
 
 **修改/去重数据文件的准则（防误删·硬性）——一律走脚本，禁止直接编辑 YAML：**
 - 记忆维护/去重（同类融合/淘汰/压缩/去重）→ **`###KEY: 记忆锚点` 覆盖为处理后完整 YAML 列表**（结构化列表覆盖·脚本解析为列表全量替换·见上文 KEY/APPEND 语义边界）——历史单引号折叠字符串字段经此覆盖自动归一为列表，消除解析隐患；新增条目 → `###APPEND: 记忆锚点`（写前同类融合·同 ID+内容 相同条目脚本自动 `[SKIP]` 防重）
@@ -311,6 +316,8 @@ EOF
 ###DELETE: pending_actions 已完成.PA-002
 ```
 
+**删除是失败即失败的操作：** 文件 key / 键路径任一不存在 = 该 op 失败（exit 1·整批不得报告成功）——不静默跳过；删除与写入同账（重提时只补失败 op）。
+
 ---
 
 ## 结构化短字段 → `write`
@@ -335,7 +342,7 @@ YAMLEOF
 - 值超 50 字符 → 推荐 `write-raw`
 - 多个字段需 write-raw → 使用 `--batch`
 
-**单字段（仅限短 ASCII 值·中文/多行走 `--batch` 或 heredoc·见「临时文件协议」编码硬性）：**
+**单字段（仅限短 ASCII 值·中文/多行走 `--batch`——通道见「批次文本双通道」）：**
 ```bash
 python3 {skill_dir}/scripts/worldctl.py {世界名} write-raw scene_state 关键场景信息 "SHERIFF"
 ```

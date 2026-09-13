@@ -14,7 +14,7 @@
 - [角色名]: [同上]
 
 开场 conflicts 节拍态：
-- [CT-ID]: [对峙状态一句话·有事件线时含指针=direction 当前事件线 SL-XX/当前拍] (恢复时写入 conflicts 对应 CT 的 关系状态 与 direction 指针)
+- [CT-ID]: [对峙状态一句话·有事件线时含指针=direction 当前事件线 SL-XX/当前拍] (恢复时写入 conflicts 对应 CT 的 上轮结算.关系状态 与 direction 指针)
 - [CT-ID]: [同上]
 
 开场 world_state 附加态：

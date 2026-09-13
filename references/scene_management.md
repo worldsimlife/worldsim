@@ -60,7 +60,7 @@
 - 每区域 ≤80 字备注；不写叙事，写发现所得的空间事实
 - `连接` 写与本节点相邻的可达区域名，可指向**未登记的迷雾区**（地图边缘暗示）
 
-**写入方式：** 登记新区块用 `write`（YAML diff 递归合并，深层路径友好）——Windows PowerShell 下 heredoc 不可用，改 UTF-8 临时文件 + `cmd /c` 重定向（见 commands.md 顶部备注）：
+**写入方式：** 登记新区块用 `write`（YAML diff 递归合并，深层路径友好）——无 heredoc 的 shell（如 Windows PowerShell）改走 `--file`（见 references/write_protocol.md §批次文本双通道）：
 
 ```bash
 cat << 'EOF' | python3 {skill_dir}/scripts/worldctl.py {世界名} write
@@ -137,8 +137,8 @@ EOF
 **重置后（戏剧家必做）：**
 1. 读 start_snapshot.md——冻结时间/开场轮次/角色姿态/道具位置/**开场心理态/开场 conflicts 节拍态/开场 world_state 附加态/焦外待揭示** 是恢复依据
 2. 重新填充 scene_state.yaml 核心状态（到开场瞬间）
-3. **检查 conflicts.yaml / direction**——CT 关系状态/内部状态/相位 是否仍是回退前的状态？按场景开场回退/覆盖 → 对照 snapshot 开场节拍态；direction 当前拍指针一并核对（回退跨拍时按 snapshot 开场态重设）
-4. **检查 CHAR_*_state.yaml**——核心状态/情绪/位置是否为开场形态？**累积字段按开场轮次裁剪（硬性·用 snapshot 开场轮次做基准）：记忆锚点/信念演化/偏离登记/连续行动轨迹/场景时间线为 yaml 列表——删除 `轮次 ≥ 开场轮次` 的元素（轮次是元数据字段·直接按字段过滤）**；反应轨迹（旧字段）超窗自动裁（脚本）；外部者角色（如 Guest）必须裁剪未来记忆·Host 可保留作既视感/碎片素材（保留属豁免·默认裁剪）
+3. **检查 conflicts.yaml / direction**——CT 上轮结算.关系状态/上轮结算.内部状态/相位 是否仍是回退前的状态？按场景开场回退/覆盖 → 对照 snapshot 开场节拍态；direction 当前拍指针一并核对（回退跨拍时按 snapshot 开场态重设）
+4. **检查 CHAR_*_state.yaml**——核心状态/情绪/位置是否为开场形态？**累积字段按开场轮次裁剪（硬性·用 snapshot 开场轮次做基准）：记忆锚点/信念演化/偏离登记/连续行动轨迹/场景时间线为 yaml 列表——删除 `轮次 ≥ 开场轮次` 的元素（轮次是元数据字段·直接按字段过滤）**；外部者角色（如 Guest）必须裁剪未来记忆·Host 可保留作既视感/碎片素材（保留属豁免·默认裁剪）
 5. **检查 world_state.yaml**——前情描述（可从姿态/核心状态重写·无需 snapshot）/外部倒计时/全局标记（脚本只回退了时间/轮次·其余仍可能是回退前状态）→ 对照 snapshot 开场附加态
 6. **检查 scene_state.yaml**——核心状态/出场角色摘要恢复开场形态（脚本只清了时间线·静态基线保留）→ 对照 snapshot 角色姿态/道具位置
 7. **检查 scenes/{当前焦点场景}/pending_actions.yaml**——**揭示场景=本场景的条目按 snapshot 焦外待揭示恢复（含开场状态）；揭示场景=无的纯背景条目清空·按 CHAR_.md 默认循环时间线/LOOPS 互锁/conflicts/CHAR_state 重新生成**（骨架可重建·不存 snapshot）·world_map.yaml 回退期间新登记区域（如有）

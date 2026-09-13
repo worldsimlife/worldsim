@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # reset_world.py — 重置世界到「创建完成态」（纯 .md 静态骨架·零 yaml）
 # 用法: python3 scripts/reset_world.py <世界名> [--force]
-# 破坏性操作（重置前自动存档·可回滚）：
+# 破坏性操作（重置前自动存档·可回滚；存档失败即中止）：
 #   删除 scenes/ 整个目录、states/ 下全部文件（运行期产物·不按文件名枚举·含隐藏文件）
 #   保留 SETTING.md / characters/ / story_architecture/ / regions/ / snaps/
 # 重置后世界回到未启动状态——用『启动世界』走 init-states 重新物化（见 references/session_recovery.md 第二章：
 # conflicts/world_state/world_map/storylines/direction ← 模板与 SEED·CHAR_{名}_state.yaml ← 骨架）
 # 确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
-import subprocess, sys
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -19,7 +19,7 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _paths import SCRIPT_DIR, require_world_marker, resolve_world, safe_rmtree, safe_unlink
+from _paths import require_world_marker, resolve_world, safe_rmtree, safe_unlink, snapshot_or_abort
 
 
 def main():
@@ -45,10 +45,9 @@ def main():
             print("已取消")
             sys.exit(0)
 
-    # 安全网：自动存档（可回滚）
+    # 安全网：自动存档（可回滚·存档失败即中止——不可回滚就不执行破坏性删除）
     snapname = f"_before_reset_{datetime.now().strftime('%Y%m%d-%H%M%S')}"
-    p = subprocess.run([sys.executable, str(SCRIPT_DIR / "snap.py"), world, "save", snapname], capture_output=True)
-    print((p.stdout or b"").decode("utf-8", "replace") + (p.stderr or b"").decode("utf-8", "replace"), end="")
+    snapshot_or_abort(world, snapname)
 
     # 删除动态状态与场景
     if (world_dir / "scenes").is_dir():
