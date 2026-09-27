@@ -50,12 +50,12 @@ Realism alone sinks into "mundane daily life." The essence of Drama is **conflic
 
 If "living characters" are high-performance cars, then "drama" is the track you lay for them — obstacles, hairpin turns, cliff edges. The key is not how busy the external events are, but **using external structure to precisely "detonate" internal variables**: external events, irreversibly, force the character into painful self-conflict within their own core.
 
-Four demolition projects:
+Four demolition projects (same source as the Dramatist's four pressure directions):
 
-1. **Manufacture the Dilemma** — offer only "keep A and destroy B" choices, pitting desire against fear, against value boundaries. What readers see is not "she went to save them," but "she tore her own dignity apart to save them."
-2. **Invalidate the Defense** — strip away the character's armor in public, forcing them to face the crisis naked and most fragile. The sarcastic one's coldness shattered by absolute trust; the tough one's walls dissolved by gentleness.
-3. **Interrupt the Relationship** — let two people who love each other be torn apart by their own core beliefs within the same event. "Tragedy born of mutual goodwill" is the highest form of drama.
-4. **Push Irreversible Cost** — add a ticking clock to decisions; every choice must lose something forever: a secret exposed, a trust shattered, a treasured object destroyed.
+1. **Dilemma** — offer only "keep A and destroy B" choices, pitting desire against fear, against value boundaries. What readers see is not "she went to save them," but "she tore her own dignity apart to save them."
+2. **Defense Invalidation** — strip away the character's armor in public, forcing them to face the crisis naked and most fragile. The sarcastic one's coldness shattered by absolute trust; the tough one's walls dissolved by gentleness.
+3. **Relationship Break** — leave two people unable to return to what they were: those who love each other torn apart by their own core beliefs within the same event; even mutual goodwill can end in tragedy.
+4. **Irreversible Cost** — add a ticking clock to decisions; every choice must lose something forever: a secret exposed, a trust shattered, a treasured object destroyed.
 
 > Every rule in this engine (personality system, conflict beats, defenses and boundaries, external countdowns) serves two words: **come alive**, and then **choose under pressure**.
 
@@ -182,7 +182,7 @@ WorldSim's core architecture is a single LLM within a single shared context — 
 1. **The Dramatist** — conflict engine: scans pressure sources, registers / advances / escalates conflicts (CTs), manufactures deadlocks and irreversible costs — pressing characters onto the cliff's edge
 2. **The Storyliner** — structure engine: story arcs, storylines, and beat sequences — weaving conflicts into fate, holding the macro course
 3. **The Director** — live-direction engine: judges last turn's actual performance, controls pacing, continuation, and transitions of the current beat — detonating at the moment that matters most
-4. **The Actor** — the life layer: NPCs decide and improvise autonomously from a four-layer drive model (persona drives / current goals / action state / environmental pressure) — each owns a continuous timeline independent of the player; the player can enter or interrupt it, but is never its origin
+4. **The Actor** — the life layer: NPCs decide and improvise autonomously from persona drives, inner intentions, action state, and environmental pressure — each owns a continuous timeline independent of the player; the player can enter or interrupt it, but is never its origin
 5. **The Continuity Keeper** — fact engine: records what has actually happened into world state — long-session context stays drift-free
 6. **The Writer** — narrative engine: turns what the user just lived through into prose — letting readers watch the jump from the cliff
 

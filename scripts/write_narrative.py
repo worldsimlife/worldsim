@@ -1,22 +1,23 @@
 #!/usr/bin/env python3
-# write_narrative.py — 写入叙事正文，存在则自动轮转（改名为 narrative.{时间戳}.md）
+# write_narrative.py — 前置 gate writer --check 通过才写入叙事正文，存在则自动轮转（改名为 narrative.{时间戳}.md）
 # 用法:
-#   python3 scripts/write_narrative.py <世界名> <场景ID> [content_file]
-#   python3 scripts/write_narrative.py <世界名> <场景ID> --file content.md
-#   cat content.md | python3 scripts/write_narrative.py <世界名> <场景ID>
+#   python3 scripts/write_narrative.py <世界名> <场景ID> [content_file] [--target 大约数] [--style sepia|dialogue|explicit]
+#   python3 scripts/write_narrative.py <世界名> <场景ID> --file content.md [--target N] [--style S]
+#   cat content.md | python3 scripts/write_narrative.py <世界名> <场景ID> [--target N] [--style S]
+#   python3 scripts/write_narrative.py <世界名> <场景ID> --force [content_file]（维护/回退落盘·跳过前置 gate）
 #
 # 示例:
-#   python3 scripts/write_narrative.py westworld S01-甜水镇主街 narrative.txt
+#   python3 scripts/write_narrative.py westworld S01-甜水镇主街 narrative.txt --target 1200 --style dialogue
 #   python3 scripts/write_narrative.py westworld S01-甜水镇主街 --file worlds/westworld/tmp/narrative_r3.md
 #   cat narrative.txt | python3 scripts/write_narrative.py westworld S01-甜水镇主街
 #
-# 注意: 本脚本只负责落盘轮转——W4 锚点核对已在阶段2 推送前由 gate writer --check 执行（SKILL.md 执行顺序）。
-#       移除 W4 的核心理由：叙事先 message 推送用户后才核对=防幻觉失效（坏叙事已到用户手中）；
-#       W4 检查前移到推送前，此处不再重复（单点检查，避免双份逻辑漂移）。
+# 注意: 落盘前默认先调 worldctl gate writer --check（stdin 传同一候选字节·--target/--style 透传）——
+#       gate 未通过则中止不落盘（单源·验的即落的）。W4 逻辑仍只在 worldctl 一份，本脚本只做调用+落盘
+#       （单点检查，避免双份逻辑漂移）。维护/回退等须绕检场景显式加 --force（与 write-raw --force 同约定）。
 #
 # 编码（硬性）：内容经原始字节写入（content_file cp / stdin.buffer.read）——UTF-8 字节原样保留，
 #       与 write-raw --batch 同款，避免 CLI 参数/文本 stdin 的 locale 解码损坏。
-import os, re, sys
+import os, re, subprocess, sys
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -60,6 +61,9 @@ def main():
     argv = sys.argv[1:]
     positional = []
     content_file = ""
+    force = False
+    target = ""
+    style = ""
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -69,6 +73,27 @@ def main():
                 sys.exit(1)
             content_file = argv[i + 1]
             i += 2
+        elif a == "--force":
+            force = True
+            i += 1
+        elif a == "--target":
+            if i + 1 >= len(argv):
+                print("[ERR] --target 需要跟一个大约目标数", file=sys.stderr)
+                sys.exit(1)
+            target = argv[i + 1]
+            i += 2
+        elif a.startswith("--target="):
+            target = a[len("--target="):]
+            i += 1
+        elif a == "--style":
+            if i + 1 >= len(argv):
+                print("[ERR] --style 需要跟一个风格路径（sepia/dialogue/explicit）", file=sys.stderr)
+                sys.exit(1)
+            style = argv[i + 1]
+            i += 2
+        elif a.startswith("--style="):
+            style = a[len("--style="):]
+            i += 1
         elif a.startswith("--file="):
             content_file = a[len("--file="):]
             i += 1
@@ -112,6 +137,18 @@ def main():
     if not data.strip():
         print("[ERR] 叙事内容为空（文件/stdin 无有效内容），已拦截不写入", file=sys.stderr)
         sys.exit(1)
+    # 前置 gate（默认）：同一候选字节调 worldctl gate writer --check——未通过则中止不落盘；--force 跳检（维护/回退）
+    if not force:
+        _wctl = Path(__file__).resolve().parent / "worldctl.py"
+        _cmd = [sys.executable, str(_wctl), world, "gate", "writer", "--check"]
+        if target:
+            _cmd += ["--target", target]
+        if style:
+            _cmd += ["--style", style]
+        _r = subprocess.run(_cmd, input=data)
+        if _r.returncode != 0:
+            print("[ERR] gate writer 未通过——叙事未落盘", file=sys.stderr)
+            sys.exit(1)
     tmp.write_bytes(data)
 
     # 落盘：已存在且非空则改名归档（带轮次号·精确到秒）；空占位（init_scene 骨架）直接覆盖·不留伪归档

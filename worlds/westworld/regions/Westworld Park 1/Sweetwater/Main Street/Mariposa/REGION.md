@@ -17,6 +17,7 @@ Main Street 中段北侧
 
 ## 常驻NPC
 - CHAR_Maeve Millay（老鸨·掌控全局）
+- CHAR_Clementine Pennyfeather（妓女）
 - CHAR_Armistice / CHAR_Hector Escaton（常客）
 
 ## 本地法则

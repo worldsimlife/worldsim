@@ -229,6 +229,19 @@ def main():
         ws_file.write_text(text, encoding="utf-8", newline="")
         print(f"[OK] world_state.焦点场景 已更新为 {scene_id}")
 
+    # 清 direction.转场——③ 的转场决策已被本次切换消费。⑤ 无权写 direction（Single Writer），
+    # 残留会让 round-check 误判「⑤转场未执行」、并静默豁免 cast 硬拦（假豁免），故由执行切换的脚本机械清除（幂等）。
+    dir_file = world_dir / "states" / "direction.yaml"
+    if dir_file.is_file():
+        try:
+            _dtext = dir_file.read_text(encoding="utf-8")
+            _dnew = re.sub(r"^转场:.*$", "转场: {}", _dtext, count=1, flags=re.M)
+            if _dnew != _dtext:
+                dir_file.write_text(_dnew, encoding="utf-8", newline="")
+                print("[OK] direction.转场 已清空（转场决策已由本次切换消费）")
+        except Exception as e:
+            print(f"[WARN] direction.转场 清空失败（不影响场景创建）: {e}", file=sys.stderr)
+
     # ── 待填清单输出（脚本只建基础设施——内容文件按 templates/ 直接生成，禁止带模板占位运行）──
     print("")
     print("【注意】本目录已生成 scene_state.yaml / narrative.md（骨架·已存在）——后续用 Write/覆盖写前必须先 Read 该文件再改（写入工具拒绝未读覆盖）。")

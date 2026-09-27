@@ -2,9 +2,9 @@
 
 > 适用范围：通用——⑥作家各轮型通用参考，按需查阅。
 > 来源：skills/sepia（sepia v0.7.0）原文搬运（悬空引用已删）。
-> 裁决：与 phase_writer.md或 SKILL.md 通用约束冲突处，以 worldsim 为准（POV 过滤/数据忠诚/不改骨架/长度公式/gate 不变）。
+> 裁决：与 phase_writer.md或 SKILL.md 通用约束冲突处，以 worldsim 为准（POV 过滤/数据忠诚/卡里记的事不得增减·怎么讲全归作家/gate 不变）。
 > 不在本文：professional-pass.md（含 domains/）、agents/、model-fingerprints.md、voices/ 正文——默认不加载；voice 叠加仅 opt-in（用户明示才用）。
-> 用法：动笔前定靶时按需查。
+> 用法：按需查。
 
 ---
 
@@ -64,7 +64,7 @@ The two-stage protocol is not optional for refactor/recreate: paraphrasing witho
 
 Seven decision groups. Each lists the measured human-vs-AI gap, what to do when **generating**, and what to check when **revising**. Numbers are from StoryScope (S), Beguš 2024 (B), Xu et al. PNAS 2025 (X), Nonaka & Perry 2025 (N), and QUDsim (Q); percentages read *human vs AI*. Single-letter aliases in this file are file-local. Generate/Revise prescriptions are Sepia design inferences unless a cited source explicitly tested the intervention.
 
-（权责注：支线/结局/时序等结构决策归①②③上游；⑥作家只取呈现技法，不改骨架。）
+（权责注：支线/结局/时序等结构决策归①②③上游；⑥作家只取呈现技法，不改事实。）
 
 Work through all seven groups when filling the architecture sheet, but **enact only 3–5 human-leaning moves per story** (见本文 Calibration 节). The groups marked ⚑ were absent from the tools sampled in the repository's 2026-08-27 ecosystem snapshot; treat that as a bounded product observation, not proof of universal zero coverage.
 
