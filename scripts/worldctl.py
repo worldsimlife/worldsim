@@ -67,6 +67,14 @@ CHAR_STATE_SUFFIX = "_state.yaml"
 BEAT_TOP_KEY = "节拍表"
 BEAT_ENUM = ("铺垫", "接触", "升级", "顶点", "余波")
 
+# 三幕十五拍节拍清单（② 故事弧线.节点落位 的键域·权威=references/beat_structure.md §一）
+# 键域随当前幕而变：节点落位的键必须落在当前幕的清单内（validate 软警·不拦截）。
+ARC_BEATS = {
+    "第一幕": ("开场画面", "主题陈述", "铺垫", "催化剂", "挣扎犹豫"),
+    "第二幕": ("进入第二幕", "B故事", "游戏时间", "中点", "反派逼近", "失去一切", "灵魂暗夜"),
+    "第三幕": ("进入第三幕", "高潮", "终场画面"),
+}
+
 # 六阶段单管道：结构蓝图（storylines·②编剧）与现场控制（direction·③导演）分权
 STORYLINES_FILE = "storylines.yaml"
 DIRECTION_FILE = "direction.yaml"
@@ -99,9 +107,9 @@ PERF_STATES = ("上升", "持续", "转折", "收束", "停滞")
 # ── 产物体量失忆探针阈值（内部常量·只存于本处）──
 # 探针=以产物体量反推「是否走了完整流程」（体量不足≈流程未走）。阈值一律不得出现在面向 LLM 的
 # 文本里（报错文案/reference/模板）——否则 LLM 会以凑字数替代走流程·探针失效。
-_MUSE_MIN_CHARS = 200        # ④角色 MUSE 心流下限（三段结构＋权重判定）
+_MUSE_MIN_CHARS = 200        # ④角色 MUSE 心声下限（三段结构＋权重判定）
 _WRITER_MIN_TOKENS = 600     # ⑥作家叙事下限（失忆探针·最低产出）
-_DIRECTOR_MIN_CHARS = 120    # ③导演 承接判断 下限（回判十问的最低留痕）
+_DIRECTOR_MIN_CHARS = 120    # ③导演 承接判断 下限（回判评估的最低留痕）
 # 施压方向（CT 子字段 CT-{XX}.施压方向·①戏剧家每轮随推进池逐条标注——瞄准声明·非结算字段非行动脚本；旧版顶层键已废弃）
 PRESSURE_KEY = "施压方向"
 PRESSURE_ENUM = ("死局两难", "防御踩爆", "关系爆破", "不可逆代价", "维持")
@@ -595,10 +603,12 @@ def write_round_ledger(world_dir: Path, ctx: dict) -> Path | None:
     stage = str(ctx.get("stage", "") or "").strip() or "维护"
     data: dict = {"轮次": _ledger_round(world_dir, ctx), "场景": scene_dir.name, "阶段": stage}
     for key, src in (("MUSE", muse), ("ACTION", action)):
-        items = {}
+        # 列表存储（保序＋允许同角色重复）——同角色同窗口多环＝各环原文全存·按序；
+        # 曾用 {角色: 文本} 字典，同角色多环互相覆盖、只剩末环（实测 r9 丢失环1）。
+        items = []
         for i, line in enumerate(src, 1):
             role, text = _split_role_line(line)
-            items[role or f"（第{i}行）"] = text
+            items.append({role or f"（第{i}行）": text})
         if items:
             data[key] = items
     for key, src in (("SCHEDULE", schedule), ("META", meta)):
@@ -881,8 +891,9 @@ def cmd_write(world_dir: Path, full_replace: bool = False):
 # ── 语义不变量（audit）─────────────────────────────────────────
 # 脚本校验线（与 keys.md 记忆锚点行 / write_protocol.md 写入表 一致）
 ANCHOR_LIMIT_TOTAL = 3000
-ANCHOR_LIMIT_ENTRY = 100           # 写作线（audit 写前提醒·整理以 100 为准）
-ANCHOR_LIMIT_ENTRY_VALIDATE = 150  # validate 宽松校验线（防强制压缩·写作线仍按 100）
+# 记忆锚点单条长度**不设限**（口径见 write_protocol.md 写入表 / keys.md「记录字段写法」）：
+# 锚点质量由「须自足」定义（实体在事实段·定性可直接读出）——字数不是有效指标，
+# 强压字数会牺牲自足性。
 TRAJECTORY_WINDOW = 10              # 连续行动轨迹窗口（最近 N 轮·APPEND 后脚本自动删最旧·LLM 零操作·长期记忆由记忆锚点承载）
 
 def _strip_wrapping_quotes(text: str) -> str:
@@ -1264,7 +1275,7 @@ def _schedule_body_text(schedule_text: str | None, bucket: str) -> str:
 def _schedule_roles_by_bucket(world_dir: Path, schedule_text: str | None = None) -> dict[str, set[str]]:
     """从调度单提取四档角色；复用档案名匹配，供导演与角色阶段共享。
 
-    四层（与 phase_director 职责7 / phase_actor 调度单 同构）：焦内活跃 / 背景角色 / 焦外 / 焦外→焦内。
+    四层（与 phase_director D5 / phase_actor 调度单 同构）：焦内活跃 / 背景角色 / 焦外 / 焦外→焦内。
     口径（硬性）：独立人名段与档案全名全等才命中（归一化去空格/大小写后比）；
     子串/token 别名命中只记软提醒、不计入命中（防同姓/同 token 连带，如 Dolores
     Abernathy 段连带 Peter Abernathy）。提醒文本由调用方经
@@ -1836,23 +1847,11 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             if "当前载体=" not in content and "当前持有者=" not in content:
                 hard.append((idx, f"{file_key}.{key_path_str}: 被争夺资源缺「当前载体=/当前持有者=」（抽象写载体·实体写持有者·写不出=不合格）"))
 
-        # ③ 记忆锚点：单条 ≤100 / 写入后总量 ≤3000（软性警告·不拦截——内容质量类，validate 汇总）
+        # ③ 记忆锚点：仅校验写入后总量 ≤3000（软性警告·不拦截——内容质量类，validate 汇总）
+        #    单条长度不设限（见文件头常量注释）。
         if file_key.startswith(CHAR_STATE_PREFIX) and key_path == ["记忆锚点"]:
             filepath, _ = resolve_char_file(existing, file_key, world_dir)
             if append:
-                # 结构化列表：每条内容字段 ≤100；旧字符串：按 [ 切条
-                if bool(re.match(r"^\s*-\s*(?:轮次|时间)[:：]", content)):
-                    try:
-                        items = yaml.safe_load(content) or []
-                    except Exception:
-                        items = []
-                    entries = [str(it.get("内容", "")) for it in items if isinstance(it, dict) and it.get("内容")]
-                else:
-                    entries = re.split(r"\n\s*(?:·\s*)?(?=\[)", content)
-                for ent in entries:
-                    ent = ent.strip()
-                    if len(ent) > ANCHOR_LIMIT_ENTRY:
-                        soft.append((idx, f"{file_key}.记忆锚点: 新条目 {len(ent)} 字 > {ANCHOR_LIMIT_ENTRY} 上限（应压为事实一句+定性一句）"))
                 total = len(content)
                 if filepath and filepath.exists():
                     try:
@@ -1864,7 +1863,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                     except Exception:
                         pass
                 if total > ANCHOR_LIMIT_TOTAL:
-                    soft.append((idx, f"{file_key}.记忆锚点: 写入后总量 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——建议执行记忆淘汰（同类融合+低刺激遗忘·###KEY 覆盖全量重写）"))
+                    soft.append((idx, f"{file_key}.记忆锚点: 写入后总量 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——建议执行记忆淘汰（同类并句+低刺激遗忘·###KEY 覆盖全量重写）"))
             else:
                 if len(content) > ANCHOR_LIMIT_TOTAL:
                     soft.append((idx, f"{file_key}.记忆锚点: 覆盖写入总量 {len(content)} 字 > {ANCHOR_LIMIT_TOTAL} 校验线"))
@@ -1929,7 +1928,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                 soft.append((idx, f"world_state.{key_path_str}: 地点字段已废弃（当前区域→scene 区域关联·已探索区域→world_map 镜像·请勿再写）"))
 
         # ⑧ 自主性：枚举合法（硬）+ 升档门槛（硬·变质判定唯一入口）+ 跨级/降档路径（软）
-        #    升档唯一入口=loop_machinery §5.3（压力=临界 且 防御=已彻底崩解）；§记忆提炼管道B 只产出信念演化·非升级入口
+        #    升档唯一入口=loop_machinery §5.3（压力=临界 且 防御=已彻底崩解）；§信念提炼 只产出信念演化·非升级入口
         if file_key.startswith(CHAR_STATE_PREFIX) and key_path == ["自主性"]:
             new_auto = _strip_wrapping_quotes(content)
             if new_auto not in AUTO_ORDER:
@@ -2066,7 +2065,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
         if not has_ct_op:
             soft.append((-1, "戏剧家批应含 ≥1 条 CT 推进/注册（conflicts.CT-XX）——查询轮豁免"))
         # 施压方向每轮核验（逐 CT·跟随推进池）：本批推进的每条 CT → 必写 CT-XX.施压方向
-        #   余波已兑现批豁免（phase_dramatist 职责1「余波只结算·不施压」）：该批只写结算字段
+        #   余波已兑现批豁免（phase_dramatist D11 前置分支「余波只结算·不施压」）：该批只写结算字段
         #   （上轮结算/紧迫度/相位）而必写施压方向，故 当前拍==余波 时不要求此软警；
         #   「未兑现」余波由停滞旗标区分——停滞硬拦不依赖本豁免（见下）。
         _dr = _load_direction(world_dir)
@@ -2089,7 +2088,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                 else:
                     _press_writes[_top] = _pe
                     if _pe and _pe != PRESSURE_HOLD and not _pd:
-                        soft.append((-1, f"conflicts.{_top}.{PRESSURE_KEY}: 四爆破方向'{_pe}'缺少压力说明——补写‘压力来源+受力点+转变方向’（软警）"))
+                        soft.append((-1, f"conflicts.{_top}.{PRESSURE_KEY}: 四爆破方向'{_pe}'缺少压力说明——补写‘压力来源+受力点+转变方向’"))
         _missing_press = sorted(_touched_cts - set(_press_writes))
         if _dram_beat != "余波":
             if has_ct_op and not _press_writes:
@@ -2104,7 +2103,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             elif all(v == PRESSURE_HOLD for v in _press_writes.values()):
                 hard.append((-1, f"direction.escalation_flags.停滞 在场而施压方向全为{PRESSURE_HOLD}——停滞轮禁全维持（四爆破方向四选一）"))
             else:
-                # 加压载体核验（phase_dramatist 职责1）：施压方向说明是元层瞄准·④角色只感知已登记载体
+                # 加压载体核验（phase_dramatist D9/D11 载体登记）：施压方向说明是元层瞄准·④角色只感知已登记载体
                 #   → 新变量同批登记认知层载体：CT.关联角色（①唯一可写通道·新主体与威胁/事件类皆由 CT 承载）。
                 #     需 world_state.外部倒计时 时①只指定·落盘=⑤场记（写入矩阵 world_state 归⑤）——故本处不认 world_state op。
                 _has_carrier = any(
@@ -2127,7 +2126,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
         # 循环轨道硬拦（只限循环世界·loop_machinery §1 步骤1-2）：循环世界每个 ①戏剧家批
         #     → META 压力扫描必须含「轨道✓(角色=在轨/偏离·离岗/已回归)」逐角色结论。
         #     §1 明写「每轮必查·不依赖主路是否已有 CT 推进」——故此处不挂钩 has_ct_op。
-        #     缺=本层未扫描→偏离检测可被静默合并进 CT 状态更新而无显式在轨/偏离/回归判定（审计 D2/D3/A2/A3）。
+        #     缺=本层未扫描→偏离检测可被静默合并进 CT 状态更新而无显式在轨/偏离/回归判定（审计 C2/C3/A2/A3）。
         _loop_keys = _loop_char_keys(world_dir)
         if _loop_keys and not force:      # --force 显式逃生口（与 ④/⑬b/A0 同款）
             # 逐角色覆盖率核验（scoped 版·名单与 precheck §1b / _loop_relevant_roles 同源闭环）：
@@ -2146,7 +2145,17 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             _required = _loop_relevant_roles(world_dir)
             _missing = sorted(_required - _tracked)
             if _missing:
-                hard.append((-1, f"循环世界 ①戏剧家批——META 压力扫描「轨道✓(...)」逐角色结论未覆盖: {'/'.join(_missing)}（必须覆盖: {'/'.join(sorted(_required))}——范围=调度单点名循环角色 ∪ 当前焦点区 REGION 常驻NPC ∪ §1a互锁涉及角色·即本轮相关循环角色；缺名=本层未扫描→偏离检测可被静默合并进 CT 状态更新（phase_dramatist 职责2 循环轨道 + 写入节轨道✓；loop_machinery §1: 循环轨道每轮必查·不依赖主路是否已有 CT 推进）。裸勾/只写「无偏离」/只写部分角色=本层未扫描·--force 豁免。格式: 轨道✓(全名=在轨|偏离·离岗|已回归·以 / , ; ； 任一分隔·每项必须含 =)）"))
+                hard.append((-1, f"循环世界 ①戏剧家批——META 压力扫描「轨道✓(...)」逐角色结论未覆盖: {'/'.join(_missing)}（必须覆盖: {'/'.join(sorted(_required))}——范围=调度单点名循环角色 ∪ 当前焦点区 REGION 常驻NPC ∪ §1a互锁涉及角色·即本轮相关循环角色；缺名=本层未扫描→偏离检测可被静默合并进 CT 状态更新（phase_dramatist D7 轨道判定 + 写入节轨道✓；loop_machinery §1: 循环轨道每轮必查·不依赖主路是否已有 CT 推进）。裸勾/只写「无偏离」/只写部分角色=本层未扫描·--force 豁免。格式: 轨道✓(全名=在轨|偏离·离岗|已回归·以 / , ; ； 任一分隔·每项必须含 =)）"))
+        # 压力扫描逐源覆盖核验（D8 逐源快判·十源＋爆破源）：META 压力扫描须逐源表态——
+        #   把十源写成"任一命中即注册"的一条标准会让 LLM 只扫到最显眼的那个、其余静默跳过
+        #   （与 轨道✓ 同款覆盖率问题）→ 每源必须在 META 里有 ✓/— 表态。--force 显式逃生口。
+        if ops and not force:
+            _scan_meta = " ".join(str(m) for m in meta_lines)
+            _scan_sources = ("人际", "目标", "资源", "轨道", "跨叙事", "时间", "环境", "法则", "扩散", "兜底", "爆破源")
+            _scan_missing = [s for s in _scan_sources
+                             if not re.search(rf"{s}\s*[✓✔√×✗—\-－]", _scan_meta)]
+            if _scan_missing:
+                hard.append((-1, f"①戏剧家批——META 压力扫描未逐源表态，缺: {'/'.join(_scan_missing)}（十源＋爆破源：人际/目标/资源/轨道/跨叙事/时间/环境/法则/扩散/兜底/爆破源·每源写 `源名✓` 或 `源名—`）——缺源=本层未扫描→该压力源可被静默跳过（phase_dramatist D8 逐源快判；--force 豁免）"))
     elif not maintenance and ops and stage == "场记":
         # 轮次+1 豁免：跨场景轮入场帧批（META 标「同轮续批」且本批确写场景时间线）——轮次已由旧场景收尾批推进
         # 同轮续批（跨场景轮入场帧批）：世界三件套已由旧场景收尾批推进·入场帧不含场景时间线
@@ -2195,24 +2204,31 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             _cd = yaml.safe_load((world_dir / "states" / "conflicts.yaml").read_text(encoding="utf-8")) or {}
         except Exception:
             _cd = {}
-        # 重路径触发扫描（应重路径却只写轻量声明=本层未扫描·硬拦）：
-        #   A. 未引用活跃线 CT 且无活跃线可接当前叙事 → 必建线（合并规则·判据见 _storyliner_unref_and_must_add·与 precheck 同源）
-        #   B. 不承接 flag 在场 → 必归位（add/rewrite/clear·三问定原线去向）。
+        # 本层必含项判定：
+        #   A. D4 建线决策·合并触发（机械标准·独立于语义评估）：未引用活跃线 CT 且无活跃线可接 → 必含 add
+        #      （判据见 _storyliner_unref_and_must_add·与 precheck 同源）
+        #   B. D2 不承接归位：不承接 flag 在场 → 必含 add/rewrite/clear（三问定原线去向）
+        #   C. D1 弧线定位：本批必含 故事弧线 落盘
         _must_add, _unref_ct, _active_sl = _storyliner_unref_and_must_add(_sl_map, _dr_sl, _cd)
         _has_structure_action = bool(storyline_lines)
-        _has_light_weight = any(("张力基调" in m) or ("no-op" in m) for m in meta_lines)
+        _has_arc_write = any(
+            _k == "write" and str(_fk).strip().lower() == "storylines"
+            and str(_kp).strip().startswith("故事弧线")
+            for _k, _fk, _kp, _c, _a in ops
+        )
         if _must_add and not _has_structure_action:
-            hard.append((-1, "编剧批——重路径触发（无活跃线可接当前叙事）：conflicts 存在未引用活跃线的 CT（"
+            hard.append((-1, "编剧批——D4 合并触发（无活跃线可接当前叙事）：conflicts 存在未引用活跃线的 CT（"
                              f"{'/'.join(_unref_ct)}）而 {'无活跃线' if not _active_sl else '当前拍=余波已兑现且无其他非余波活跃线可接'}——"
-                             "建线取材表第2行必含 ###STORYLINE: add（每轮至多取一条·未引用CT包括已收束线引用；空表由 round-check 兜底）"))
-        # C 取材核验（有add时）：META须回显取材=CT-XX，且该CT未命中活跃线
+                             "必含 ###STORYLINE: add（每轮至多取一条·未引用CT包括已收束线引用；空表由 round-check 兜底）"))
+        # D5 取材核验（有add时）：META须回显取材=CT-XX（或场景兜底），且该CT未命中活跃线
         _has_add = any(str(a or "").strip().split()[:1] == ["add"] for a, _p in storyline_lines)
         if _has_add:
             _cited = []
             for _m in meta_lines:
                 _cited += re.findall(r"取材\s*=\s*(CT-\d+)", str(_m))
-            if not _cited:
-                hard.append((-1, "编剧批——含###STORYLINE: add须META回显取材=CT-XX（缺=拦·建线取材表第2行）"))
+            _cited_fallback = any("取材=场景兜底" in str(_m) for _m in meta_lines)
+            if not _cited and not _cited_fallback:
+                hard.append((-1, "编剧批——含###STORYLINE: add须META回显取材来源（缺=拦·D5 取材）：`取材=CT-XX`；扫描零合格者写 `取材=场景兜底`"))
             else:
                 for _ct in _cited:
                     _cv = _cd.get(_ct) if isinstance(_cd, dict) else None
@@ -2223,19 +2239,18 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                         _hits = {re.sub(r"\s+", "", str(r).strip()) for r in _refs if str(r).strip()}
                         _norm_active = {re.sub(r"\s+", "", str(a).strip()) for a in _active_sl}
                         if _hits & _norm_active:
-                            hard.append((-1, f"编剧批——取材{_ct}当前被活跃线承载（{','.join(sorted(_hits & _norm_active))}）·取即违规（建线取材表第2行·取材须未引用）"))
-        # B 触发：不承接 flag 在场
+                            hard.append((-1, f"编剧批——取材{_ct}当前被活跃线承载（{','.join(sorted(_hits & _norm_active))}）·取即违规（D5 取材资格·取材须未引用）"))
+        # D2 触发：不承接 flag 在场
         _flags_sl = _dr_sl.get("escalation_flags") or {}
         if isinstance(_flags_sl, dict) and any("不承接" in str(k) and _flag_active(v) for k, v in _flags_sl.items()):
             if not _has_structure_action:
-                hard.append((-1, "编剧批——direction.escalation_flags.不承接 在场（上轮原计划失效）：必含 ###STORYLINE: add/rewrite/clear 三问定原线去向（phase_storyliner 职责2 不承接归位）"))
-        if not _has_structure_action and not _must_add and not _has_light_weight:
-            # 常规：无结构动作时，有活跃线 → 至少轻量声明；空表另由上方 _must_add 拦
-            if _sl_map or _must_add:
-                soft.append((-1, "编剧批应含 ###STORYLINE: 动作（add/rewrite N/close N/clear N）或 META 张力基调声明（轻量·仍出批次）"))
+                hard.append((-1, "编剧批——direction.escalation_flags.不承接 在场（上轮原计划失效）：必含 ###STORYLINE: add/rewrite/clear 三问定原线去向（phase_storyliner D2 不承接归位）"))
+        # D1 弧线定位：本批必含落盘
+        if not _has_arc_write:
+            hard.append((-1, "编剧批——必含 D1 弧线定位落盘（###KEY: 故事弧线.当前幕 / .张力基调 / .节点落位.*）"))
     elif not maintenance and stage == "导演":
         _dr = _load_direction(world_dir)
-        # v0.29 取消「日常轮复用」：③每轮必写 direction——guidance 与 调度单 逐轮落盘（内容未变也照写）
+        # v0.29 取消「复用」：③每轮必写 direction——guidance 与 调度单 逐轮落盘（内容未变也照写）
         _writes_guidance = any(
             _kind == "write" and _file_key.strip().lower() == "direction" and "guidance" in _key_path.lower()
             for _kind, _file_key, _key_path, _content, _append in ops
@@ -2253,7 +2268,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
         # 连续同拍核验（窗口感知·v0.29）：上轮落盘 节拍决策=继续当前拍 且 本批仍写「继续当前拍」→ 同拍
         # 判据只读 节拍决策 字段（指针不动=同拍）·不挂 ###BEAT 动作行——避免以省略动作行绕开停滞加压
         # 窗口已耗尽 → 必须明确表态：advance（不再继续）/ 停滞旗标 / 续演（批内重设 时间窗口=追加拍级预算）
-        # 窗口未耗尽 → 软警（窗口=拍发育期·默认 deepen·验收点=窗口耗尽）；窗口状态不可判定（缺起点/格式未解析）→ 按未耗尽处理·不拦（补起点归③结构轮·回判兜底归 phase_director 行5）
+        # 窗口未耗尽 → 软警（窗口=拍发育期·默认 deepen·验收点=窗口耗尽）；窗口状态不可判定（缺起点/格式未解析）→ 按未耗尽处理·不拦（补起点归③本批·回判兜底归 phase_director D2/D4）
         # 豁免：本批 演出状态∈{上升,转折} 视为推进中同拍（替代兑现可写）不拦；措辞不匹配=静默放过·退化为 phase_director 规则兜底·不误拦
         _prev_same_beat = str(_dr.get("节拍决策", "") or "").strip().startswith("继续当前拍")
         _cur_decision = ""
@@ -2280,16 +2295,16 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                 for _kind, _file_key, _key_path, _content, _append in ops
             )
             _bm, _el, _re, _exh = _window_status(world_dir)
-            # 「已过半」=剩余≤预算一半（与 ③职责6/行5 同口径·首次验收点）
+            # 「已过半」=剩余≤预算一半（与 phase_director D2/D6 同口径·首次验收点）
             _half = (_re is not None and _bm is not None and _re <= (_bm / 2.0))
             if _exh is True:
                 if not (_is_progressing or _flag_stall or _rewrites_window):
                     hard.append((-1, "窗口已耗尽仍连续同拍（上轮与本批 节拍决策 均=继续当前拍）——本批必须明确表态：advance（推进下一拍）/ escalation_flags.停滞=待加压 / 续演（批内重设 时间窗口·起点=当前世界时间·新拍级预算）"))
             elif _exh is False and _half:
-                # 首个验收点（过半）：不硬拦——行5 判据含语义裁量（意图能否明显逼近问题）·脚本不代判；
-                # 但必须把验收点推到③面前，避免其滑到行6 重设窗口把行5 从中间抹掉。
+                # 首个验收点（过半）：不硬拦——停滞判据含语义裁量（意图能否明显逼近问题·phase_director D2）·脚本不代判；
+                # 但必须把验收点推到③面前，避免其滑到重设窗口把停滞判定从中间抹掉。
                 _msg_half = (f"连续同拍·窗口已过半（剩余≈{_re}分钟／预算{_bm}分钟）——首个验收点·"
-                             f"③须先判行5：意图仍能明显逼近本拍问题→行6 续演（过半不重设窗口）；"
+                             f"③须先判停滞标准（phase_director D2）：意图仍能明显逼近本拍问题→续演（过半不重设窗口）；"
                              f"不能明显逼近→escalation_flags.停滞（①加压·引入或推进非玩家爆破）")
                 if not any(isinstance(s, tuple) and len(s) > 1 and str(s[1]).startswith("连续同拍·窗口已过半") for s in soft):
                     soft.append((-1, _msg_half))
@@ -2298,7 +2313,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                 if not any(isinstance(s, tuple) and len(s) > 1 and str(s[1]).startswith("连续同拍·窗口未过半") for s in soft):
                     soft.append((-1, _msg_soft))
             else:
-                _msg_soft = f"连续同拍·窗口状态不可判定（缺起点或时间格式未解析）——按未耗尽处理·③结构轮补设窗口{{起点,预算}}"
+                _msg_soft = f"连续同拍·窗口状态不可判定（缺起点或时间格式未解析）——按未耗尽处理·③下批补设窗口{{起点,预算}}"
                 if not any(isinstance(s, tuple) and len(s) > 1 and str(s[1]).startswith("连续同拍·窗口状态不可判定") for s in soft):
                     soft.append((-1, _msg_soft))
         # 调度单点名角色档案核验（软警告·防具名新角色无档案漂移到演员层才暴露）
@@ -2317,7 +2332,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
         elif len(_active_cast) > 3:
             soft.append((-1, f"导演批焦内活跃超3个（当前 {len(_active_cast)}: {'/'.join(sorted(_active_cast))}）——请确认承接判断已显式主次排序·单轮链成本自负"))
         # 四层调度单具名核验（背景角色/焦外/焦外→焦内 段——虚词不得替代已建档角色）
-        # 正向规则见 phase_director 职责7：调度单一律写具名条目；仅无 CHAR_.md 的纯背景可标群像。
+        # 正向规则见 phase_director D5：调度单一律写具名条目；仅无 CHAR_.md 的纯背景可标群像。
         VAGUE = ("群像", "外部者", "游客", "守卫", "群众", "背景", "背景角色", "路人", "纯背景")
         _known_char = set()
         for _cfp in world_dir.glob("characters/CHAR_*.md"):
@@ -2360,8 +2375,8 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
             if not _writes_handoff:
                 hard.append((-1, "导演批 deepen 必须在 direction.承接判断 点名调度单各角色的「未完成意图」及待改变状态——姿态/情绪/走位不是承接理由"))
             # 承接判断 体量失忆探针（与 MUSE/叙事 探针同构·阈值只存常量不对外）：
-            #   本批确实写了承接判断、却体量不足 → 疑似未走回判十问（写了字但没做判断）。
-            #   日常轮最小批（_daily_reuse）不重写该字段·天然豁免。
+            #   本批确实写了承接判断、却体量不足 → 疑似未走回判评估（写了字但没做判断）。
+            #   最小批（_daily_reuse）不重写该字段·天然豁免。
             _handoff_text = "".join(
                 str(_content) for _kind, _file_key, _key_path, _content, _append in ops
                 if _kind == "write" and _file_key.strip().lower() == "direction"
@@ -2372,7 +2387,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                 hard.append((-1, f"导演批 承接判断 仅 ≈{_hcc} 字，低于字长下限——疑似未走回判（失忆）：先重读 references/phase_director.md，再重做③。本段未落盘。"))
         for _name in _unarchived_named_roles(world_dir):
             if _name in _sched_text:
-                soft.append((-1, f"调度单点名具名角色 '{_name}' 无档案（缺 CHAR_{_name}.md）——补注册建档（精简档即可）或降级为无名群像/纯外压（①戏剧家兜底新角色建档义务·见 phase_dramatist 职责4）"))
+                soft.append((-1, f"调度单点名具名角色 '{_name}' 无档案（缺 CHAR_{_name}.md）——补注册建档（精简档即可）或降级为无名群像/纯外压（①戏剧家兜底新角色建档义务·见 phase_dramatist D8·源⑩兜底）"))
     elif not maintenance and stage == "角色":
         _char_writes = sum(
             1 for _kind, _file_key, _key_path, _content, _append in ops
@@ -2417,14 +2432,14 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                     hard.append((-1, f"角色 {_role_b} 非 POV 却绑定单窗口({_status_b})——豁免字面不在白名单。执行绑定合法豁免仅三种字面：POV 用 `单窗口(第二人称POV·用户指令转写)`·非 POV 用 `单窗口(子agent不可用)`／`单窗口(工具不存在)`（须有本会话派发报错为据）／`单窗口(宿主不可续话)`（宿主不支持具名子 agent 续话·据＝绑定声明）。“在轨轻量/背景位/主agent直演”等不是执行绑定豁免（前两者豁免对象见 A7 意图循环/角色路由表·非执行绑定）——非 POV 角色须走子 agent 路径（phase_actor 执行绑定 Step 0）"))
 
         _states_by_name = {name: data for name, data in _load_char_states(world_dir)}
-        # ⑬f MUSE 存在性（心流先于动作·机械只验有无+对应·内容是否倒补归审计复核）：
+        # ⑬f MUSE 存在性（心声先于 ACTION·机械只验有无+对应·内容是否倒补归审计复核）：
         #     每个 ###ACTION 行动角色须有同名 ###MUSE 行（行序以批次原文账本取证）。
         _muse_roles_canonical = {
             _canonical_role_label(role, world_dir, existing) for role in _action_roles(ctx.get("muse"))
         }
         _missing_muse = sorted({a for a in _action_roles_canonical if a not in _muse_roles_canonical})
         if _missing_muse:
-            hard.append((-1, f"ACTION 行动角色缺 ###MUSE 心流行: {_missing_muse}（心流先于动作·MUSE 须排在各自 ACTION 之前·见 actor_decision.md 心流先于动作）"))
+            hard.append((-1, f"ACTION 行动角色缺 ###MUSE 心声行: {_missing_muse}（心声先于 ACTION·MUSE 须排在各自 ACTION 之前·见 actor_decision.md「思考过程 = 心声（MUSE）」）"))
         # ⑬f2 多环成对（phase_actor 行动环·多环落盘）：同角色 MUSE 数 = ACTION 数
         #      多环＝多组 MUSE/ACTION·按发生顺序成对排列 MUSE₁ ACTION₁ MUSE₂ …
         def _role_line_counts(lines):
@@ -2475,7 +2490,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
         if _missing_trace_append:
             hard.append((-1, f"ACTION 行动角色缺本批 连续行动轨迹 APPEND: {_missing_trace_append}（轨迹必写·轮次/行动/目的/结果/他人反应/计划变化/未完成意图七子字段·见 actor_decision.md 写入节）"))
         # ⑬i MUSE 字数下限（失忆探针·与 writer 字数线同构）：三段结构＋权重判定最底线；
-        #     仅豁免第二人称 POV（用户转写·短合法）；第一/三人称 POV 须走完整环（提示禁"扩写心流"·只做失忆整改）。
+        #     仅豁免第二人称 POV（用户转写·短合法）；第一/三人称 POV 须走完整环（提示禁"扩写心声"·只做失忆整改）。
         #     阈值只存于本处常量·不出现在任何面向 LLM 的文本（报错/reference）——见 _MUSE_MIN_CHARS。
         try:
             _ws_narr = str((yaml.safe_load((world_dir / "states" / "world_state.yaml").read_text(encoding="utf-8")) or {}).get("叙事约定", "") or "")
@@ -2495,7 +2510,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                 continue
             _wcm = len(re.sub(r"\s+", "", _text_m))
             if _wcm < _MUSE_MIN_CHARS:
-                hard.append((-1, f"角色 {_role_m} MUSE 心流仅 ≈{_wcm} 字，低于字长下限——疑似未走决策环（失忆）：先重读 references/phase_actor.md＋references/actor_decision.md，再重做④（1.1–1.5）。本段未落盘。"))
+                hard.append((-1, f"角色 {_role_m} MUSE 心声仅 ≈{_wcm} 字，低于字长下限——疑似未走决策环（失忆）：先重读 references/phase_actor.md＋references/actor_decision.md，再重做④（1.1–1.5）。本段未落盘。"))
         _changed_char_roles = set()
         _written_decision = {}
         for _kind, _file_key, _key_path, _content, _append in ops:
@@ -2580,7 +2595,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                 _miss.append("服饰")
             if _miss:
                 hard.append((-1, f"角色 {_role} 有 ACTION 但行动前置字段未物化，缺: {sorted(_miss)}——位置/核心状态/妆扮/服饰/压力/防御须先有实体值（同批物化有效·见 keys.md 骨架物化规则/phase_actor 先决状态转换）"))
-        # ⑬ 计划-动作一致性（值域化·phase_actor/keys 同步）：覆盖源＝1.4「长期计划巡检」判定（角色判断），
+        # ⑬ 计划-动作一致性（值域化·phase_actor/keys 同步）：覆盖源＝D2「长期计划巡检」判定（角色判断），
         #     轨迹 `计划变化` 是本轮**记录**（不驱动覆盖）——gate 只做双向一致性核对：
         #     记 `调整` 却未覆盖 → 拦；本轮有轨迹却覆盖而未记 `调整` → 拦。
         #     例外：首次建立 decision.当前计划（盘上旧值为空/模板占位）→ 放行——骨架物化规则要求同批必写首条轨迹，
@@ -2712,9 +2727,9 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
     # ⑯ 记忆留痕逐角色对照（硬性·批次级）：###META 记忆✓ 后跟逐角色同类计数留痕
     # （格式 `记忆✓ {角色}:{计数}·{已触发|未达}`·空格分隔·角色名以下划线代空格）
     # 批次写了 CHAR_state 的角色必须出现在留痕中——防「扫旧同类计数只做主线角色」的注意力遗漏
-    # （Angela 案例：轮次 16-19 管道B 计数只对 Guest 发生·贴线角色同类链从未进入计数视野）；
+    # （Angela 案例：轮次 16-19 信念提炼计数只对 Guest 发生·贴线角色同类链从未进入计数视野）；
     # 留痕标「已触发」→ 批次必须含该角色 ###APPEND: 记忆锚点（认知决策与落盘一致性）；
-    # 管道B 的 信念演化 联动由 validate「6g2 门槛满足未升档」软告警承载——此处不加闸门（④角色已是注意力负担最重阶段）。
+    # 信念提炼的 信念演化 联动由 validate「6g2 门槛满足未升档」软告警承载——此处不加闸门（④角色已是注意力负担最重阶段）。
     char_roles = set()
     for _i, (_k, _fk, _kp, _c, _a) in enumerate(ops):
         if _k != "write" or not _fk.startswith(CHAR_STATE_PREFIX) or not _fk.endswith("_state"):
@@ -2746,7 +2761,7 @@ def check_batch(ops, world_dir, ctx=None, enforce_scene_dir=True, force=False, v
                     for _k, _fk, _kp, _c, _a in ops
                 )
                 if not has_anchor:
-                    hard.append((-1, f"###META 记忆✓ 留痕标 {role}:已触发·但批次缺该角色 ###APPEND: 记忆锚点"))
+                    hard.append((-1, f"###META 记忆✓ 留痕标 {role}:已触发·但批次缺该角色 记忆锚点 写入（###KEY: 覆盖或 ###APPEND: 追加）"))
 
     # ⑬c-2 导演调度单点名角色覆盖（硬性——③调度单的 焦内活跃/背景/焦外 cast 必须被角色覆盖声明）
     # 复用 角色覆盖 对账：调度单命名的已知角色 = 更新(→CHAR_state 写) 或 更新(在轨·轻量)(→CHAR_state 写)；
@@ -2841,17 +2856,10 @@ def quick_validate_summary(world_dir):
             if isinstance(mem, list):
                 total = sum(len(str(it.get("内容", ""))) for it in mem if isinstance(it, dict))
                 if total > ANCHOR_LIMIT_TOTAL:
-                    warnings.append(f"{cfp.name}: 记忆锚点 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需执行记忆淘汰（同类融合+低刺激遗忘·###KEY 覆盖全量重写）")
-                over = [it for it in mem if isinstance(it, dict) and len(str(it.get("内容", ""))) > ANCHOR_LIMIT_ENTRY_VALIDATE]
-                if over:
-                    warnings.append(f"{cfp.name}: {len(over)} 条记忆锚点超单条 {ANCHOR_LIMIT_ENTRY_VALIDATE} 字上限（宽松校验线·写作线 100）")
+                    warnings.append(f"{cfp.name}: 记忆锚点 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需执行记忆淘汰（同类并句+低刺激遗忘·###KEY 覆盖全量重写）")
             elif isinstance(mem, str) and mem.strip():
                 if len(mem) > ANCHOR_LIMIT_TOTAL:
-                    warnings.append(f"{cfp.name}: 记忆锚点 {len(mem)} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需执行记忆淘汰（同类融合+低刺激遗忘·###KEY 覆盖全量重写）")
-                entries = re.split(r"\n\s*(?:·\s*)?(?=\[)", mem)
-                over = [e for e in entries if len(e.strip()) > ANCHOR_LIMIT_ENTRY_VALIDATE]
-                if over:
-                    warnings.append(f"{cfp.name}: {len(over)} 条记忆锚点超单条 {ANCHOR_LIMIT_ENTRY_VALIDATE} 字上限（宽松校验线·写作线 100）")
+                    warnings.append(f"{cfp.name}: 记忆锚点 {len(mem)} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需执行记忆淘汰（同类并句+低刺激遗忘·###KEY 覆盖全量重写）")
         # 焦点场景 ↔ 场景目录
         ws_fp = world_dir / "states" / "world_state.yaml"
         if ws_fp.exists():
@@ -3193,18 +3201,12 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                     seg_gate_fails.extend(msg for idx, msg in soft
                                           if idx == -1 and msg.startswith(f"{ctx['stage']}批应含"))
                     # 空壳段（无写入/结构动作）：必含项引擎按「查询/维护豁免」跳过——但带 ###STAGE
-                    # 的工作段不允许空壳（维护批应去声明；查询轮不出批次）
-                    # Option A 白名单：编剧轻量路径（META 双声明）零写入合法
+                    # 的工作段不允许空壳（维护批应去声明；查询轮不出批次）。
+                    # ②无豁免：D1 弧线定位必落盘（必含项见 check_batch 编剧分支）
                     if not ops and not ctx["storyline"] and not ctx["beat"]:
-                        is_storyliner_light = (
-                            ctx["stage"] == "编剧"
-                            and ctx["meta"]
-                            and any("张力基调" in m and "对账" in m for m in ctx["meta"])
-                        )
-                        if not is_storyliner_light:
-                            seg_gate_fails.append(
-                                f"{ctx['stage']}段无任何写入操作与结构动作——空壳段"
-                                f"（维护/恢复批请去掉 ###STAGE 声明·阶段段必含本阶段产出）")
+                        seg_gate_fails.append(
+                            f"{ctx['stage']}段无任何写入操作与结构动作——空壳段"
+                            f"（维护/恢复批请去掉 ###STAGE 声明·阶段段必含本阶段产出）")
                     if ctx["stage"] == "导演":
                         cv, _ck = _check_climax_exit(world_dir, ops, ctx["beat"])
                         seg_gate_fails.extend(cv)
@@ -3316,8 +3318,21 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
             # 「新线」引用（方案A·2026-09-04）：###STORYLINE: add 的 SL-XX 由脚本自动递增分配——
             # LLM 无法在写批次时预知实际 ID。本批 add 的真实 ID 记入 new_line_ids 队列，
             # 后续 ###BEAT: set 新线 <拍> 时替换为该 ID（跨段可见：②段 add → ③段 set 新线）。
+            # 节点落位回填队列（本段内）：(SL-XX, [节拍名…])——由 ###STORYLINE 行内参数
+            #   `承载节拍=A,B`（add/rewrite）／`落定节拍=A,B`（close）携带，批末（本段字段写入完成后）
+            #   由脚本落到 故事弧线.节点落位.{节拍} = SL-XX——② 的 D1 预先规划全表、结构动作回填，
+            #   顺序固定（D1 先写全表 → 本回填覆盖），故不存在同批同键双写歧义。
+            _beat_landing = []
             for action, payload in ctx["storyline"]:
                 parts = action.split()
+                _beats = []
+                _clean = []
+                for _p in parts:
+                    if _p.startswith("承载节拍=") or _p.startswith("落定节拍="):
+                        _beats += [b.strip() for b in _p.split("=", 1)[1].split(",") if b.strip()]
+                    else:
+                        _clean.append(_p)
+                parts = _clean
                 if not parts or parts[0] not in ("add", "rewrite", "close", "clear"):
                     print(f"[FAIL] ###STORYLINE 动作非法: {action!r}（合法: add / rewrite N / close N / clear N——结构动作·②编剧）——批次拦截", file=sys.stderr)
                     sys.exit(1)
@@ -3329,6 +3344,10 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                     sys.exit(1)
                 if parts[0] == "add" and _ret is not None:
                     new_line_ids.append(str(_ret))
+                    if _beats:
+                        _beat_landing.append((str(_ret), _beats))
+                elif parts[0] in ("rewrite", "close") and _beats and len(parts) >= 2:
+                    _beat_landing.append((_norm_sl_id(parts[1]), _beats))
                 applied_ops.append((seg_no, f"###STORYLINE: {action}"))
             for action in ctx["beat"]:
                 parts = action.split()
@@ -3362,10 +3381,41 @@ def cmd_write_raw(world_dir: Path, extra: list[str], batch: bool = False, append
                 else:
                     op_failures.append((idx, file_key, key_path_str))
             if op_failures:
-                print(f"[FAIL] {len(op_failures)} 个操作实际失败（其余 {written_count} 个已落盘·重提时只补失败 op，已落盘 KEY 幂等、APPEND 靠查重）——批次不得报告成功:", file=sys.stderr)
+                print(f"[FAIL] {len(op_failures)} 个操作实际失败（其余 {written_count} 个已落盘·KEY 幂等、APPEND 靠查重）——重提：纯 KEY 批只补失败 op；角色段（###STAGE: 角色）整段重发，或补提/字段修复批加 --maintenance（段级闸豁免·op 级照常）——批次不得报告成功:", file=sys.stderr)
                 for _idx, _fk, _kp in op_failures:
                     print(f"  - op#{_idx}: {_fk}.{_kp}", file=sys.stderr)
                 sys.exit(1)
+            # 节点落位回填（本段字段写入完成后·覆盖 D1 批首写入的「待定」）——
+            #   本批建线/收束携带的 承载节拍/落定节拍，在此落到 故事弧线.节点落位.{节拍} = SL-XX。
+            if _beat_landing:
+                _bf = _load_storylines(world_dir)
+                if not isinstance(_bf, dict):
+                    _bf = {}
+                _arc = _bf.get("故事弧线")
+                if not isinstance(_arc, dict):
+                    _arc = {}
+                    _bf["故事弧线"] = _arc
+                _nl = _arc.get("节点落位")
+                if not isinstance(_nl, dict):
+                    _nl = {}
+                    _arc["节点落位"] = _nl
+                _act = str(_arc.get("当前幕", "") or "")
+                _act_key = next((k for k in ARC_BEATS if k in _act), None)
+                _backfilled = []
+                for _sid, _bs in _beat_landing:
+                    _ln = (_bf.get(STORYLINE_TOP_KEY) or {}).get(_sid)
+                    if "高潮" in _bs and isinstance(_ln, dict):
+                        _bn = [str((_b or {}).get("拍名", "") or "").strip()
+                               for _b in (_ln.get("拍序") or []) if isinstance(_b, dict)]
+                        if "顶点" not in _bn:
+                            print(f"[WARN] 事件线 {_sid} 承载节拍含「高潮」但拍序无「顶点」拍——高潮须落为顶点收束（beat_structure §一·第三幕）·请核对", file=sys.stderr)
+                    for _b in _bs:
+                        if _act_key and _b not in ARC_BEATS[_act_key]:
+                            print(f"[WARN] 承载节拍 '{_b}' 不在当前幕（{_act}）的节拍清单内——键域=当前幕节拍（权威=beat_structure.md §一）·已回填但请核对", file=sys.stderr)
+                        _nl[_b] = _sid
+                        _backfilled.append(f"{_b}={_sid}")
+                write_yaml(world_dir / "states" / STORYLINES_FILE, _bf)
+                print(f"[OK] 节点落位 已回填: {' · '.join(_backfilled)}（承载线由脚本分配 ID·② 无需预知）", file=sys.stderr)
             op = "批量追加" if append_mode else "批量写入"
             # 批次账本（各段·落盘成功后才写——闸门拦截/op 失败已在上方 exit，不落账本）
             ctx["blocked"] = blocked
@@ -4043,22 +4093,25 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False, input_
                 "actor": "角色", "keeper": "场记", "writer": "作家"}
     CHECKLISTS = {
         "dramatist": [
-            "D1 冲突推进: ≥1 条 CT 推进/注册（推进池非空）",
-            "D2b 施压方向: 本轮推进的每条 CT 已带 CT-{XX}.施压方向（余波已兑现批豁免——只结算不施压；枚举：死局两难/防御踩爆/关系爆破/不可逆代价/维持；四爆破缺压力说明仅软警·说明写压力来源/受力点/转变方向；停滞旗标在场时禁全维持）",
-            "D2 代价: CT 对抗双方可核验变化（资源易主/控制权易手/新增伤害/被迫选择/关系档位）",
-            "D3 实质推进: 对抗加码或重大转折（冷却不写弱）",
-            "D4 抽象方: 显现机制+本轮出手形态+抵抗痕迹",
-            "D5 循环轨道: 偏离检测（决策/行动 vs CHAR_.md 默认循环时间线基线）+冲突化+兜底",
+            "C1 冲突推进: ≥1 条 CT 推进/注册（推进池非空·判据=phase_dramatist D10）",
+            "C2b 施压方向: 本轮推进的每条 CT 已带 CT-{XX}.施压方向（余波已兑现批豁免——只结算不施压；枚举：死局两难/防御踩爆/关系爆破/不可逆代价/维持；四爆破缺压力说明·说明写压力来源/受力点/转变方向；停滞旗标在场时禁全维持）（判据=phase_dramatist D11）",
+            "C2 代价: CT 对抗双方可核验变化（资源易主/控制权易手/新增伤害/被迫选择/关系档位）（判据=phase_dramatist D1）",
+            "C3 实质推进: 对抗加码或重大转折（冷却不写弱）（判据=phase_dramatist D5）",
+            "C4 抽象方: 显现机制+本轮出手形态+抵抗痕迹（判据=phase_dramatist D8）",
+            "C5 循环轨道: 偏离检测（决策/行动 vs CHAR_.md 默认循环时间线基线）+冲突化+兜底（判据=phase_dramatist D7/D8）",
+            "C6 CT 存续: 收束判据＝相位=休眠 ∧ 被争夺资源已有定论 ∧ 无未决时机 → ###DELETE: CT-XX；休眠≠消解（相位=休眠的 CT 仍挂在 conflicts）（判据=phase_dramatist D6）",
+            "C7 压力扫描逐源: 十源＋爆破源逐源表态（人际/目标/资源/轨道/跨叙事/时间/环境/法则/扩散/兜底/爆破源）——缺任一＝本层未扫描（判据=phase_dramatist D8）",
         ],
         "storyliner": [
-            "S0 重路径触发: 未引用活跃线 CT 且无活跃线可接（无活跃线，或余波已兑现且无其他非余波活跃线可接）→必含 add；含add时META须回显取材=CT-XX且该CT未命中活跃线；escalation_flags.不承接在场→必含 add/rewrite/clear（应重路径却轻量=本层未扫描）",
-            "S1 戏剧问题: 每拍有边界可回答（禁无界持续描述）",
-            "S2 顶点约束: 关系主体≥2 + 核心张力点名赌注所在 + 变化维度 + 非玩家爆破≥1（外部加压·防死锁）",
-            "S3 弧线对照: SETTING 故事弧线/张力基调",
-            "S4 LOOPS 融入: 在轨节拍并入结构（无来源标记）",
+            "S1 建线与取材: 合并触发（机械硬拦）——未引用活跃线 CT 且无活跃线可接（无活跃线，或余波已兑现且无其他非余波活跃线可接）→必含 add；含add时META须回显取材来源且该CT未命中活跃线（判据=phase_storyliner D4/D5）",
+            "S2 归位与收束: escalation_flags.不承接在场→必含 add/rewrite/clear 三问定原线去向（三分支恒命中一格）；close必带一行 收束摘要；余波拍戏剧问题限沉淀类（判据=phase_storyliner D2/D3）",
+            "S3 拍序设计: 每拍戏剧问题有边界可回答（禁无界持续描述）＋字段齐备＋拍名∈五段式枚举不重复＋拍序≥2拍（判据=phase_storyliner D6）",
+            "S4 顶点约束: 关系主体≥2 + 核心张力点名赌注所在 + 变化维度 + 非玩家爆破≥1（外部加压·防死锁）（判据=phase_storyliner D6）",
+            "S5 弧线定位与节拍落位: storylines.故事弧线 vs SETTING 弧线声明（当前幕/张力基调）——须含 ###KEY: 故事弧线.*；节点落位 键域=当前幕节拍清单且本幕节拍列全（待定堆积=宏观结构跟不上的信号）（判据=phase_storyliner D1）",
+            "S6 LOOPS 融入: 在轨节拍并入结构（无来源标记·角色层不知晓）（D6 附加约束）",
         ],
         "director": [
-            "R1 回判: 上轮结果 vs 当前拍戏剧问题（十问·含意外事件）",
+            "R1 回判: 上轮结果 vs 当前拍戏剧问题（四维度·含意外事件）",
             "R2 承接判断: 当前拍继续的理由或进入下一拍的理由（已写入 direction）",
             "R3 演出状态: 上升/持续/转折/收束/停滞（停滞→escalation flag）",
             "R4 guidance: 问题+张力方向·禁预写角色行动",
@@ -4069,8 +4122,8 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False, input_
             "A2 反顺从四则: 档案强度/抽象方显现/认知闸门/VB 升级路径；取舍与代价引自 1.4 账本",
             "A3 认知上限: 循环档位速查（脚本/漂移/觉醒/变质·元视角禁令）",
             "A4 用户角色: 行动资格=仅用户输入·禁引擎代笔定性抉择",
-            "A5 记忆: 入锚写前五步 + 角色覆盖/记忆✓ 留痕",
-            "A6 计划-动作一致性: 覆盖源＝1.4 长期计划巡检判定；轨迹 计划变化 是本轮记录——记「调整」却未覆盖、或覆盖而未记「调整」= 拦",
+            "A5 记忆: 入锚记下来（actor_decision.md 写入节）+ 角色覆盖/记忆✓ 留痕",
+            "A6 计划-动作一致性: 覆盖源＝D2 长期计划巡检判定；轨迹 计划变化 是本轮记录——记「调整」却未覆盖、或覆盖而未记「调整」= 拦",
         ],
         "keeper": [
             "K1 场景事实: 场景时间线/出场摘要（集合索引）/道具锚点线索",
@@ -4258,7 +4311,7 @@ def cmd_gate(world_dir: Path, extra: list[str], check_mode: bool = False, input_
     # ── 批次类闸门（dramatist/storyliner/director/actor/keeper）──
     raw = _read_input_utf8(input_file)
     if not raw.strip():
-        print(f"[GATE] 未提供 {stage_cn} 批次（stdin/--file 为空）——闸门拦截：不进下一阶段", file=sys.stderr)
+        print(f"[GATE] 未提供 {stage_cn} 批次——gate --check 不复检已落盘状态·须把本段批次文本（含 ###STAGE 行）经 stdin/--file 提交——闸门拦截：不进下一阶段", file=sys.stderr)
         sys.exit(1)
     ctx = parse_batch_entries(raw.split("\n"))
     ops, parse_errors = ctx["ops"], ctx["errors"]
@@ -4568,6 +4621,19 @@ def cmd_validate(world_dir: Path):
                     # 1b-2. 顶点基线落档存在性（软性·消息中性——不出具对比面字段清单）
                     if cur_sl and cur_beat == "顶点" and not _climax_baseline_fp(world_dir, cur_sl).exists():
                         warnings.append("direction.yaml: 当前拍=顶点 但基线落档缺失（进入顶点拍时脚本自动记录·私有落档）——出线核验将拦截·先 beat set/advance 顶点 建档")
+                # 1b-3. 节点落位 键域（storylines·软警不拦截）：键须落在当前幕的节拍清单内——
+                #       键域随当前幕而变（权威=beat_structure.md §一）；幕切换后旧幕键残留即告警。
+                _arc = st.get("故事弧线") if isinstance(st, dict) else None
+                _arc_act = str((_arc or {}).get("当前幕", "") or "") if isinstance(_arc, dict) else ""
+                _arc_nl = (_arc or {}).get("节点落位") if isinstance(_arc, dict) else None
+                if isinstance(_arc_nl, dict) and _arc_nl:
+                    _act_key = next((k for k in ARC_BEATS if k in _arc_act), None)
+                    if _act_key:
+                        _stray = [k for k in _arc_nl if k not in ARC_BEATS[_act_key]]
+                        if _stray:
+                            warnings.append(f"storylines.yaml: 故事弧线.节点落位 含非当前幕（{_arc_act}）的节拍键 {'/'.join(_stray)}——键域=当前幕节拍清单（权威=beat_structure.md §一·幕切换时整体重写）")
+                    elif _arc_act:
+                        warnings.append(f"storylines.yaml: 故事弧线.当前幕 '{_arc_act}' 未落在三幕骨架（第一幕/第二幕/第三幕）内——节点落位 键域无法核对")
                 # 1c. 顶点约束结构（storylines·Vertex Constraint 校验 + 旧字段残留告警）
                 for n, ln in sl_map.items():
                     if not isinstance(ln, dict) or not ln:
@@ -5010,7 +5076,7 @@ def cmd_validate(world_dir: Path):
         pressure = cdata.get("压力水平", "")
         # 6g2. 变质判定门槛已满足但未升档（软提醒·④角色本批应执行升档+信念演化留痕）
         #      豁免：信念演化存在本轮条目——keys.md 硬性「升级=写自主性+同轮追加信念演化留痕」，故本轮有留痕=已升级的可机检证据。
-        #      已知取舍（宁漏勿噪）：提炼管道B 也追加信念演化（不升级），故该豁免产生漏报而非误报。
+        #      已知取舍（宁漏勿噪）：信念提炼也追加信念演化（不升级），故该豁免产生漏报而非误报。
         if (auto in AUTO_ORDER and auto != "变质"
                 and str(pressure).strip() == AUTO_PROMOTE_PRESSURE and str(defense).strip() == AUTO_PROMOTE_DEFENSE):
             _bel = cdata.get("信念演化")
@@ -5067,7 +5133,7 @@ def cmd_validate(world_dir: Path):
                 _acq_re = re.compile(r"接过|递出|握起|装入|收入|捡起|拿起|领到|获得|交出|易手")
                 _has_acq = any(_acq_re.search(str(it.get("行动", "") or "")) for it in _recent if isinstance(it, dict))
                 if _has_acq and not _has_items:
-                    warnings.append(f"{cname}: 近3轮轨迹含取得/交出类动作但 随身物品 为空——可转移重要持有物（卡/契约/钥匙/武器/弹药/道具等）取得轮应全量重写随身物品并同步记忆锚点（phase_actor 条件写）")
+                    warnings.append(f"{cname}: 近3轮轨迹含取得/交出类动作但 随身物品 为空——可转移重要持有物（卡/契约/钥匙/武器/弹药/道具等）取得轮应全量重写随身物品并同步记忆锚点（actor_decision D4 状态写入判定）")
 
     # 7. world_state.时间线 粗粒度摘要校验（脚本校验线：条目≤10 | 单场景≤3转折点 | 总字数≤2500——超限告警，提示场记执行压缩维护）
     ws_fp = world_dir / "states" / "world_state.yaml"
@@ -5095,9 +5161,9 @@ def cmd_validate(world_dir: Path):
         except Exception:
             pass
 
-    # 8. CHAR_state 记忆锚点校验（脚本校验线：单条≤150字宽松校验线 | 总字数≤3000——超限告警，提示戏剧家执行记忆淘汰（同类融合+低刺激遗忘·###KEY 覆盖全量重写）；写作线单条≤100 见 audit 写前提醒）
+    # 8. CHAR_state 记忆锚点校验（仅总字数≤3000——超限告警，提示执行记忆淘汰（同类并句+低刺激遗忘·###KEY 覆盖全量重写）；
+    #    单条长度不设限——口径见 write_protocol.md 写入表 / keys.md「记录字段写法」）
     ANCHOR_LIMIT_TOTAL = 3000
-    ANCHOR_LIMIT_ENTRY = ANCHOR_LIMIT_ENTRY_VALIDATE  # 150 宽松校验线（防强制压缩·写作按 100 为准）
     for cfp in sorted(world_dir.glob(f"states/{CHAR_STATE_PREFIX}*{CHAR_STATE_SUFFIX}")):
         try:
             cdata = yaml.safe_load(cfp.read_text(encoding="utf-8"))
@@ -5107,26 +5173,18 @@ def cmd_validate(world_dir: Path):
             continue
         mem = cdata.get("记忆锚点", "")
         if isinstance(mem, list):
-            # 结构化列表：每条内容 ≤100 · 总内容字数 ≤3000
+            # 结构化列表：仅总内容字数 ≤3000（单条不设限）
             total = 0
-            long_entries = []
             for it in mem:
                 if not isinstance(it, dict):
                     continue
-                content = str(it.get("内容", ""))
-                total += len(content)
-                if len(content) > ANCHOR_LIMIT_ENTRY:
-                    long_entries.append((len(content), content[:45].replace("\n", " ")))
+                total += len(str(it.get("内容", "")))
             if total > ANCHOR_LIMIT_TOTAL:
-                warnings.append(f"{cfp.name}: 记忆锚点 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需执行记忆淘汰（同类融合+低刺激遗忘·###KEY 覆盖全量重写）")
-            if long_entries:
-                shown = "；".join(f"{n}字:{head}…" for n, head in long_entries[:3])
-                more = f" 等{len(long_entries)}条" if len(long_entries) > 3 else ""
-                warnings.append(f"{cfp.name}: 记忆锚点 {len(long_entries)} 条超单条 {ANCHOR_LIMIT_ENTRY} 字上限（应压为事实一句+定性一句）——{shown}{more}")
-            # 记忆融合/提炼核验（phase_actor 写入节「条件写 记忆锚点」五步）：
-            #   规则为「已有 ≥2 条同类 → 先合并再追加」（追加时判定）⇒ 正确行为的同类稳态=2 条（1 概括 + 1 新）——
-            #   故仅「同类 ≥3 且无概括条目」才是「该融未融」的真信号（=2 是正常累积，不报）。
-            #   → 显式提示（验证 A1 现象：无限追加从不融合）。对象字段缺省时按「对象缺省」降级只提示条数。
+                warnings.append(f"{cfp.name}: 记忆锚点 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需执行记忆淘汰（同类并句+低刺激遗忘·###KEY 覆盖全量重写）")
+            # 记忆并句/提炼兜底核验（actor_decision 1.1 回忆 / 1.4 账上信念称量 / 写入节落盘）：
+            #   规则不靠计数触发——并句与信念转变由角色在思考里产出（1.1 想起旧记忆 → 1.4 账上称）；
+            #   本项仅作**兜底信号**：同类长期只增不减 = 思考里从未并句（验证 A1 现象：无限追加从不并句）。
+            #   对象字段缺省时按「对象缺省」降级只提示条数。
             from collections import defaultdict as _Ddict
             _by_obj = _Ddict(list)
             for _it in mem:
@@ -5134,26 +5192,15 @@ def cmd_validate(world_dir: Path):
                     _by_obj[str(_it.get("对象", "") or "〔未标对象〕")].append(_it)
             for _obj, _its in _by_obj.items():
                 _n = len(_its)
-                _has_fusion = any(("概括" in str(_it.get("内容", "") or "") or "同类合并" in str(_it.get("内容", "") or "")) for _it in _its)
-                if _n >= 3 and not _has_fusion:
-                    warnings.append(f"{cfp.name}: 记忆锚点「{_obj}」同类 {_n} 条未融合/未提炼——按 phase_actor 写入节：≥2 同类应先合并为概括条目，≥3 应同批追加 信念演化（管道B），当前仅逐条追加未压缩")
+                if _n >= 3:
+                    warnings.append(f"{cfp.name}: 记忆锚点「{_obj}」同类 {_n} 条只增未并——并句与信念转变应由角色在思考里产出（1.1 想起旧记忆 → 1.4 账上称），写入节只负责落盘；此处为兜底信号，非触发判据")
             continue
         if not isinstance(mem, str) or not mem.strip():
             continue
         total = len(mem)
         if total > ANCHOR_LIMIT_TOTAL:
-            warnings.append(f"{cfp.name}: 记忆锚点 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需执行记忆淘汰（同类融合+低刺激遗忘·###KEY 覆盖全量重写）")
-        # 单条超限检测：按 [时间/对象] 或 [碎片 开头切分
-        entries = re.split(r"\n\s*(?:·\s*)?(?=\[)", mem)
-        long_entries = []
-        for ent in entries:
-            ent = ent.strip()
-            if len(ent) > ANCHOR_LIMIT_ENTRY:
-                long_entries.append((len(ent), ent[:45].replace("\n", " ")))
-        if long_entries:
-            shown = "；".join(f"{n}字:{head}…" for n, head in long_entries[:3])
-            more = f" 等{len(long_entries)}条" if len(long_entries) > 3 else ""
-            warnings.append(f"{cfp.name}: 记忆锚点 {len(long_entries)} 条超单条 {ANCHOR_LIMIT_ENTRY} 字上限（应压为事实一句+定性一句）——{shown}{more}")
+            warnings.append(f"{cfp.name}: 记忆锚点 {total} 字 > {ANCHOR_LIMIT_TOTAL} 校验线——需执行记忆淘汰（同类并句+低刺激遗忘·###KEY 覆盖全量重写）")
+        # （单条长度不设限——不再做单条超限检测）
         # 8a. 重复条目检测（内容完全相同=重复事故残留；同 ID 不同内容=合法多轮条目不报）
         seen_lines, dup_lines = {}, []
         for line in mem.splitlines():
@@ -5184,7 +5231,9 @@ def cmd_validate(world_dir: Path):
         has_periodic = False
         if isinstance(cd_data, dict):
             for cd in cd_data.values():
-                if isinstance(cd, dict) and ("周期" in str(cd.get("威胁", "")) or "重置" in str(cd.get("威胁", "")) or "循环" in str(cd.get("威胁", ""))):
+                # 周期条目判据与 keys.md 倒计时协议对齐：「重置类须含到期时刻」——
+                # 含 到期时刻 字段即视为周期条目；「威胁」关键词为兼容旧世界的旁路
+                if isinstance(cd, dict) and ("到期时刻" in cd or "周期" in str(cd.get("威胁", "")) or "重置" in str(cd.get("威胁", "")) or "循环" in str(cd.get("威胁", ""))):
                     has_periodic = True
                     break
         if is_loop_world and not has_periodic:
@@ -5393,7 +5442,8 @@ def _next_storyline_id(beats: dict) -> str:
 def _empty_beat_warnings(line) -> list[str]:
     """检查事件线拍序：空间/时间/戏剧问题 任一为空的拍 → 警告列表。
     建线应预设完整拍序内容（拍=规划蓝图）；推进/换线后空拍仍在 = 现实与该拍无法承接（需 rewrite 补填或明确留空）。
-    预估时长 缺失 → 独立软警（③现场重估自愈·不阻塞）——不计入硬性「内容不完整」。"""
+    预估时长 / 兑现形态 缺失 → 各自独立软警（不计入硬性「内容不完整」·不阻塞）——
+    预估时长缺失由③现场重估自愈；兑现形态缺失由③回判「自然完成判进」兜底（判据=phase_storyliner D6）。"""
     warns = []
     seq = line.get("拍序") or []
     if not isinstance(seq, list):
@@ -5405,8 +5455,11 @@ def _empty_beat_warnings(line) -> list[str]:
         missing = [f for f in ("空间", "时间", "戏剧问题") if not str(b.get(f, "")).strip()]
         if missing:
             warns.append(f"拍 '{nm}' 内容不完整（缺: {'/'.join(missing)}）——建线应预设完整拍序·现实与空拍无法承接·需 rewrite 补填")
-        elif not str(b.get("预估时长", "") or "").strip():
+            continue
+        if not str(b.get("预估时长", "") or "").strip():
             warns.append(f"拍 '{nm}' 缺 预估时长（③时间窗口预算的默认源·建议补填 N分钟·缺失时③现场重估直接定值）")
+        if not str(b.get("兑现形态", "") or "").strip():
+            warns.append(f"拍 '{nm}' 缺 兑现形态（问题被回答时的可观察形态：证据易手/被迫承认/控制权转移/关系定性/退路封死·判据=phase_storyliner D6）")
     # 存量提醒（validate/遗留数据·新建由 _validate_storyline 硬拦）：单拍/首拍余波·顶点
     if isinstance(seq, list) and seq:
         _first = seq[0] if isinstance(seq[0], dict) else {}
@@ -5510,7 +5563,7 @@ def cmd_storyline(world_dir: Path, extra: list[str], stdin_text: str | None = No
             data[STORYLINE_TOP_KEY] = beats
             write_yaml(fp, data)
             if ptr_on_line:
-                print(f"[OK] {STORYLINE_TOP_KEY} 事件线 {n} 已收束（状态=已收束·留 名称/类型/收束摘要）——direction 指针已复位·当轮须 add 新线（取材按 phase_storyliner 建线取材表）并由③导演 set 新起点（否则 round-check FAIL）")
+                print(f"[OK] {STORYLINE_TOP_KEY} 事件线 {n} 已收束（状态=已收束·留 名称/类型/收束摘要）——direction 指针已复位·当轮须 add 新线（取材按 phase_storyliner D5）并由③导演 set 新起点（否则 round-check FAIL）")
             else:
                 print(f"[OK] {STORYLINE_TOP_KEY} 事件线 {n} 已收束（状态=已收束·留 名称/类型/收束摘要）——指针未动（当前事件线不受影响）")
             return
@@ -6529,20 +6582,22 @@ def cmd_round_check(world_dir: Path):
     #     执行转场必须更新它（init_scene + 更新 world_state.焦点场景）。
     _trans = dr.get("转场") or {}
     _target = (_trans.get("目标场景") if isinstance(_trans, dict) else None)
-    if _target and str(_target).strip():
-        _tgt_id = re.search(r"S\d{2,}", str(_target).strip())
+    _tgt_str = str(_target).strip() if _target else ""
+    # 「无」/空 = 已清除语义（keys.md 转场行）——escalation_flags 的写「无」惯例迁移到转场不再误报
+    if _tgt_str and _tgt_str != "无":
+        _tgt_id = re.search(r"S\d{2,}", _tgt_str)
         _cur_focus = str(ws.get("焦点场景", "") or "").strip()
         if _tgt_id:
             _expect = _tgt_id.group(0)
             if not _cur_focus.upper().startswith(_expect.upper()):
                 fails.append(
-                    f"转场决策 目标={str(_target).strip()} 已写（direction.转场.目标场景）但世界焦点场景仍为 '{_cur_focus}'——⑤场记转场未执行"
+                    f"转场决策 目标={_tgt_str} 已写（direction.转场.目标场景）但世界焦点场景仍为 '{_cur_focus}'——⑤场记转场未执行"
                     f"（须 init_scene 建新场景 + 更新 world_state.焦点场景；禁止由⑥作家手动建目录绕过）"
                 )
         else:
-            if _cur_focus.upper() not in str(_target).strip().upper():
+            if _cur_focus.upper() not in _tgt_str.upper():
                 fails.append(
-                    f"转场决策 目标={str(_target).strip()}（direction.转场.目标场景）与当前焦点场景 '{_cur_focus}' 不一致——⑤场记转场未执行"
+                    f"转场决策 目标={_tgt_str}（direction.转场.目标场景）与当前焦点场景 '{_cur_focus}' 不一致——⑤场记转场未执行"
                 )
     if fails:
         print(f"[ROUND] 轮完整性检查 FAIL（{len(fails)} 项）:", file=sys.stderr)
@@ -6556,7 +6611,7 @@ def cmd_precheck(world_dir: Path):
     """本轮调度信号导出器（只读·不拦截·exit 0 恒过）——把 gate/round-check 必然强制的**机械义务**前置暴露，
     让 LLM 第一射即满足（act 前告知·而非 gate 失败后修·避免最贵的重提）。
     判据全部从现有状态可导出·只读不写。
-    v0.28：结构基线缺失（最高优先级·强制结构轮）+ escalation_flags.CT待结算（①必含 CT op）+ 时间窗口已耗导出。
+    v0.28：结构基线缺失（最高优先级·必须先行初始化）+ escalation_flags.CT待结算（①必含 CT op）+ 时间窗口已耗导出。
     覆盖范围（诚实边界）：仅状态可导出的机械义务；用户指令加压/重大事件/回判张力等**推断类触发**需 LLM
     自行判定（输出末尾明示·防 LLM 把本预检当全量触发器）。
     与 --dry-run（批内解析+audit+差价）/ gate --check（单段复验）分工：本命令=跨阶段状态义务预曝光。"""
@@ -6578,7 +6633,7 @@ def cmd_precheck(world_dir: Path):
 
     findings = []  # (标记, 触发, 必含项/参考提示, 违反后果)
     structural = False  # 本轮是否存在结构层义务（有任一→末尾不出合批提示）
-    _init_round = False  # 结构基线缺失=初始化轮（③三态之一·供唤醒判定）
+    _init_round = False  # 结构基线缺失=需先行初始化（供合批提示与义务区判定）
     # ── v0.28 结构基线（最高优先级·机械判定·不可豁免）──
     # 齐备 = conflicts 有≥1 活跃 CT ∧ storylines 有≥1 活跃线 ∧ direction.当前拍 非空
     _active_ct = [k for k, v in cd.items() if isinstance(v, dict) and str(k).startswith("CT-")] if isinstance(cd, dict) else []
@@ -6594,7 +6649,7 @@ def cmd_precheck(world_dir: Path):
             _what.append("storylines 无活跃线")
         if not cur_beat:
             _what.append("direction.当前拍 空")
-        findings.append(("●", f"结构基线缺失（{(' ∨ ').join(_what)}）——v0.28 强制结构轮·不可豁免",
+        findings.append(("●", f"结构基线缺失（{(' ∨ ').join(_what)}）——必须先行初始化·不可豁免",
                          "①戏剧家本批必注册/推进 CT（兜底四源）→ ②编剧必建线（取材=①产出）→ ③导演必 set 指针+guidance+调度单+窗口{起点,预算}",
                          "世界无法启动（gate 结构层硬拦）"))
     # ── 停滞旗标（有→①戏剧家必须加压兑现）──
@@ -6630,7 +6685,7 @@ def cmd_precheck(world_dir: Path):
     _same_beat_prev = str(dr.get("节拍决策", "") or "").strip().startswith("继续当前拍")
     _bm, _elapsed, _remain, _exhausted = _window_status(world_dir)
     if _bm is None:
-        findings.append(("◎", "时间窗口 未设定或预算未解析——③初始化/结构轮应设 窗口{起点,预算}（格式：N分钟）",
+        findings.append(("◎", "时间窗口 未设定或预算未解析——③应设 窗口{起点,预算}（格式：N分钟）",
                          "—（无窗口则④无节流依据·precheck 提示）",
                          "—（参考信息·非硬性）"))
     else:
@@ -6653,7 +6708,7 @@ def cmd_precheck(world_dir: Path):
                              "—（参考信息·非硬性）"))
         else:
             findings.append(("◎", _info + " · 剩余不可判定（缺起点或时间格式未解析）",
-                             "③结构轮补设 窗口{起点,预算}（起点=当前世界时间·预算=N分钟）·本轮按未耗尽处理",
+                             "③补设 窗口{起点,预算}（起点=当前世界时间·预算=N分钟）·本轮按未耗尽处理",
                              "—（参考信息·非硬性）"))
     # ── 空表→建线（事件线空但指针非空=悬空·必须补建）──
     _empty_table = bool(not sl_map and cur_sl)
@@ -6669,7 +6724,7 @@ def cmd_precheck(world_dir: Path):
     if _must_add_new:
         structural = True
         findings.append(("●", f"未引用活跃线 CT 且无活跃线可接（{'/'.join(_unref_ct)}）",
-                         "②编剧本批必须 ###STORYLINE: add（建线取材表第2行·取材=与焦点场景关联的未引用 CT·细则见 phase_storyliner 职责2）",
+                         "②编剧本批必须 ###STORYLINE: add（D4 合并触发·取材=与焦点场景关联的未引用 CT·细则见 phase_storyliner D5 取材）",
                          "gate storyliner 拦"))
     # ── 顶点拍（当前拍=顶点·③导演出线核验 + ⑥作家顶点轮）──
     if cur_sl and cur_beat == "顶点":
@@ -6691,11 +6746,22 @@ def cmd_precheck(world_dir: Path):
     #    则可能被⑥作家手动建目录绕过（审计 R2/K1/K2 现象）。precheck 只读提示·不拦截——转场执行由⑤场记该批落地。
     _trans = dr.get("转场") or {}
     _target = _trans.get("目标场景") if isinstance(_trans, dict) else None
-    if _target and str(_target).strip():
-        structural = True
-        findings.append(("●", f"③导演已写转场决策：目标={str(_target).strip()}（direction.转场.目标场景）",
-                         "⑤场记本批先走场景切换流程（冻结+时间线压缩+init_scene+world_state.焦点场景 更新）——禁止在⑥作家手动建场景目录绕过",
-                         "round-check / gate keeper 落点拦"))
+    _tgt_str = str(_target).strip() if _target else ""
+    # 「无」/空 = 已清除语义；目标==当前焦点 = 已执行（init_scene 正常路径会自动清·旁路残留降级为参考提示）
+    if _tgt_str and _tgt_str != "无":
+        _tgt_id = re.search(r"S\d{2,}", _tgt_str)
+        _cur_focus = str(ws.get("焦点场景", "") or "").strip()
+        _executed = (_cur_focus.upper().startswith(_tgt_id.group(0).upper()) if _tgt_id
+                     else bool(_cur_focus) and _cur_focus.upper() in _tgt_str.upper())
+        if _executed:
+            findings.append(("○", f"转场已执行（目标={_tgt_str}＝当前焦点 {_cur_focus}）·direction.转场 残留",
+                             "建议③导演回判批清除（整键写 {}）",
+                             "参考提示·非义务"))
+        else:
+            structural = True
+            findings.append(("●", f"③导演已写转场决策：目标={_tgt_str}（direction.转场.目标场景）",
+                             "⑤场记本批先走场景切换流程（冻结+时间线压缩+init_scene+world_state.焦点场景 更新）——禁止在⑥作家手动建场景目录绕过",
+                             "round-check / gate keeper 落点拦"))
     # ── ④角色义务（循环世界·本轮状态已可导出·无推断）──
     _char_states = _load_char_states(world_dir)
     _loop_names = [n for n, d in _char_states if str(d.get("自主性", "") or "").strip() in AUTO_ORDER]
@@ -6705,7 +6771,7 @@ def cmd_precheck(world_dir: Path):
         _relevant = [n for n in _loop_names if n in _sched_roles]
         if _relevant:
             findings.append(("●", f"循环世界（本轮相关调度）：{'/'.join(_relevant)}",
-                             "④角色本批：③调度单点名角色必须进『角色覆盖』声明（『无变化』通道已废止）；在轨循环角色走轻量推演——计划层不重新合成（当前计划＝CHAR_.md 默认循环时间线物化的基线·维护归 1.4 长期计划巡检）",
+                             "④角色本批：③调度单点名角色必须进『角色覆盖』声明（『无变化』通道已废止）；在轨循环角色走轻量推演——计划层不重新合成（当前计划＝CHAR_.md 默认循环时间线物化的基线·维护归 D2 长期计划巡检）",
                              "gate actor 拦（角色覆盖对账）/ 计划联动告警"))
         else:
             findings.append(("○", f"循环世界（在轨{_loop_names.__len__()}名·本轮无循环角色调度）",
@@ -6780,11 +6846,56 @@ def cmd_precheck(world_dir: Path):
         _s_src.append("空表+指针非空")
     if _must_add_new:
         _s_src.append("未引用CT+无活跃线可接")
+    if cur_beat == "余波":
+        _s_src.append("余波拍（advance 已落·收束/承接判定归②）")
+    # ── 空间脱钩检测（v0.30·机械信号→②编剧唤醒）：当前拍拍序空间与焦点场景区域标记不可匹配 → ②三问归位 ──
+    #    判据=局面级：本拍预设局面所在的物理空间已不在当前焦点场景（r56 型失效——场景离开拍空间而③未判行2·预设与现实脱钩）。
+    #    标记面=焦点 REGION 标题两侧段＋scene_card 场景名（不含子区域——子区域名会吞掉「Mariposa 前厅散客桌」这类相邻场所文本）。
+    #    归一化包含匹配（双向）；不可匹配 → 唤醒②三问归位后信号自清（自愈型·非拦截型·误唤成本=②一次确认）。
+    _beat_space = ""
+    if cur_sl and cur_beat and isinstance(sl_map, dict):
+        _sl_entry = sl_map.get(cur_sl)
+        if isinstance(_sl_entry, dict) and isinstance(_sl_entry.get("拍序"), list):
+            for _b in _sl_entry["拍序"]:
+                if isinstance(_b, dict) and str(_b.get("拍名", "") or "").strip() == cur_beat:
+                    _beat_space = str(_b.get("空间", "") or "").strip()
+                    break
+    if _beat_space:
+        _mk: list[str] = []
+        _focus_node = _focus_region_node(world_dir)
+        if _focus_node:
+            _fp = world_dir / "regions" / _focus_node / "REGION.md"
+            if _fp.exists():
+                for ln in _fp.read_text(encoding="utf-8", errors="ignore").splitlines():
+                    s = ln.strip()
+                    if s.startswith("# ") and "/" in s:
+                        for _part in s.lstrip("#").split("/"):
+                            if _part.strip():
+                                _mk.append(_part.strip())
+        _sc_dir = get_scene_dir(world_dir)
+        if _sc_dir is not None and (_sc_dir / "scene_card.md").exists():
+            _m_card = re.search(r"^\|\s*场景名\s*\|\s*([^|]+?)\s*\|",
+                                (_sc_dir / "scene_card.md").read_text(encoding="utf-8", errors="ignore"), re.M)
+            if _m_card:
+                for _part in re.split(r"[·,，、]", _m_card.group(1).strip()):
+                    if _part.strip():
+                        _mk.append(_part.strip())
+        if _mk:
+            _ns_beat = re.sub(r"\s+", "", _beat_space)
+            _matched = any(
+                (re.sub(r"\s+", "", m) in _ns_beat) or (bool(_ns_beat) and _ns_beat in re.sub(r"\s+", "", m))
+                for m in _mk if m
+            )
+            if not _matched:
+                _s_src.append("空间脱钩")
+                structural = True
+                findings.append(("●", f"当前拍空间脱钩——拍序空间「{_beat_space}」与焦点场景区域标记（{'/'.join(_mk[:3])}…）不可匹配",
+                                 "②编剧本批必须三问定归属（该拍/该线：挂起·改写拍序空间·或开新线承接实际演出——归位后信号自清）",
+                                 "信号每轮重复在场直至②归位（拍序空间与焦点场景重新可匹配·或当前拍切至可匹配拍）"))
     _d_txt = ("唤醒（" + "/".join(_d_src) + "）") if _d_src else "未唤醒"
     _s_txt = ("唤醒（" + "/".join(_s_src) + "）") if _s_src else "未唤醒"
-    _r3_txt = "初始化轮" if _init_round else ("结构轮" if structural else "日常轮")
     print("[PRECHECK] 唤醒判定（机械信号·语义触发见末尾覆盖边界）: "
-          f"①戏剧家 {_d_txt} | ②编剧 {_s_txt} | ③导演 恒跑·{_r3_txt} | ④角色 恒跑 | ⑤场记 恒跑 | ⑥作家 恒跑")
+          f"①戏剧家 {_d_txt} | ②编剧 {_s_txt} | ③导演 恒跑 | ④角色 恒跑 | ⑤场记 恒跑 | ⑥作家 恒跑")
 
     if not findings:
         print("[PRECHECK] 本轮无状态可导出的机械义务（正常推进：各阶段走轻路径/常规路径）")
@@ -6920,7 +7031,7 @@ def cmd_precheck(world_dir: Path):
         for _cn in sorted(set(_skeleton)):
             print(f"  {_cn}")
 
-    print("[PRECHECK] 覆盖边界: 仅状态可导出的机械义务；唤醒判定行的「未唤醒」仅指机械信号未命中——用户指令加压 / 循环轨道偏离（§1b 对照·Step1 判） / 重大事件→事件扩散（①关联角色并集） / ③导演回判张力、变化维度是否达临界 等推断类触发由 LLM 自行判定，不在此列（窗口耗尽已由上方窗口状态项与 escalation_flags.停滞 机械导出·③行5/行6 判定）")
+    print("[PRECHECK] 覆盖边界: 仅状态可导出的机械义务；唤醒判定行的「未唤醒」仅指机械信号未命中——用户指令加压 / 循环轨道偏离（§1b 对照·Step1 判） / 重大事件→事件扩散（①关联角色并集） / ③导演回判张力、变化维度是否达临界 等推断类触发由 LLM 自行判定，不在此列（窗口耗尽已由上方窗口状态项与 escalation_flags.停滞 机械导出·③D2/D4 判定）")
     print("[PRECHECK] 提示: 批次级预演走 `--dry-run`·单段复验走 `gate <阶段> --check`（与本次级义务预检互补·不重复）")
     return 0
 
@@ -7044,7 +7155,7 @@ def _win_mapping(raw):
     存量脏数据兼容：历史批次曾把窗口写成**带引号的字符串标量**
     （`时间窗口: '{起点: …, 预算: 45分钟}'`），YAML 载入即 str，`.get()` 抛
     AttributeError → 状态静默不可判定（window_status 返回全 None → ③拿不到
-    余量 → 行5 第一合取项无法判真 → 永远滑向行6）。此处统一归一：str 走
+    余量 → 停滞判据第一合取项无法判真 → 永远滑向续演默认）。此处统一归一：str 走
     `yaml.safe_load` 再解析一次（Inline mapping 语法与 YAML 同源·比
     literal_eval 更宽容「第1日」等非 Python 字面量），仍非法则返回 {}。
     precheck / context / gate 三处消费共用本函数——单一容错口径。"""
@@ -7086,7 +7197,7 @@ def _window_status(world_dir: Path):
             return (bm, None, None, None)
         if not start:
             # 起点缺失（存量线/历史落盘）：以当前世界时间为起点兜底——本拍计时自此起算·
-            # 窗口不因缺字段而整体失效（③结构轮补设起点后回归正常口径）。
+            # 窗口不因缺字段而整体失效（③补设起点后回归正常口径）。
             start = cur
         d1, m1 = _parse_world_time(cur)
         d2, m2 = _parse_world_time(start)

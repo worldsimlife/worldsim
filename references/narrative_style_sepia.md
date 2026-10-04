@@ -1,6 +1,6 @@
 # 通用叙事风格参考（sepia 原文搬运）
 
-> 适用范围：通用——⑥作家各轮型通用参考，按需查阅。
+> 适用范围：通用——⑥作家各轮通用参考，按需查阅。
 > 来源：skills/sepia（sepia v0.7.0）原文搬运（悬空引用已删）。
 > 裁决：与 phase_writer.md或 SKILL.md 通用约束冲突处，以 worldsim 为准（POV 过滤/数据忠诚/卡里记的事不得增减·怎么讲全归作家/gate 不变）。
 > 不在本文：professional-pass.md（含 domains/）、agents/、model-fingerprints.md、voices/ 正文——默认不加载；voice 叠加仅 opt-in（用户明示才用）。

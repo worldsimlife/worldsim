@@ -44,7 +44,7 @@
 | **cast-baseline** | `python3 {skill_dir}/scripts/worldctl.py <世界> cast-baseline` | **场景 cast 基线查询（只读·exit 0 恒过）**——输出当前焦点场景的基线名单与 scene_card 两栏覆盖/缺失情况（口径与 gate keeper cast 硬拦同源：调度单四层点名无条件入基线·常驻NPC/关联角色按当前时刻时间线命中本场者入基线·子区域位置命中计入本场）；**场景切换时 init_scene 焦点切换后、写 scene_card 前运行一次，基线名单照填「出场角色」/「焦外/在场」两栏**（scene_management §6） |
 | **ledger** | `python3 {skill_dir}/scripts/worldctl.py <世界> ledger [轮次]` | **批次账本查询（只读·取证面）**——各阶段段 `阶段/META/op索引`，④角色段额外含 `###MUSE/###ACTION/###SCHEDULE/###META` 原文（脚本在各段落盘成功后自动写 `scenes/{段所属场景}/.ledger_r{轮次}.{阶段}.{时间戳}.yaml`·点前缀不进 discover/read/加载面）；跨场景轮焦点场景未命中时自动回退扫全部场景；缺轮次=列出全部账本。用途=标准模式审计取证与续驱动恢复；**创作路径不读** |
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |
-| gate | `python3 {skill_dir}/scripts/worldctl.py <世界> gate dramatist\|storyliner\|director\|actor\|keeper\|writer [--check] [--target N] [--style sepia|dialogue|explicit]` | 阶段出口闸门——批次类五阶段的闸门已默认内嵌于 write-raw --batch 逐段执行（`--force` 豁免）；本命令无 `--check` 打印该阶段人工审计清单（gates.md 同源），有 `--check` 用于 writer 叙事核验与单段手动复检，不合格 exit 1；writer 可选 `--target` 大约目标数/`--style` 所用校准工具（sepia\|dialogue\|explicit·缺声明软提醒·不拦截） |
+| gate | `python3 {skill_dir}/scripts/worldctl.py <世界> gate dramatist\|storyliner\|director\|actor\|keeper\|writer [--check] [--target N] [--style sepia|dialogue|explicit]` | 阶段出口闸门——批次类五阶段的闸门已默认内嵌于 write-raw --batch 逐段执行（`--force` 豁免）；本命令无 `--check` 打印该阶段人工审计清单（gates.md 同源），有 `--check` 用于 writer 叙事核验与单段手动复检——批次类阶段须把该段批次文本（含 `###STAGE` 行）经 stdin/`--file` 重新提交（空输入即拦·不复检已落盘状态），不合格 exit 1；writer 可选 `--target` 大约目标数/`--style` 所用校准工具（sepia\|dialogue\|explicit·缺声明软提醒·不拦截） |
 | lint | `python3 {skill_dir}/scripts/worldctl.py <世界> lint` | 全部状态文件 YAML 格式/引用问题只读检查（不落盘） |
 | fix | `python3 {skill_dir}/scripts/worldctl.py <世界> fix` | 规范化重写全部 YAML 状态文件（snap 自动备份 + validate） |
 | scan | `python3 {skill_dir}/scripts/worldctl.py <世界> scan <关键词> [--live]` | 全仓关键词扫描（worlds/<世界>/ 下 .md/.yaml·排除 narrative 轮转与 archive；`--live` 只扫现行文件）——残留扫描/修复验证用；退出码：0=无匹配（已清除）1=有匹配 2=用法错误 |
@@ -54,19 +54,19 @@
 **作用**：把 gate/round-check 必然强制的**机械义务**前置暴露（顶点拍 / 停滞旗标 / 不承接旗标 / CT待结算 / 空表建线 / 未引用CT建线 / 切场景 / 跨天 / 结构基线），让 LLM 第一射即满足，避免 gate 失败整轮重提。
 
 **输出三段：**
-- **唤醒判定（首行）**：①/② 唤醒或未唤醒＋机械原因 · ③ 轮型（初始化/结构/日常）· ④⑤⑥ 恒跑——Step1 编排任务单直接取用；
-- **机械义务**：结构基线缺失（最高优先级·强制结构轮）＋ `escalation_flags.CT待结算`（①必含 CT op）＋ 时间窗口已耗导出。**只覆盖状态可导出的机械义务**——用户指令/重大事件/回判张力等推断类触发仍由 LLM 判定（输出末尾明示）；
+- **唤醒判定（首行）**：①/② 唤醒或未唤醒＋机械原因 · ③④⑤⑥ 恒跑——Step1 编排任务单直接取用；
+- **机械义务**：结构基线缺失（最高优先级·必须先行初始化）＋ `escalation_flags.CT待结算`（①必含 CT op）＋ 时间窗口已耗导出。**只覆盖状态可导出的机械义务**——用户指令/重大事件/回判张力等推断类触发仍由 LLM 判定（输出末尾明示）；
 - **SNAPSHOT 数据快照**（参考数据·非义务）：§1a 临近互锁事件（LOOPS 跨场景互锁时刻表·与窗口重叠·窗口＝time_window 缺省 30min·③调度单「即将触发事件」预判）· §1b 循环轨道对照（预设 vs 实际·偏离基线·范围＝调度单点名循环角色 ∪ 当前焦点区 REGION 常驻NPC ∪ §1a互锁涉及角色）· §2 元素注册索引（scene_state 元素名·替代⑥多次 grep）· §3 骨架待物化角色（本轮相关）。
 
 **用法**：各阶段取数优先引用快照·上下文已有→跳过重复读/grep；本轮编排前跑。与 `--dry-run`（批内预演）/ `gate --check`（单段复验）互补。
 
 > **批次自动执行（硬性）：** 批次中的 `###STORYLINE:`（②编剧·结构）与 `###BEAT:`（③导演·指针）由 write-raw --batch 自动执行对应子命令落盘（`add`/`rewrite` 后直接跟事件线 YAML 块直到下一个 `###` 行·失败=批次拦截 exit 1）——**LLM 不手动调用 storyline/beat 写命令**；下表命令保留用于查询（show）与维护。
 > **每轮触发（硬性·条件跳过）：**
-> - **②编剧**：常态轻量（张力基调一行确认·仍出批次）；触发时 `###STORYLINE: add/rewrite/close/clear`（add 取材按 phase_storyliner 建线取材表——扫描冲突池与焦点场景·NPC-NPC 与玩家 CT 同权；进入余波拍·待收束〔`direction.当前拍==余波`〕；顶点拍预填 顶点约束·缺则拒绝）。
+> - **②编剧**：`###STORYLINE: add/rewrite/close/clear`（add 取材按 phase_storyliner D5——扫描冲突池与焦点场景·NPC-NPC 与玩家 CT 同权；进入余波拍·待收束〔`direction.当前拍==余波`〕；顶点拍预填 顶点约束·缺则拒绝）＋ `###KEY: 故事弧线.*`（D1 弧线定位·本批必含）。
 > - **③导演**：每轮回判——
 >   - 已兑现 → `###BEAT: advance SL-XX 下一拍`（顶点＝advance 余波·受 gate director 收束核验）；
 >   - 未兑现且窗口未耗尽 → `###BEAT: deepen SL-XX` ＋ `节拍决策=继续当前拍`（窗口＝拍发育期；承接判断点名调度单各角色的未完成意图；验收点＝窗口耗尽：已答→advance；未答且意图仍在推进本拍问题→续演并批内重设时间窗口 `{起点=当前世界时间·新拍级预算}`；未答且意图已不再推进→`escalation_flags.停滞`·gate 核验→①次轮加压/兜底）；
->   - 不承接/意外事件 → escalation flag → ②次轮三问定原线去向（保留＋建新线接焦 / rewrite / clear·判据见 phase_storyliner 职责2）。
+>   - 不承接/意外事件 → escalation flag → ②次轮三问定原线去向（保留＋建新线接焦 / rewrite / clear·判据见 phase_storyliner D1）。
 > - **查询轮/维护轮豁免。**
 
 ## Shell 脚本

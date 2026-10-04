@@ -231,11 +231,12 @@ def main():
 
     # 清 direction.转场——③ 的转场决策已被本次切换消费。⑤ 无权写 direction（Single Writer），
     # 残留会让 round-check 误判「⑤转场未执行」、并静默豁免 cast 硬拦（假豁免），故由执行切换的脚本机械清除（幂等）。
+    # 转场可为本行式（转场: {…}）或块式（转场:\n  子键: …，write-raw 经 yaml.dump 落块式）——须连缩进子行一并替换，只替首行会把子键泄漏成顶层键。
     dir_file = world_dir / "states" / "direction.yaml"
     if dir_file.is_file():
         try:
             _dtext = dir_file.read_text(encoding="utf-8")
-            _dnew = re.sub(r"^转场:.*$", "转场: {}", _dtext, count=1, flags=re.M)
+            _dnew = re.sub(r"^转场:[^\n]*(?:\n[ \t]+[^\n]*)*", "转场: {}", _dtext, count=1, flags=re.M)
             if _dnew != _dtext:
                 dir_file.write_text(_dnew, encoding="utf-8", newline="")
                 print("[OK] direction.转场 已清空（转场决策已由本次切换消费）")
