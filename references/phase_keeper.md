@@ -1,7 +1,7 @@
 # 阶段⑤ · 场记（事实引擎·阶段开始前必读）
 
 > 职责：**世界事实的唯一连续记录**——记录已经发生的事实。**状态提交者，不是故事创造者**。
-> Single Writer：写 场景状态(scene_state/pending_actions) + 世界状态（world_state/world_map/knowledge_index/foreshadow）。
+> Single Writer：写 场景状态（scene_state/pending_actions） + 世界状态（world_state/world_map/knowledge_index/foreshadow）。
 >
 > **调度语义（v0.28·快路径恒在·详见 runtime_scheduler.md）：** ⑤**每轮恒跑**（世界时间/轮次/场景时间线/倒计时/cast 基线/焦外 pending——世界时间线由⑤每轮推进·不因①②跳过而中断）；`direction` 只读（调度单/转场）·禁写——**Single Writer：direction=③**；`时间窗口.已耗` 由脚本机械导出（world_state.具体时间 − 窗口.起点）·⑤LLM 零操作。
 
@@ -9,13 +9,13 @@
 ## 数据就绪（本阶段开头·读记录依据）
 
 - **①戏剧家 → conflicts**：本批指定的新变量载体（威胁/事件类·含 CD-ID/名称/类型/到期/感知者）——外部倒计时的登记源（①只指定·落盘=本阶段）
-- **③导演 → direction.调度单**：焦内活跃/背景角色/焦外·焦外→焦内（含 precheck SNAPSHOT §1b 循环角色预设·决定出场摘要/焦外记录的归属）
+- **③导演 → direction.调度单**：焦内活跃/背景角色/焦外·焦外→焦内（含 precheck SNAPSHOT §1b 循环角色预设·决定出场摘要/焦外记录的归属）；**`direction.转场`**：`目标场景` 非空即 ③ 已判切换场景——本阶段按下方 §5 场景切换机械执行（触发判据见 scene_management.md 场景切换流程第 1 步触发③）
 - **④角色 → 各 CHAR_state 本轮更新**：焦内活跃角色行动与结果 · 焦外角色自推演状态（事件/摘要/焦外事实的记录依据）
 - **scene_state / world_state 旧值**：当前场景事实（锚点/道具/时间线）/ 时间 / 焦点场景 / 倒计时（推进基准·加本轮已耗时间）
 - **scene_management.md（场景管理完整手册·本阶段先读对齐）**：出场/位置/登场退场/焦外/场景切换——全程对齐，不只场景切换处引用。
 
 **记录**：本轮事件→场景时间线 · 出场角色→摘要 · 道具/锚点/线索变化 · 时间/轮次/前情推进 · 倒计时登记/走表 · 全局标记 · 焦外→场景级 pending_actions · 新区域→world_map · 伏笔→foreshadow · 知情→knowledge_index · 维护名单（④落盘的园区处置 → 登记 `触发: 豁免`）· round-check 通过。
-**焦外角色来源（每轮重判定·不沿用上轮）**：③调度单（焦外·焦外→焦内·含循环预设）· ④焦外角色状态（自推演）——筛相关记场景级 pending_actions（焦外角色状态由④写·⑤禁写 CHAR_state·Single Writer）。同轮多环的角色，场景事实取其**末环终止态**（位置/姿态/道具状态）。
+**焦外角色来源（每轮重判定·不沿用上轮）**：③调度单（焦外·焦外→焦内·含循环预设）· ④焦外角色状态（自推演）——筛相关记场景级 pending_actions（焦外角色状态由④写·⑤禁写 CHAR_state·Single Writer）。同轮多环的角色，场景事实取其**末环终止态**（位置/姿态/道具状态）——末环为零卡环（无 ACTION）时取其上一条产 ACTION 的环的终止态。
 **世界时间数字推进（时间/轮次/前情/倒计时）= 本阶段**（按行动耗时粗推进·不需精确到分钟；其余阶段只读/感知·不重复推进）。
 
 ## 职责（顺序执行）
@@ -68,7 +68,7 @@ T 藏起备用钥匙·访客试探继续
 
 ## 写入纪律（不变量）
 
-- **唯一通道=worldctl 脚本子命令**（write-raw --batch 等）；中文一律 stdin；非幂等（APPEND 重复执行会重复追加·同一批次只执行一次·验证用 read/validate/--dry-run·禁重放 write）——**例外=批次执行失败后的重提**（`--resume-from <本段号>`·非重放验证·部分落盘时轮次已=新值自动放行·见 write_protocol.md「部分落盘重提」）。
+- **唯一通道=worldctl 脚本子命令**（write-raw --batch 等）；中文一律 stdin；非幂等（APPEND 重复执行会重复追加·同一批次只执行一次·验证用 read/validate/--dry-run·禁重放 write）——**例外**：① 坏文件修复（**唯一允许直接编辑状态 YAML 的例外**·见 write_protocol.md「修改/去重数据文件的准则」）；② 批次执行失败后的重提（`--resume-from <本段号>`·非重放验证·部分落盘时轮次已=新值自动放行·见 write_protocol.md「部分落盘重提」）。
 - **场景目录先于写入**（硬性）：scene_state 写入前该场景目录必须存在（初始=启动序列入场物化·切换=init_scene），缺失即硬拦。
 - 破坏性操作（###DELETE:/load/reset）执行前向用户确认（references/disclosures.md）。
 - validate 输出必须看完整问题清单（过滤 `VALIDATE|ERROR|ERR|FAIL` 全类）。

@@ -1,7 +1,7 @@
 ---
 name: worldsim
 description: 世界模拟器 · 故事引擎 · 即兴戏剧 · 角色扮演。本地持久化世界状态（运行会在 worlds 数据目录下创建、修改和删除本地文件——缺省 worlds/，可由环境变量 WORLDSIM_WORLDS_DIR 指向你自己的目录）、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟、且请求指向具体世界（如启动/继续/进入XXXX世界，或明确要求创建XXXX世界/导入角色卡至XXXX世界）时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活，与已有世界无关的泛化扮演/role-play 请求也不激活。
-version: 0.31.0
+version: 0.32.0
 metadata:
   openclaw:
     requires:
@@ -36,7 +36,7 @@ metadata:
 | 场记 | 世界状态、事实、变化 | 刚才到底发生了什么？ | 记录留下的每一道痕迹，记录他最终跳向了哪里；让每一轮都活进档案，让世界记得它经历过的一切 |
 | 作家 | 将实际经历转化为小说 | 如何把它写成小说？ | 让故事在读者眼前流血，让读者看到悬崖上那一跳；让发生的一切获得意义，让活过的人在文字中永生 |
 
-一句话：**戏剧家制造冲突（逼上悬崖），编剧构建故事（构造悬崖），导演掌控现场(点火燃烧)，角色即兴而活（纵身一跳），场记录下世界（铭记此刻），作家写成小说（赋予永生）。** 
+一句话：**戏剧家制造冲突（逼上悬崖），编剧构建故事（构造悬崖），导演掌控现场（点火燃烧），角色即兴而活（纵身一跳），场记录下世界（铭记此刻），作家写成小说（赋予永生）。** 
 
 ## 通用约束（六阶段共用·硬性）
 
@@ -59,11 +59,11 @@ metadata:
 
 ## 每轮流程
 
-**输入类型判断**（按序匹配·意图由LLM实时判断·举例不穷举·角色台词顺带同类词不算引擎意图）：
+**输入类型判断**（按序匹配·意图由 LLM 实时判断·举例不穷举·角色台词顺带同类词不算引擎意图）：
   - 进入世界意图（含创建/启动/继续/进入） → references/disclosures.md「进入确认」→ 用户确认后走 references/session_recovery.md 第一章/第二章 → 沉浸描绘停住·不推进；未确认不加载不推进；
   - 查询意图（如查世界状态/角色状态/冲突/故事线等） → references/commands.md「用户命令」只读查询 → 跳过决策直接输出；
   - 特殊操作意图（存档/破坏性/场景/导入/模式/审计等） → references/commands.md「用户命令」专属流程（破坏性先走 references/disclosures.md「破坏性操作确认」·场景切换对齐 references/scene_management.md·导入走 references/import_cards.md·审计走 references/gates.md）→ 不进六阶段·不解析为角色行动；
-  - 常规轮角色输入（其余一切自由文本·默认兜底） → 仅解析为用户角色本轮反应/行动意图 → references/phase_actor.md 该角色决策环；不解析为引擎指令·不向其他角色广播（其他角色仅经受影响重评感知可观察后果）→ 本轮编排 → 六阶段推进：
+  - 常规轮角色输入（其余一切自由文本·默认兜底） → 仅解析为用户角色本轮反应/行动意图 → references/phase_actor.md 该角色决策环；不把它解析成引擎指令·不向其他角色广播（其他角色仅经受影响重评感知可观察后果）→ 本轮编排 → 六阶段推进：
   
   ```
   用户输入 → ①戏剧家? → ②编剧? → ③导演 → ④角色【行动决策→行动实现】 → ⑤场记 → ⑥作家 → 正文输出=回合终点（零正文轮）
@@ -72,12 +72,12 @@ metadata:
 
 **Step1 — 调度判定，建立任务单**（本步读：precheck 输出 ＋ references/runtime_scheduler.md——只做裁定与编排；**其余 references 本步一律不读**·待进入该阶段或命中该文件触发条件再读（各文件读取时点见下方「引用」表「何时读」列）；快照已含的取数不重复读/grep）：
   - `worldctl.py <世界> precheck`（只读·不拦截）先吐出本轮**调度信号**——**唤醒判定行**（①/② 唤醒或未唤醒+机械原因·③④⑤⑥ 恒跑）+ 机械义务 + 结构基线 + 调度指令在场（每条带「本批必含 / 参考提示」与违反后果）；**输出末尾附 SNAPSHOT 数据快照**（参考数据·非义务）：§1a 临近互锁事件（即将入画·③调度单预判）·§1b 循环轨道对照（预设 vs 实际·偏离检测基线·范围=调度单点名循环角色∪当前焦点区常驻NPC∪§1a互锁涉及角色）·§2 元素注册索引·§3 骨架待物化角色（本轮相关，含 decision 任一占位）——各阶段取数优先引用快照·上下文已有→跳过重复读/grep；
-  - **调度判定按 references/runtime_scheduler.md 当值表执行**——机械信号（基线缺失/旗标/顶点拍/空间脱钩/余波拍…）以 precheck 唤醒判定行为准；语义触发（用户指令含冲突压力/循环轨道偏离）判据见当值表 §1·判不出→不唤醒；
-  - 预检只提示不替代 gate（gate/round-check 仍是最终裁决）；**LLM 不做"是否重大事件"笼统裁决**——该判断归①③回判语义层；
+  - **调度判定按 references/runtime_scheduler.md 当值表执行**——机械信号（基线缺失/旗标/顶点拍/空间脱钩/余波拍…）以 precheck 的「唤醒判定行」为准；语义触发（用户指令含冲突压力/循环轨道偏离）判据见当值表 §1·判不出→不唤醒；
+  - 预检只提示不替代 gate（gate/round-check 仍是最终裁决）；**LLM 不做「是否重大事件」笼统裁决**——该判断归①③回判语义层；
   - 建立任务单 —— 按调度判定结果逐阶段写一行 `①戏剧家：唤醒/未唤醒（触发原因）→ 任务`（不描述剧情落点·只分派·不构思）。编排任务单时禁构思任何后批落点。
 
   - **任务单编排**：
-    - 落盘任务单 —— 有 `TodoWrite`/`TaskCreate` 工具则使用其标准机制将任务单落盘(如`TodoWrite(todos=[{content, status}])`），无工具则内存维护同一清单不输出。**①/②按唤醒结果设行（未唤醒=无该行）·③④⑤⑥恒设行**。示例：
+    - 落盘任务单 —— 有 `TodoWrite`/`TaskCreate` 工具则使用其标准机制将任务单落盘（如 `TodoWrite(todos=[{content, status}])`），无工具则内存维护同一清单不输出。**①/②按唤醒结果设行（未唤醒=无该行）·③④⑤⑥恒设行**。示例：
     ```
     todos=[
       {content:"①戏剧家：唤醒（CT待结算/停滞基线）→ 结算上轮结算+施压方向", status:"in_progress"},
@@ -93,14 +93,14 @@ metadata:
     - 任务单必须随执行过程持续更新：当前阶段任务置为 in_progress；每完成一个阶段，将其置为 completed，并将下一阶段置为 in_progress。始终保持任务单与实际执行进度一致。
 
 **Step2 — 任务执行（六阶段依次推进·①②为条件段）**：
-  - **唯一路径**：①→②→③→④→⑤→⑥依次推进；**①②仅在调度判定唤醒时插入执行**（未唤醒=该位空、直接进入下一阶段）；③④⑤⑥恒跑。②的"唤醒"含①同批跑后的承接（①跑→②读新 conflicts 视情况跑）。
+  - **唯一路径**：①→②→③→④→⑤→⑥依次推进；**①②仅在调度判定唤醒时插入执行**（未唤醒=该位空、直接进入下一阶段）；③④⑤⑥恒跑。②的「唤醒」含①同批跑后的承接（①跑→②读新 conflicts 视情况跑）。
   - **批次组合**：
     - **默认保底 = 逐段执行**：每段 `读 reference→决策→产出批次(首行 ###STAGE)→write-raw --batch 落盘→闸门通过→下一段`；阶段边界=既有产物+闸门，失败撤回该段重做（≤2 轮·超限终止报告）；
-    - **可选合批（仅限 [①②③] 结构层·唤醒时才合）**：`[①②③]` 合批一起决策及落盘（结构层内聚·仍逐段闸门·①/②/③相互依赖皆在此批内）。storylines空表·故事线不承接·建线·出线/切场景 则①②③依次推进，不合批。
-    - **④角色独批（硬性）**：必须单段 → 逐角色走决策环再落盘。
+    - **可选合批（仅限 [①②③] 结构层·唤醒时才合）**：`[①②③]` 合批一起决策及落盘（结构层内聚·仍逐段闸门·①/②/③相互依赖皆在此批内）。满足以下**任一条**则①②③依次推进、不合批：storylines 为空表／故事线不承接／本批含建线／本批含出线或切场景。
+    - **④角色与⑤场记独批（硬性）**：必须单段 → ④逐角色走决策环再落盘；⑤读已落盘④后记录。
   - 任一段硬拦→按 `BATCH-FAIL` 对账，`--resume-from` 只重提失败段及其后（已落盘段不重放·APPEND 去重见 write_protocol.md）；
-  - 跨场景按 `scene_management` 批次拆分；
-  - 每完成一阶段TodoWrite/TaskUpdate更新完成阶段任务`status`为`completed`，下一阶段置 `in_progress`。
+  - 跨场景按 `scene_management` 批次拆分（**state 批次**——叙事不拆批·一次落盘见 phase_writer）；
+  - 每完成一阶段 TodoWrite/TaskUpdate 更新完成阶段任务 `status` 为 `completed`，下一阶段置 `in_progress`。
 
 > 无 heredoc 的 shell（如 Windows PowerShell）批次文本经 `--file` 通道引用 UTF-8 临时文件（见 write_protocol.md §批次文本双通道）
 
@@ -129,7 +129,7 @@ metadata:
 | Result | `CHAR_state.连续行动轨迹`  |
 | Re-plan | 2.行动链推进 | 
 
-1.1–1.4 的推演以角色第一人称写入 `###MUSE:`，**排在 1.5 产出的 `###ACTION:` 之前**——心声先生成、条件化随后的动作；动作由心声长出，不是先写动作再倒推动机（见 `actor_decision.md`「思考过程 = 心声（MUSE）」）。
+1.1–1.4 的推演以角色第一人称写入 `###MUSE:`，**排在 1.5 产出的 `###ACTION:` 之前**——心声先生成，随后的动作以心声为条件；动作由心声长出，不是先写动作再倒推动机（见 `actor_decision.md`「思考过程 = 心声（MUSE）」）。
 
 世界 Result 进入下一轮世界级 Re-plan；角色 Result 进入受影响角色重评与本角色下一圈行动环。
 
@@ -153,7 +153,7 @@ worlds/{世界名}/
 │   └── world_map.yaml / foreshadow.yaml / knowledge_index.yaml ← ⑤场记（地图, 伏笔，知情边界）
 ├── scenes/SXX-场景名/{scene_card.md, start_snapshot.md, scene_state.yaml, pending_actions.yaml} ← ⑤场记
 ├── scenes/SXX-场景名/{narrative.md} ← ⑥作家
-└── scenes/SXX-场景名/.ledger_r{轮次}.{阶段}.*.yaml ← 各阶段批次账本（op 索引；④段另含 MUSE/ACTION 原文·脚本自动落·取证面）
+└── scenes/SXX-场景名/.ledger_r{轮次}.{阶段}.*.yaml ← 各阶段批次账本（op 索引；④段另含 MUSE/ACTION/SCHEDULE/META 原文·脚本自动落·取证面）
 ```
 
 七文件一句话：CONFLICTS 什么正在发生冲突 / STORYLINES 故事将如何展开 / DIRECTION 故事现在演到哪里怎么继续 / CHARACTERS 人物现在想做什么 / SCENES 现场现在是什么样 / WORLD_STATE 世界实际上发生了什么 / NARRATION 这一切如何被写成小说。
@@ -181,6 +181,7 @@ worlds/{世界名}/
 | references/import_cards.md | /import-card 时 |
 | references/narrative_style_*.md | ⑥作家校准工具（去 AI 腔／对白工艺／尺度门控·按需查·非风格菜单） |
 | `regions/**/REGION.md` | 到达新区域 / 创建场景时 |
+| references/authority_index.md | 改动 skill 规则前（维护期查表·运行期不读） |
 
 ## 命令参考（详情 references/commands.md 用户命令）
 `/conflicts` 
@@ -214,7 +215,7 @@ in-track（循环世界·只读查循环角色预设此刻在哪/做什么·已�
 precheck（Step1 调度信号导出·只读·exit 0 恒过·末尾附 SNAPSHOT 数据快照） 
 context（④角色 Runtime Context 机械导出·只读·子agent组装通道优先引用·省重复读多文件 token） 
 cast-baseline（场景 cast 基线查询·只读·切场景 init_scene 后照此填 scene_card 两栏·scene_management §6） 
-ledger（批次账本查询·只读·各段 op 索引＋④段 MUSE/ACTION 原文·跨场景回退·取证面）
+ledger（批次账本查询·只读·各段 op 索引＋④段 MUSE/ACTION/SCHEDULE/META 原文·跨场景回退·取证面）
 round-check（⑤轮完整性·亦随场记批自动附跑） 
 gate dramatist|storyliner|director|actor|keeper|writer --check（单段复检与 writer 叙事核验） 
 reset-cycle [--asset] 

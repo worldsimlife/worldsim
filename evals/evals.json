@@ -10,9 +10,10 @@
       "expected_output": "create_world 脚手架+创作填充 → init-states 物化动态文件 → 启动轮以沉浸描绘收尾并停住（不替用户做任何决策）→ 用户推进后每轮有叙事正文且状态落盘",
       "assertions": [
         "worlds/eval-west/ 存在且含 SETTING.md 与 states/ 动态文件",
+        "conflicts.yaml 为合法 YAML 且含 ≥1 条 CT-XX（CONFLICTS_SEED 净化后物化成功）",
         "启动轮回复以沉浸描绘收尾停住，未代用户推进任何角色决策",
         "三轮推进后 round-check 通过（exit 0）",
-        "validate 无硬性违规",
+        "validate exit 0（格式错误=exit 1 硬拦）",
         "各阶段写入批次首行为 ###STAGE: <阶段名>（抽查 states 落盘结果或执行记录）",
         "narrative.md 为合法 UTF-8，中文无乱码（场景名等已知关键词可检索到）",
         "全部状态 yaml 为 LF 行尾（无 CRLF）"
@@ -63,7 +64,7 @@
         "快照目录出现 check-point-1",
         "对话记录可见 load 执行前的显式用户确认（破坏性操作硬性）",
         "load 后自动产生 _before_ 备份快照",
-        "回退后 validate 通过"
+        "回退后 validate exit 0"
       ],
       "human_review": [
         "读档后叙事衔接是否交代清楚时间线回退"

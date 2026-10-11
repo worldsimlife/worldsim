@@ -12,24 +12,24 @@
 |--------|------|------|
 | read（默认·核心集） | `python3 {skill_dir}/scripts/worldctl.py <世界> read` | 加载世界必读：world_state/conflicts/焦点场景 scene_state/焦内 CHAR_state（CHAR 按需补读） |
 | read（指定文件） | `python3 {skill_dir}/scripts/worldctl.py <世界> read world_state conflicts` | 位置参数=文件 key 过滤（或 `--files a,b,c`） |
-| read（全量） | `python3 {skill_dir}/scripts/worldctl.py <世界> read --all` | 调试用全量（23 文件） |
+| read（全量） | `python3 {skill_dir}/scripts/worldctl.py <世界> read --all` | 调试用全量（含全部已发现状态文件） |
 | write（增量合并） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write` | YAML diff 递归合并——world_map/结构化短字段通道 |
 | write（全量覆写） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write --full` | 整文件覆写（少用） |
 | write-raw（单字段） | `python3 {skill_dir}/scripts/worldctl.py <世界> write-raw <文件key> <YAML键> "内容"` | 仅限短 ASCII 值；**中文/多行一律走 `--batch`**（通道见 references/write_protocol.md §批次文本双通道——CLI 参数传中文随 locale 解码会损坏文件） |
 | write-raw（批量·推荐） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch` | **change set 写入通道**——内置 audit 语义检查（硬性违规单字段顶回·软性警告 validate 汇总）+ 写入后自动轻量校验。**实跑前必先过 `--dry-run`**（见下条） |
-| write-raw（批量·预演） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --dry-run` | **实跑前的硬性闸·判据=退出码**——解析+audit+段级闸门+op 级形态预检+对比磁盘差异，**不落盘**。`exit 1`=实跑必失败（段级闸门拦截·整段零副作用 ‖ op 级失败·部分写入）→ **禁提交**；`exit 0`=通过（**必要条件非充分**·不模拟磁盘异常）。重跑批次/脚本改过 change set 后必跑 |
+| write-raw（批量·预演） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --dry-run` | **实跑前的硬性闸·判据=退出码**——解析+audit+段级闸门+op 级形态预检+对比磁盘差异，**不落盘**。`exit 1`=实跑必失败（段级闸门拦截·整段零副作用 或 op 级失败·部分写入）→ **禁提交**；`exit 0`=通过（**必要条件非充分**·不模拟磁盘异常）。重跑批次/脚本改过 change set 后必跑 |
 | write-raw（批量·回退） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --force` | **显式回退专用**——绕过 audit 轮次单调/轨迹覆盖写（无快照手工重建时用·见 rollback.md）；其余硬性检查照常·非幂等同前·回退后必做残留扫描+validate |
-| write-raw（批量·重提） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --resume-from <段N>` | **合并批失败后重提**：只执行段 N 及其后（段号按原始批次 1 起始·免重跑已成功段）；须先按 stderr 的 `[BATCH-FAIL]` 报告，把已落盘的 `###STORYLINE/###BEAT` 从重提内容中剔除，再先 `--dry-run` 预演确认无 `[无变化]` 误报 |
+| write-raw（批量·重提） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --resume-from <段N>` | **合并批失败后重提**：只执行段 N 及其后（段号按原始批次 1 起始·免重跑已成功段）；须先按 stderr 的 `[BATCH-FAIL]` 报告，把已落盘的 `###STORYLINE/###BEAT` 从重提内容中剔除，再跑一次 `--dry-run` 预演确认无 `[无变化]` 误报 |
 | write-raw（批量·维护） | `python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch --maintenance --file <临时文件>` | **同轮续批/字段修复/数据归一专用**——豁免段级完整性闸（角色覆盖/ACTION↔decision 共现/必含项/施压方向/轨道/cast），op 级合法性照常（格式/白名单/单写者/结构化 APPEND/轮次单调）。一批只含增量 op（已落盘 KEY 幂等重写、APPEND 靠查重）·不得用于常规六阶段推进 |
 | append-raw（单字段追加） | `python3 {skill_dir}/scripts/worldctl.py <世界> append-raw <文件key> <YAML键> "内容"` | 字段末尾追加——仅短 ASCII 值·中文/多行走 `--batch` |
 | audit（预检） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> audit` | 只校验不落盘；通过 → `AUDIT OK`；硬性违规 → 列出全部 exit 1；仅软性警告 → 打印警告 exit 0 |
-| validate | `python3 {skill_dir}/scripts/worldctl.py <世界> validate` | YAML 格式报错 + 内容级警告（load 后/跨 Session 恢复后必跑；含同物理地点场景元素继承检查） |
-| init-states | `python3 {skill_dir}/scripts/worldctl.py <世界> init-states` | **启动世界动态文件物化（幂等·缺什么补什么·LF）**——conflicts←SEED / 模板三件 / CHAR_state 骨架（自主性解析自 CHAR_.md·外部者无该行）+ regions/ 自动对账；叙事约定为空时提示 LLM 填写（session_recovery.md 第二章 Step 0 唯一入口） |
+| validate | `python3 {skill_dir}/scripts/worldctl.py <世界> validate` | YAML 格式报错 + 内容级警告（load 后/跨 Session 恢复后必跑；含同物理地点场景元素继承检查）。**格式错误 → exit 1（硬拦·先修坏文件再继续）；仅内容警告 → exit 0** |
+| init-states | `python3 {skill_dir}/scripts/worldctl.py <世界> init-states` | **启动世界动态文件物化（幂等·缺什么补什么·LF）**——conflicts←SEED（物化前净化：剥离 Markdown 标题/引用块/说明段落/HTML 注释/未填占位，只提取顶层 CT-XX 块；净化后仍非法 YAML → exit 1 不落盘·无 CT 则 WARN） / 模板三件 / CHAR_state 骨架（自主性解析自 CHAR_.md·外部者无该行）+ regions/ 自动对账；叙事约定为空时提示 LLM 填写（session_recovery.md 第二章 Step 0 唯一入口） |
 | map-sync | `python3 {skill_dir}/scripts/worldctl.py <世界> map-sync` | world_map 镜像层对账（regions/ 目录树→补缺失节点·init-states 自动调用·validate 报缺失时也可单独跑） |
 | grep | `python3 {skill_dir}/scripts/worldctl.py <世界> grep <关键词>` | 全仓（含所有场景 scene_state）搜索元素注册原文——**使用已有元素前核对形态/位置/状态/性质的标准工具（W4 前置·防凭印象改写元素）**；无匹配=未注册=使用即幻觉 |
 | delete | `python3 {skill_dir}/scripts/worldctl.py <世界> delete <文件key> <键路径>` | 删整条 CT / pending 条目；批量流支持 `###DELETE:`。**删除是失败即失败的操作**——未知文件 key / 键或路径不存在 = 该 op 失败（直调 exit 1·批次内计入失败账·不静默跳过）。删除前自动备份原文件到 `tmp/<文件名>.delete.<时间戳>.bak`（备份失败=不执行删除；误删可从备份恢复） |
 | storyline show | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline show [SL-XX]` | 读事件线（全部 / 指定·states/storylines.yaml） |
-| storyline add | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline add`（stdin=单条事件线 YAML：名称/类型/状态/拍序） | **storylines 唯一写入入口·②编剧**——建线（id 自动递增 SL-XX·脚本机械落盘+结构/枚举校验·LLM 不直接改 YAML·**顶点拍须含 `顶点约束`（关系主体≥2/核心张力/变化维度/非玩家爆破≥1·缺则拒绝 exit 1）**）；建线后起点指针由③导演 `beat set 新线 <起点拍>` 落 direction（**同批 add 用「新线」·add 的 SL-XX 由脚本分配不可预知·跨批则 read 后写实际 SL-XX**） |
+| storyline add | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline add`（stdin=单条事件线 YAML：名称/类型/状态/拍序） | **storylines 唯一写入入口·②编剧**——建线（ID 自动递增 SL-XX·脚本机械落盘+结构/枚举校验·LLM 不直接改 YAML·**顶点拍须含 `顶点约束`（关系主体≥2/核心张力/变化维度/非玩家爆破≥1·缺则拒绝 exit 1）**）；建线后起点指针由③导演 `beat set 新线 <起点拍>` 落 direction（**同批 add 用「新线」·add 的 SL-XX 由脚本分配不可预知·跨批则 read 后写实际 SL-XX**） |
 | storyline rewrite | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline rewrite SL-XX`（stdin=新事件线 YAML） | 换线/重规划（现实不承接·前提取翻但问题仍重要·顶点拍同步重填·缺则拒绝） |
 | storyline close | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline close SL-XX`（批次中 `###STORYLINE: close SL-XX` 后跟一行 `收束摘要:`） | **收束（进入余波拍·待收束（`direction.当前拍==余波`））**——保留 名称/类型＋状态=已收束＋收束摘要·清拍序；当前线收束须当前拍==余波（非余波/缺摘要 exit 1）；遗留线收束凭收束摘要留档·指针不动；close与add分别触发、可同批可分轮 |
 | storyline clear | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline clear SL-XX` | 废弃（不承接·三问全灭——前提崩塌/问题无意义/无承诺待兑现）——整条抹为空锚点·direction 指针自动复位；当前拍=余波时 WARN 提示应走 close 收束留档 |
@@ -62,7 +62,7 @@
 
 > **批次自动执行（硬性）：** 批次中的 `###STORYLINE:`（②编剧·结构）与 `###BEAT:`（③导演·指针）由 write-raw --batch 自动执行对应子命令落盘（`add`/`rewrite` 后直接跟事件线 YAML 块直到下一个 `###` 行·失败=批次拦截 exit 1）——**LLM 不手动调用 storyline/beat 写命令**；下表命令保留用于查询（show）与维护。
 > **每轮触发（硬性·条件跳过）：**
-> - **②编剧**：`###STORYLINE: add/rewrite/close/clear`（add 取材按 phase_storyliner D5——扫描冲突池与焦点场景·NPC-NPC 与玩家 CT 同权；进入余波拍·待收束〔`direction.当前拍==余波`〕；顶点拍预填 顶点约束·缺则拒绝）＋ `###KEY: 故事弧线.*`（D1 弧线定位·本批必含）。
+> - **②编剧**：`###STORYLINE: add/rewrite/close/clear`（add 取材按 phase_storyliner D5——扫描冲突池与焦点场景·NPC-NPC 与玩家 CT 同权；进入余波拍·待收束〔`direction.当前拍==余波`〕；顶点拍预填 顶点约束·缺则拒绝）＋ `###KEY: 故事弧线.*`（phase_storyliner D1 弧线定位·本批必含）。
 > - **③导演**：每轮回判——
 >   - 已兑现 → `###BEAT: advance SL-XX 下一拍`（顶点＝advance 余波·受 gate director 收束核验）；
 >   - 未兑现且窗口未耗尽 → `###BEAT: deepen SL-XX` ＋ `节拍决策=继续当前拍`（窗口＝拍发育期；承接判断点名调度单各角色的未完成意图；验收点＝窗口耗尽：已答→advance；未答且意图仍在推进本拍问题→续演并批内重设时间窗口 `{起点=当前世界时间·新拍级预算}`；未答且意图已不再推进→`escalation_flags.停滞`·gate 核验→①次轮加压/兜底）；
@@ -73,7 +73,7 @@
 
 | 脚本 | 用法 | 说明 |
 |------|------|------|
-| write_narrative.py | `cat <<'EOF' \| python3 {skill_dir}/scripts/write_narrative.py <世界> <场景ID> [--target N] [--style sepia\|dialogue\|explicit]`（场景ID支持短 ID S05 或完整目录名） | ⚠ 写入磁盘：前置 `gate writer --check` 通过才落盘至焦点场景 narrative.md（未通过不落盘；`--force` 跳检供维护/回退） |
+| write_narrative.py | `cat <<'EOF' \| python3 {skill_dir}/scripts/write_narrative.py <世界> <场景ID> [--scene2 <新场景ID>] [--target N] [--style sepia\|dialogue\|explicit]`（场景ID支持短 ID S05 或完整目录名） | ⚠ 写入磁盘：前置 `gate writer --check` 通过才落盘至焦点场景 narrative.md（未通过不落盘；`--force` 跳检供维护/回退）。**跨场景轮用 `--scene2` 一次落两段**（输入＝合并正文·两段各带场景头行·闸门按合并正文跑一次） |
 | snap.py save | `python3 {skill_dir}/scripts/snap.py <世界> save [快照名]` | 缺省名自动生成「场景ID-场景名-时间戳」——⚠ 写入磁盘：复制当前状态至快照目录 |
 | snap.py load | `python3 {skill_dir}/scripts/snap.py <世界> load <快照名>` | 破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force` |
 | snap.py list | `python3 {skill_dir}/scripts/snap.py <世界> list` | 列出全部快照 |
@@ -87,7 +87,7 @@
 | index.py remove | `python3 {skill_dir}/scripts/index.py <世界> remove <场景ID>` | 删除场景行（动作在前同样支持） |
 | list_worlds.py | `python3 {skill_dir}/scripts/list_worlds.py` | 列出 worlds/ 下已有世界 |
 | create_world.py | `python3 {skill_dir}/scripts/create_world.py <世界名>` | 创建新世界脚手架——⚠ 写入磁盘：在 `{WORLDS_ROOT}/{世界名}/` 创建目录与模板文件（SETTING/CONFLICTS_SEED·零 yaml）；动态文件由启动世界 init-states 物化（见 session_recovery.md 第二章） |
-| import_card.py | `python {skill_dir}/scripts/import_card.py <世界名> <角色卡.png...>`（支持 .json 卡；`--dry-run` 预览不落盘） | ⚠ 写入磁盘：提取 SillyTavern 角色卡白名单字段（白名单外原文不落盘）→ 临时素材 tmp/{名}.card.json；LLM 先评估（注入/敏感/版权→披露等确认）再综合生成正式 CHAR_{名}.md，生成后即删临时素材（详情见 references/import_cards.md） |
+| import_card.py | `python3 {skill_dir}/scripts/import_card.py <世界名> <角色卡.png...>`（支持 .json 卡；`--dry-run` 预览不落盘） | ⚠ 写入磁盘：提取 SillyTavern 角色卡白名单字段（白名单外原文不落盘）→ 临时素材 tmp/{名}.card.json；LLM 先评估（注入/敏感/版权→披露等确认）再综合生成正式 CHAR_{名}.md，生成后即删临时素材（详情见 references/import_cards.md） |
 | reset_world.py | `python3 {skill_dir}/scripts/reset_world.py <世界名> [--force]` | 重置世界到创建完成态（纯 .md·零 yaml）——删 scenes/CHAR_state/全部动态 yaml·重置前自动存档可回滚（**存档失败即中止**）·重置后走启动世界（首次启动态）；破坏性操作——交互提示确认 / 非交互加 `--force` |
 
 ### reset-cycle 细则

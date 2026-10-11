@@ -3,9 +3,9 @@
 import_card.py — SillyTavern 兼容角色卡提取（解析+临时交付+预览）
 
 用法:
-  python scripts/import_card.py <世界名> <角色卡.png> [更多.png ...]
-  python scripts/import_card.py <世界名> <角色卡.json>          ← 也支持纯 JSON 角色卡
-  python scripts/import_card.py <世界名> --dry-run <角色卡.png> ← 只解析预览，不落盘
+  python3 scripts/import_card.py <世界名> <角色卡.png> [更多.png ...]
+  python3 scripts/import_card.py <世界名> <角色卡.json>          ← 也支持纯 JSON 角色卡
+  python3 scripts/import_card.py <世界名> --dry-run <角色卡.png> ← 只解析预览，不落盘
 
 职责分工（脚本=机械提取 · Agent LLM=评估+综合生成）:
   脚本:

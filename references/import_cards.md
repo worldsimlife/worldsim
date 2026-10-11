@@ -17,9 +17,9 @@
 ## 导入命令
 
 ```
-python {skill_dir}/scripts/import_card.py <世界名> <角色卡.png> [更多角色卡.png ...]
-python {skill_dir}/scripts/import_card.py <世界名> <角色卡.json>          ← 纯 JSON 卡
-python {skill_dir}/scripts/import_card.py <世界名> --dry-run <角色卡.png> ← 只解析预览，不落盘
+python3 {skill_dir}/scripts/import_card.py <世界名> <角色卡.png> [更多角色卡.png ...]
+python3 {skill_dir}/scripts/import_card.py <世界名> <角色卡.json>          ← 纯 JSON 卡
+python3 {skill_dir}/scripts/import_card.py <世界名> --dry-run <角色卡.png> ← 只解析预览，不落盘
 ```
 
 路径推导：skill 根由脚本自身位置定位（不可覆写）；worlds 根由环境变量 `WORLDSIM_WORLDS_DIR` 覆写（缺省 `{skill_dir}/worlds/`），禁止硬编码绝对路径。
