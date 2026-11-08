@@ -1,7 +1,7 @@
 ---
 name: worldsim
 description: 世界模拟器 · 故事引擎 · 即兴戏剧 · 角色扮演。本地持久化世界状态（运行会在 worlds 数据目录下创建、修改和删除本地文件——缺省 worlds/，可由环境变量 WORLDSIM_WORLDS_DIR 指向你自己的目录）、导入 SillyTavern 角色卡、推进互动剧情，以及执行存档、读档、回滚与状态修复。仅在用户明确要求运行世界模拟、且请求指向具体世界（如启动/继续/进入XXXX世界，或明确要求创建XXXX世界/导入角色卡至XXXX世界）时激活；日常聊天提及、讨论或引用世界/角色/剧情话题不激活，与已有世界无关的泛化扮演/role-play 请求也不激活。
-version: 0.32.0
+version: 0.33.0
 metadata:
   openclaw:
     requires:
@@ -71,8 +71,8 @@ metadata:
   **（①②为条件插入段：被调度信号唤醒才跑·未唤醒则该位空、直接进入下一阶段；③④⑤⑥恒跑。调度判定见 Step1；执行顺序①→②→③→④→⑤→⑥永不变。）**
 
 **Step1 — 调度判定，建立任务单**（本步读：precheck 输出 ＋ references/runtime_scheduler.md——只做裁定与编排；**其余 references 本步一律不读**·待进入该阶段或命中该文件触发条件再读（各文件读取时点见下方「引用」表「何时读」列）；快照已含的取数不重复读/grep）：
-  - `worldctl.py <世界> precheck`（只读·不拦截）先吐出本轮**调度信号**——**唤醒判定行**（①/② 唤醒或未唤醒+机械原因·③④⑤⑥ 恒跑）+ 机械义务 + 结构基线 + 调度指令在场（每条带「本批必含 / 参考提示」与违反后果）；**输出末尾附 SNAPSHOT 数据快照**（参考数据·非义务）：§1a 临近互锁事件（即将入画·③调度单预判）·§1b 循环轨道对照（预设 vs 实际·偏离检测基线·范围=调度单点名循环角色∪当前焦点区常驻NPC∪§1a互锁涉及角色）·§2 元素注册索引·§3 骨架待物化角色（本轮相关，含 decision 任一占位）——各阶段取数优先引用快照·上下文已有→跳过重复读/grep；
-  - **调度判定按 references/runtime_scheduler.md 当值表执行**——机械信号（基线缺失/旗标/顶点拍/空间脱钩/余波拍…）以 precheck 的「唤醒判定行」为准；语义触发（用户指令含冲突压力/循环轨道偏离）判据见当值表 §1·判不出→不唤醒；
+  - `worldctl.py <世界> precheck`（只读·不拦截）先吐出本轮**调度信号**——**唤醒判定行**（①/② 唤醒或未唤醒+机械原因·③④⑤⑥ 恒跑）+ 机械义务 + 结构基线 + 调度指令在场（每条带「本批必含 / 参考提示」与违反后果）；**输出末尾附 SNAPSHOT 数据快照**（参考数据·非义务）：§1a 临近互锁事件（③调度单分档依据·见 phase_director.md D5）·§1b 循环轨道状态（④登记尾条导出：未闭合偏离名单·范围=调度单点名循环角色∪当前焦点区常驻NPC∪§1a互锁涉及角色）·§2 元素注册索引·§3 骨架待物化角色（本轮相关，含 decision 任一占位）——各阶段取数优先引用快照·上下文已有→跳过重复读/grep；
+  - **调度判定按 references/runtime_scheduler.md 当值表执行**——机械信号（基线缺失/旗标/顶点拍/空间脱钩/余波拍…）以 precheck 的「唤醒判定行」为准；语义触发（用户指令含冲突压力）判据见当值表 §1·判不出→不唤醒；
   - 预检只提示不替代 gate（gate/round-check 仍是最终裁决）；**LLM 不做「是否重大事件」笼统裁决**——该判断归①③回判语义层；
   - 建立任务单 —— 按调度判定结果逐阶段写一行 `①戏剧家：唤醒/未唤醒（触发原因）→ 任务`（不描述剧情落点·只分派·不构思）。编排任务单时禁构思任何后批落点。
 
@@ -117,19 +117,19 @@ metadata:
 | Result | ⑤场记 `scene_state` `world_state` / ⑥作家 `narration` |
 | Re-plan | 下一轮①戏剧家结算/压力注册 + ②编剧重规划 + ③导演回判 + ④角色React |
 
-**角色层 React**（阶段④内部微循环·编排见 references/phase_actor.md·决策环 1.1–1.5 细则见 references/actor_decision.md）：
+**角色层 React**（阶段④内部微循环·编排见 references/phase_actor.md·决策环细则见 references/actor_decision.md）：
 
 | 环节 | 现有承载 |
 |---|---|
-| Observe  | 1.1 状态构建·感知过滤 |
-| Think  | 1.2 八问 |
-| Goal | 1.3 候选行动生成 / `CHAR_state.decision.核心诉求`  | 
-| Plan | 1.4 定本轮行动 / `CHAR_state.decision.当前计划` |
-| Act | 1.5 行动实现 / `CHAR_state.decision.当前行动` / `###ACTION`（1.5 行动实现） |
+| Observe  | 输入材料与 ① 感知（我注意到的部分） |
+| Think  | ② 情感反应／③ 认知评估／④ 思考 |
+| Goal | ④ 候选与取舍 / `CHAR_state.decision.核心诉求` |
+| Plan | ⑤ 决策 / `CHAR_state.decision.当前计划` |
+| Act | 行动实现 / `CHAR_state.decision.当前行动` / `###ACTION` |
 | Result | `CHAR_state.连续行动轨迹`  |
 | Re-plan | 2.行动链推进 | 
 
-1.1–1.4 的推演以角色第一人称写入 `###MUSE:`，**排在 1.5 产出的 `###ACTION:` 之前**——心声先生成，随后的动作以心声为条件；动作由心声长出，不是先写动作再倒推动机（见 `actor_decision.md`「思考过程 = 心声（MUSE）」）。
+输入材料与 ①–⑦ 的推演以角色第一人称写入 `###MUSE:`，**排在「行动实现」产出的 `###ACTION:` 之前**——心声先生成，随后的动作以心声为条件；动作由心声长出，不是先写动作再倒推动机（见 `actor_decision.md`「思考过程 ＝ 心声（MUSE）」）。
 
 世界 Result 进入下一轮世界级 Re-plan；角色 Result 进入受影响角色重评与本角色下一圈行动环。
 
@@ -153,7 +153,7 @@ worlds/{世界名}/
 │   └── world_map.yaml / foreshadow.yaml / knowledge_index.yaml ← ⑤场记（地图, 伏笔，知情边界）
 ├── scenes/SXX-场景名/{scene_card.md, start_snapshot.md, scene_state.yaml, pending_actions.yaml} ← ⑤场记
 ├── scenes/SXX-场景名/{narrative.md} ← ⑥作家
-└── scenes/SXX-场景名/.ledger_r{轮次}.{阶段}.*.yaml ← 各阶段批次账本（op 索引；④段另含 MUSE/ACTION/SCHEDULE/META 原文·脚本自动落·取证面）
+└── scenes/SXX-场景名/.ledger_r{轮次}.{阶段}.*.yaml ← 各阶段批次账本（op索引=字段→内容；①指定/②③结构·指针动作/④MUSE·ACTION·SCHEDULE 分项·脚本自动落·取证面）
 ```
 
 七文件一句话：CONFLICTS 什么正在发生冲突 / STORYLINES 故事将如何展开 / DIRECTION 故事现在演到哪里怎么继续 / CHARACTERS 人物现在想做什么 / SCENES 现场现在是什么样 / WORLD_STATE 世界实际上发生了什么 / NARRATION 这一切如何被写成小说。
@@ -164,8 +164,8 @@ worlds/{世界名}/
 |---|---|
 | references/runtime_scheduler.md | Step1 调度判定层当值表（核心模型/三级判定/唤醒清单/指令协议/兜底/分工——各阶段细则归 phase_*） |
 | references/phase_*.md（dramatist/storyliner/director/actor/keeper/writer） | 进入该阶段前读该阶段文件 |
-| references/actor_decision.md | ④角色决策环/写入/批次格式执行时（单窗口路径由主 agent 加载·子 agent 路径由子 agent 自读过程规则·世界素材经 subagent_prompt.md 组装转换矩阵内联） |
-| references/subagent_prompt.md | ④角色委派子 agent 时（首环派发/后续环追加的 prompt 骨架与派发自查） |
+| references/actor_decision.md | ④角色决策环/写入/批次格式执行时（单窗口路径由主 agent 加载并按 subagent_prompt.md 六槽核对·子 agent 路径由子 agent 自读过程规则；世界素材按该骨架矩阵过滤，子 agent 逐字内联） |
+| references/subagent_prompt.md | ④角色委派子 agent 或主 agent 单窗口代入时（建档派发/续环追加的 prompt 骨架与派发自查） |
 | references/gates.md | 标准模式人工审计 |
 | references/disclosures.md | 会话首轮进入模拟 / 破坏性操作前 |
 | references/keys.md | 写前读对应节（键表/写语义·整文件不必读） |
@@ -179,7 +179,7 @@ worlds/{世界名}/
 | references/session_recovery.md | 创建/启动/恢复/跨 Session |
 | references/commands.md | 命令不会用时 |
 | references/import_cards.md | /import-card 时 |
-| references/narrative_style_*.md | ⑥作家校准工具（去 AI 腔／对白工艺／尺度门控·按需查·非风格菜单） |
+| references/narrative_style_*.md | ⑥作家校准工具（去 AI 腔／对白工艺／尺度门控·按需查·非风格菜单·校准表只量「像不像机器」，不作技法底本） |
 | `regions/**/REGION.md` | 到达新区域 / 创建场景时 |
 | references/authority_index.md | 改动 skill 规则前（维护期查表·运行期不读） |
 
@@ -215,7 +215,7 @@ in-track（循环世界·只读查循环角色预设此刻在哪/做什么·已�
 precheck（Step1 调度信号导出·只读·exit 0 恒过·末尾附 SNAPSHOT 数据快照） 
 context（④角色 Runtime Context 机械导出·只读·子agent组装通道优先引用·省重复读多文件 token） 
 cast-baseline（场景 cast 基线查询·只读·切场景 init_scene 后照此填 scene_card 两栏·scene_management §6） 
-ledger（批次账本查询·只读·各段 op 索引＋④段 MUSE/ACTION/SCHEDULE/META 原文·跨场景回退·取证面）
+ledger（批次账本查询·只读·各段 op索引=字段→内容·①指定/②③结构·指针动作/④MUSE·ACTION·SCHEDULE 分项·跨场景回退·取证面）
 round-check（⑤轮完整性·亦随场记批自动附跑） 
 gate dramatist|storyliner|director|actor|keeper|writer --check（单段复检与 writer 叙事核验） 
 reset-cycle [--asset] 

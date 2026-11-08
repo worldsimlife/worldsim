@@ -25,10 +25,12 @@
 | 编号 | 决策编号 `Dn` | 各 `phase_*.md` 的决策契约块 | **限定编号**：`phase_director.md D4`——`Dn` 前缀被 4 个文件共用，**跨文件引用必须带文件名**，裸编号不可判定 |
 | 编号 | 编排层编号 `On` | `phase_actor.md` | **限定编号**：`phase_actor.md O2` |
 | 编号 | 闸门清单编号（C/S/R/A/K/W） | `gates.md` | **限定编号**：`gates.md A9` |
-| 编号 | 决策环步骤 1.1–1.5 | `actor_decision.md` | **限定编号**：`actor_decision.md 1.4` |
+| 编号 | 七层叙述顺序 ①–⑦ | `actor_decision.md` | **限定编号**：`actor_decision.md ③ 认知评估`——跨文件引用带文件名 |
 | 阈值 | 正文 token **生成目标** | `phase_writer.md`「长度与风格」 | 可直接引用；**硬底线**存 `scripts/worldctl.py` 常量——目标与底线刻意分离，文档只写目标、不写底线值 |
 | 阈值 | `焦内活跃` 常态数量 | `phase_director.md` D5 定档规则 | 指针 |
 | 阈值 | 记忆锚点总量校验线 | `keys.md` `记忆锚点` 行 | 指针 |
+| 阈值 | 信念演化总量校验线 | `keys.md` `信念演化` 行 | 指针 |
+| 判据 | 信念提炼两段式（发现信号＋准入门槛） | `actor_decision.md`「记下来」第 2 步 | 指针——准入门槛＝被推翻的旧信念非这几轮才长成（档案核心信念／人物底色／链上已稳定）；只过发现信号＝打法变化，归记忆锚点／连续行动轨迹 |
 | 阈值 | 时间线条目/单场景/字数上限 | `keys.md` `时间线` 行 | 指针 |
 | 阈值 | 伏笔超时轮数 | `foreshadow.md`「检查规则」 | 指针 |
 | 枚举 | 三幕十五拍（**节拍**清单） | `beat_structure.md` §一 | 「权威=beat_structure.md §一」 |
@@ -38,12 +40,16 @@
 | 枚举 | 四爆破（施压方向） | `phase_dramatist.md` D11 | 指针 |
 | 枚举 | 压力扫描十源 | `phase_dramatist.md` D8 | 指针 |
 | 白名单 | O2 豁免白名单 | `actor_decision.md`「META 绑定声明」 | 指针 |
+| 判据 | 子 agent 派发类型（建档派发／续环追加） | `subagent_prompt.md` 首段 | 指针——分界＝本上下文 META 有无该角色会话名绑定（**不是** O2 的「宿主不可续话」豁免） |
+| 约定 | 规则文件主语·指代分工（角色侧：我／角色／他／她／你） | `actor_decision.md`「一、心声」·「语义与自治原则」首条「词形分工」 | 指针——判据＝「角色」后接自己／自身＝自指违规（「角色本人」只用于元信息）；他／她／你与「我」同句指同一人＝违规 |
+| 约定 | 派发骨架主语分层（代码块内外·槽名括号·「你」的唯一合法位置） | `subagent_prompt.md` 用途块「主语分层」 | 指针——槽名括号不随 prompt 外发，判据见该条 |
 | 命令 | 解释器 | 全库统一 `python3` | — |
 | 约定 | YAML 敏感字符清单 | `write_protocol.md`「结构化短字段 → write」 | 指针 |
 | 字段 | 批次账本内容 | `write_protocol.md`「批次账本」 | 指针 |
 | 字段 | 合批范围 | `write_protocol.md`「合批范围」 | 指针 |
 | 字段 | CT 八字段 | `phase_dramatist.md`「写入」 | 指针 |
 | 字段 | 连续行动轨迹七子字段 | `actor_decision.md`「必写项」 | 指针 |
+| 字段 | `guidance` 三成分（问题／张力方向／焦点提示） | `phase_director.md` P2 | 指针——张力方向管压力走向、焦点提示管张力落点；⑥ 的取材点＝`phase_writer.md`「语域·本拍性质」与「执行顺序①」 |
 
 ## 维护纪律
 

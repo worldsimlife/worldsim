@@ -94,6 +94,8 @@ EOF
 
 单字段更新（如改备注）同走 `write`（只给目标节点）——**禁止 write-raw/append-raw/delete 点路径**（键名可含空格/点（如 `Westworld Park 1`）·点路径与 shell 分词均不支持·write-raw 已机械拦截；详见 keys.md §world_map）。
 
+**路径笔误防线（硬性）：** 改动既有节点前先 `read` 目标子树，按原文层级链（含 `子区域` 层）逐层复制路径；write 回显的「新增」键＝笔误信号（层级漏写会在错误深度静默建节点）——出现意外新增立即用 `write --full` 整树重写修正并 validate。
+
 ## 区域静态档案（regions/ · 可选增强层）
 
 **定位：** 区域静态设定（只读·世界初始设定·人工维护）。与 world_map 的区别：档案 = 设定源（上帝视角·t=0 快照），world_map = 探索进度（动态·从档案派生）。有 `regions/` 目录即激活本增强层；缺失不影响运行。模板：`templates/REGION.md`；键表明细：references/keys.md §区域静态档案。
@@ -157,7 +159,7 @@ EOF
 
    **派生源：** POV ＋ REGION.常驻NPC ∪ conflicts 关联角色 ∪ direction.调度单 → 生成 `scene_card` 的 `出场角色`(焦内) / `焦外/在场`(焦外) 两栏（**不即兴**）。
 
-   **机械口径：** 以 `worldctl.py <世界> cast-baseline` 输出为准（init_scene 焦点切换后、写 scene_card 前运行一次·基线名单照填两栏）——调度单四层点名角色**无条件入基线**；常驻NPC/关联角色按当前时刻时间线命中本场者入基线（子区域位置命中计入本场，如 Mariposa 内角色计入主街基线）。一律写具体角色名（`CHAR_{名}` 具名条目·与 direction.调度单同规）；仅无 CHAR_.md 的纯背景可标群像。
+   **机械口径：** 以 `worldctl.py <世界> cast-baseline` 输出为准（init_scene 焦点切换后、写 scene_card 前运行一次·基线名单照填两栏）——调度单四层点名角色**无条件入基线**；常驻NPC/关联角色按当前时刻时间线命中本场者入基线（子区域位置命中计入本场，如 Mariposa 内角色计入主街基线）。一律写具体角色名（角色全名裸名·与 direction.调度单同规·不带 `CHAR_` 前缀）；仅无 CHAR_.md 的纯背景可标群像。
 
    **常驻NPC 判据（NPC 会动·非静态全员硬入）：**
    - 只取**当前时刻「默认循环时间线」命中位置在本场（或相邻可及）**者——如 Dolores 12:00-14:00＝牧场农活（不在主街）则不入本场 cast；Sheriff/Teddy 此刻在主街/杂货店则入；
@@ -262,7 +264,7 @@ EOF
 统一通过 `snap.py` 完成。
 
 - **save 全量备份**：动态状态 ＋ CHAR_state ＋ scenes/ 全目录。
-- **load 差异恢复**：存档有→覆盖；磁盘有而存档无→移入 `archive/scenes/` 保留不删；废弃 .active 自动归档。**load 为破坏性操作**——覆盖当前世界状态（自动备份 `_before_`）→ 交互提示确认 / 非交互加 `--force`。
+- **load 差异恢复**：存档有→覆盖；磁盘有而存档无→移入 `archive/scenes/` 保留不删；废弃 .active 自动归档。**load 为破坏性操作**——覆盖当前世界状态（默认自动备份 `_before_`；`--no-backup` 跳过备份=不可恢复）→ 交互提示确认 / 非交互加 `--force`。
 - **焦点场景唯一权威源** ＝ world_state.yaml 顶层 `焦点场景`。
 - **存档名**：用户未指定时自动生成「r<轮次>-<场景目录名>-时间戳」（r 前缀便于按轮次识别快照）。
 - **回退是低频例外**：快照恢复（snap load）＋ 手工重建协议（references/rollback.md）——回退不走 write-raw、yaml 字符串字段禁行删、回退后必做残留扫描 ＋ validate。

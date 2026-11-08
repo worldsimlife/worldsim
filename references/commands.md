@@ -13,7 +13,7 @@
 | read（默认·核心集） | `python3 {skill_dir}/scripts/worldctl.py <世界> read` | 加载世界必读：world_state/conflicts/焦点场景 scene_state/焦内 CHAR_state（CHAR 按需补读） |
 | read（指定文件） | `python3 {skill_dir}/scripts/worldctl.py <世界> read world_state conflicts` | 位置参数=文件 key 过滤（或 `--files a,b,c`） |
 | read（全量） | `python3 {skill_dir}/scripts/worldctl.py <世界> read --all` | 调试用全量（含全部已发现状态文件） |
-| write（增量合并） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write` | YAML diff 递归合并——world_map/结构化短字段通道 |
+| write（增量合并） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write` | YAML diff 递归合并——world_map/结构化短字段通道；**输出变更摘要**（新增/覆盖/清除键路径——路径笔误在下盘前显形）；`--dry-run` 只出摘要不落盘 |
 | write（全量覆写） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write --full` | 整文件覆写（少用） |
 | write-raw（单字段） | `python3 {skill_dir}/scripts/worldctl.py <世界> write-raw <文件key> <YAML键> "内容"` | 仅限短 ASCII 值；**中文/多行一律走 `--batch`**（通道见 references/write_protocol.md §批次文本双通道——CLI 参数传中文随 locale 解码会损坏文件） |
 | write-raw（批量·推荐） | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> write-raw --batch` | **change set 写入通道**——内置 audit 语义检查（硬性违规单字段顶回·软性警告 validate 汇总）+ 写入后自动轻量校验。**实跑前必先过 `--dry-run`**（见下条） |
@@ -26,7 +26,7 @@
 | validate | `python3 {skill_dir}/scripts/worldctl.py <世界> validate` | YAML 格式报错 + 内容级警告（load 后/跨 Session 恢复后必跑；含同物理地点场景元素继承检查）。**格式错误 → exit 1（硬拦·先修坏文件再继续）；仅内容警告 → exit 0** |
 | init-states | `python3 {skill_dir}/scripts/worldctl.py <世界> init-states` | **启动世界动态文件物化（幂等·缺什么补什么·LF）**——conflicts←SEED（物化前净化：剥离 Markdown 标题/引用块/说明段落/HTML 注释/未填占位，只提取顶层 CT-XX 块；净化后仍非法 YAML → exit 1 不落盘·无 CT 则 WARN） / 模板三件 / CHAR_state 骨架（自主性解析自 CHAR_.md·外部者无该行）+ regions/ 自动对账；叙事约定为空时提示 LLM 填写（session_recovery.md 第二章 Step 0 唯一入口） |
 | map-sync | `python3 {skill_dir}/scripts/worldctl.py <世界> map-sync` | world_map 镜像层对账（regions/ 目录树→补缺失节点·init-states 自动调用·validate 报缺失时也可单独跑） |
-| grep | `python3 {skill_dir}/scripts/worldctl.py <世界> grep <关键词>` | 全仓（含所有场景 scene_state）搜索元素注册原文——**使用已有元素前核对形态/位置/状态/性质的标准工具（W4 前置·防凭印象改写元素）**；无匹配=未注册=使用即幻觉 |
+| grep | `python3 {skill_dir}/scripts/worldctl.py <世界> grep <关键词>` | 全仓（含所有场景 scene_state）搜索元素注册原文——**使用已有元素前核对形态/位置/状态/性质的标准工具（W4 前置·防凭印象改写元素）** |
 | delete | `python3 {skill_dir}/scripts/worldctl.py <世界> delete <文件key> <键路径>` | 删整条 CT / pending 条目；批量流支持 `###DELETE:`。**删除是失败即失败的操作**——未知文件 key / 键或路径不存在 = 该 op 失败（直调 exit 1·批次内计入失败账·不静默跳过）。删除前自动备份原文件到 `tmp/<文件名>.delete.<时间戳>.bak`（备份失败=不执行删除；误删可从备份恢复） |
 | storyline show | `python3 {skill_dir}/scripts/worldctl.py <世界> storyline show [SL-XX]` | 读事件线（全部 / 指定·states/storylines.yaml） |
 | storyline add | `cat <<'EOF' \| python3 {skill_dir}/scripts/worldctl.py <世界> storyline add`（stdin=单条事件线 YAML：名称/类型/状态/拍序） | **storylines 唯一写入入口·②编剧**——建线（ID 自动递增 SL-XX·脚本机械落盘+结构/枚举校验·LLM 不直接改 YAML·**顶点拍须含 `顶点约束`（关系主体≥2/核心张力/变化维度/非玩家爆破≥1·缺则拒绝 exit 1）**）；建线后起点指针由③导演 `beat set 新线 <起点拍>` 落 direction（**同批 add 用「新线」·add 的 SL-XX 由脚本分配不可预知·跨批则 read 后写实际 SL-XX**） |
@@ -42,7 +42,7 @@
 | **context** | `python3 {skill_dir}/scripts/worldctl.py <世界> context [角色]` | **Runtime Context 机械导出（v0.28·只读）**——direction 拍级字段编译（当前拍戏剧问题/guidance/调度单/时间窗口）+ 推进池CT摘要 + 环境压力项 + 该角色相关事件/可观察行动；④角色子 agent 组装通道优先引用（省重复读多文件 token）；无 context 则按 phase_actor 数据就绪逐项读 |
 | round-check | `python3 {skill_dir}/scripts/worldctl.py <世界> round-check` | **⑤场记轮完整性收尾**——direction/世界三件套/场景时间线/区域一致性（POV 位置节点 vs 焦点场景区域节点·空间已变未切即 FAIL·途经节点豁免）/引用对账逐项核对·FAIL exit 1 |
 | **cast-baseline** | `python3 {skill_dir}/scripts/worldctl.py <世界> cast-baseline` | **场景 cast 基线查询（只读·exit 0 恒过）**——输出当前焦点场景的基线名单与 scene_card 两栏覆盖/缺失情况（口径与 gate keeper cast 硬拦同源：调度单四层点名无条件入基线·常驻NPC/关联角色按当前时刻时间线命中本场者入基线·子区域位置命中计入本场）；**场景切换时 init_scene 焦点切换后、写 scene_card 前运行一次，基线名单照填「出场角色」/「焦外/在场」两栏**（scene_management §6） |
-| **ledger** | `python3 {skill_dir}/scripts/worldctl.py <世界> ledger [轮次]` | **批次账本查询（只读·取证面）**——各阶段段 `阶段/META/op索引`，④角色段额外含 `###MUSE/###ACTION/###SCHEDULE/###META` 原文（脚本在各段落盘成功后自动写 `scenes/{段所属场景}/.ledger_r{轮次}.{阶段}.{时间戳}.yaml`·点前缀不进 discover/read/加载面）；跨场景轮焦点场景未命中时自动回退扫全部场景；缺轮次=列出全部账本。用途=标准模式审计取证与续驱动恢复；**创作路径不读** |
+| **ledger** | `python3 {skill_dir}/scripts/worldctl.py <世界> ledger [轮次]` | **批次账本查询（只读·取证面）**——各阶段段 `阶段/META/op索引`（op索引逐条 `字段: 内容`）；①段另含 `指定`（`###CD:` 原文），②段另含 `结构动作`/`回填`（`###STORYLINE` 原文、SL-XX、事件线 YAML、节点回填），③段另含 `指针动作`（`###BEAT` 原文、当前线/拍），④角色段另含 `###MUSE/###ACTION/###SCHEDULE` 分项（`###ACTION` 含首行元数据与正文）（脚本在各段落盘成功后自动写 `scenes/{段所属场景}/.ledger_r{轮次}.{阶段}.{时间戳}.yaml`·点前缀不进 discover/read/加载面）；跨场景轮焦点场景未命中时自动回退扫全部场景；缺轮次=列出全部账本。用途=标准模式审计取证与续驱动恢复；**创作路径不读** |
 | convert（.md→.yaml） | `python3 {skill_dir}/scripts/worldctl.py <世界> convert` | 旧 .md 状态文件转 .yaml |
 | gate | `python3 {skill_dir}/scripts/worldctl.py <世界> gate dramatist\|storyliner\|director\|actor\|keeper\|writer [--check] [--target N] [--style sepia|dialogue|explicit]` | 阶段出口闸门——批次类五阶段的闸门已默认内嵌于 write-raw --batch 逐段执行（`--force` 豁免）；本命令无 `--check` 打印该阶段人工审计清单（gates.md 同源），有 `--check` 用于 writer 叙事核验与单段手动复检——批次类阶段须把该段批次文本（含 `###STAGE` 行）经 stdin/`--file` 重新提交（空输入即拦·不复检已落盘状态），不合格 exit 1；writer 可选 `--target` 大约目标数/`--style` 所用校准工具（sepia\|dialogue\|explicit·缺声明软提醒·不拦截） |
 | lint | `python3 {skill_dir}/scripts/worldctl.py <世界> lint` | 全部状态文件 YAML 格式/引用问题只读检查（不落盘） |
@@ -56,7 +56,7 @@
 **输出三段：**
 - **唤醒判定（首行）**：①/② 唤醒或未唤醒＋机械原因 · ③④⑤⑥ 恒跑——Step1 编排任务单直接取用；
 - **机械义务**：结构基线缺失（最高优先级·必须先行初始化）＋ `escalation_flags.CT待结算`（①必含 CT op）＋ 时间窗口已耗导出。**只覆盖状态可导出的机械义务**——用户指令/重大事件/回判张力等推断类触发仍由 LLM 判定（输出末尾明示）；
-- **SNAPSHOT 数据快照**（参考数据·非义务）：§1a 临近互锁事件（LOOPS 跨场景互锁时刻表·与窗口重叠·窗口＝time_window 缺省 30min·③调度单「即将触发事件」预判）· §1b 循环轨道对照（预设 vs 实际·偏离基线·范围＝调度单点名循环角色 ∪ 当前焦点区 REGION 常驻NPC ∪ §1a互锁涉及角色）· §2 元素注册索引（scene_state 元素名·替代⑥多次 grep）· §3 骨架待物化角色（本轮相关）。
+- **SNAPSHOT 数据快照**（参考数据·非义务）：§1a 临近互锁事件（LOOPS 跨场景互锁时刻表·与窗口重叠·窗口＝time_window 缺省 30min·③调度单分档依据·见 phase_director.md D5）· §1b 循环角色轨道（④偏离登记尾条导出：未闭合偏离名单·范围＝调度单点名循环角色 ∪ 当前焦点区 REGION 常驻NPC ∪ §1a互锁涉及角色）· §2 元素注册索引（scene_state 元素名·替代⑥多次 grep）· §3 骨架待物化角色（本轮相关）。
 
 **用法**：各阶段取数优先引用快照·上下文已有→跳过重复读/grep；本轮编排前跑。与 `--dry-run`（批内预演）/ `gate --check`（单段复验）互补。
 
@@ -66,7 +66,7 @@
 > - **③导演**：每轮回判——
 >   - 已兑现 → `###BEAT: advance SL-XX 下一拍`（顶点＝advance 余波·受 gate director 收束核验）；
 >   - 未兑现且窗口未耗尽 → `###BEAT: deepen SL-XX` ＋ `节拍决策=继续当前拍`（窗口＝拍发育期；承接判断点名调度单各角色的未完成意图；验收点＝窗口耗尽：已答→advance；未答且意图仍在推进本拍问题→续演并批内重设时间窗口 `{起点=当前世界时间·新拍级预算}`；未答且意图已不再推进→`escalation_flags.停滞`·gate 核验→①次轮加压/兜底）；
->   - 不承接/意外事件 → escalation flag → ②次轮三问定原线去向（保留＋建新线接焦 / rewrite / clear·判据见 phase_storyliner D1）。
+>   - 不承接/意外事件 → escalation flag → ②次轮三问定原线去向（保留＋建新线接焦 / rewrite / clear·判据见 phase_storyliner.md「不承接归位」）。
 > - **查询轮/维护轮豁免。**
 
 ## Shell 脚本
@@ -74,8 +74,8 @@
 | 脚本 | 用法 | 说明 |
 |------|------|------|
 | write_narrative.py | `cat <<'EOF' \| python3 {skill_dir}/scripts/write_narrative.py <世界> <场景ID> [--scene2 <新场景ID>] [--target N] [--style sepia\|dialogue\|explicit]`（场景ID支持短 ID S05 或完整目录名） | ⚠ 写入磁盘：前置 `gate writer --check` 通过才落盘至焦点场景 narrative.md（未通过不落盘；`--force` 跳检供维护/回退）。**跨场景轮用 `--scene2` 一次落两段**（输入＝合并正文·两段各带场景头行·闸门按合并正文跑一次） |
-| snap.py save | `python3 {skill_dir}/scripts/snap.py <世界> save [快照名]` | 缺省名自动生成「场景ID-场景名-时间戳」——⚠ 写入磁盘：复制当前状态至快照目录 |
-| snap.py load | `python3 {skill_dir}/scripts/snap.py <世界> load <快照名>` | 破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force` |
+| snap.py save | `python3 {skill_dir}/scripts/snap.py <世界> save [快照名]` | 缺省名自动生成「场景ID-场景名-时间戳」——⚠ 写入磁盘：复制当前状态至快照目录；文件数多时耗时可达分钟级（慢盘尤甚）——非交互执行放宽超时或后台运行 |
+| snap.py load | `python3 {skill_dir}/scripts/snap.py <世界> load <快照名> [--no-backup]` | 破坏性操作（覆盖当前状态·默认自动备份 _before_；`--no-backup` 跳过备份=覆盖后不可恢复）——交互提示确认 / 非交互加 `--force`；文件数多时耗时可达分钟级（慢盘尤甚）——非交互执行放宽超时或后台运行 |
 | snap.py list | `python3 {skill_dir}/scripts/snap.py <世界> list` | 列出全部快照 |
 | snap.py delete | `python3 {skill_dir}/scripts/snap.py <世界> delete <快照名>` | 破坏性操作（不可恢复）——交互提示确认 / 非交互加 `--force` |
 | init_scene.py | `python3 {skill_dir}/scripts/init_scene.py <世界> <场景ID> <场景名> [--from <旧场景ID>] [--type <类型>] [--time <时间>] [--cast <出场角色>]` | `--from`：继承旧场景 scene_state 的物理锚点/道具清单——**同物理地点切换必用**，防止漏继承；`--type/--time/--cast` 自动填充 scene_card 与 INDEX 行，缺省标「待填」 |
@@ -119,7 +119,7 @@
 | `/storylines` | 查看故事线 |
 | `/status [名]` / `/status --full` | 查看角色状态 / 完整状态 |
 | `/sync` / `/update` | 场记记录变化更新状态 |
-| `/save [名]` / `/load <名>` | 存档管理（⚠ /load 覆盖当前状态·自动备份 _before_ 可回滚） |
+| `/save [名]` / `/load <名>` | 存档管理（⚠ /load 覆盖当前状态·默认自动备份 _before_ 可回滚；snap.py load 加 `--no-backup` 可跳过备份=不可恢复） |
 | `/silent` | 切回沉浸式模式（全局默认·沉浸·只推叙事正文）——world_state 写 `输出模式: 沉浸式` |
 | `/loud` / 说「调试」「标准模式」 | 切到标准模式（完整回复正文 + 六阶段人工审计·清单见 references/gates.md）——world_state 写 `输出模式: 标准` |
 | 「审计」/「/audit」 | **用户觉察不对劲时使用**——六阶段审计流程（机械核验 → 六阶段人工审计 → 知情边界核对 → 伏笔闭环核对）；输出＝逐项 PASS/FAIL ＋ 证据。**细则见下方「/audit 细则」** |

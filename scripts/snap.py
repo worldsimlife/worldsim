@@ -6,9 +6,10 @@
 # 焦点场景唯一权威源 = world_state.yaml 顶层「焦点场景」（不再使用 .active 文件）
 # 用法:
 #   python3 scripts/snap.py <世界名> save [快照名]
-#   python3 scripts/snap.py <世界名> load <快照名>
+#   python3 scripts/snap.py <世界名> load <快照名> [--no-backup]
 #   python3 scripts/snap.py <世界名> list
 #   python3 scripts/snap.py <世界名> delete <快照名>
+# 载入前备份：load 默认自动把当前状态备份到 _before_<时间戳>；--no-backup 跳过备份（覆盖后不可恢复·风险自担）。
 # 破坏性操作（load/delete）确认：交互终端提示 [y/N]（默认拒绝）；非交互环境（stdin 非 tty）需追加 --force 标志，否则拒绝执行。
 import os, re, shutil, sys
 from datetime import datetime
@@ -85,9 +86,12 @@ def main():
     action = argv[1] if len(argv) >= 2 else ""
     snapname = ""
     force = False
+    no_backup = False
     for a in argv[2:]:
         if a == "--force":
             force = True
+        elif a == "--no-backup":
+            no_backup = True
         elif not snapname:
             snapname = a
 
@@ -156,17 +160,21 @@ def main():
         assert_no_links(world_dir / "states")
         assert_no_links(world_dir / "scenes")
         assert_no_links(archive_dir)
-        confirm_destructive(world, "load", snapname, force, f"载入快照 '{snapname}' 将覆盖当前世界状态（当前状态会自动备份到 _before_）")
+        _bak_note = ("——⚠ --no-backup：当前状态不备份·覆盖后不可恢复" if no_backup else "（当前状态会自动备份到 _before_）")
+        confirm_destructive(world, "load", snapname, force, f"载入快照 '{snapname}' 将覆盖当前世界状态{_bak_note}")
 
-        # 加载前自动备份当前状态
-        bak_ts = str(int(datetime.now().timestamp()))
-        bakdir = snap_dir / f"_before_{bak_ts}"
-        bakdir.mkdir(parents=True)
-        for f in _states_files(world_dir / "states"):
-            shutil.copy2(f, bakdir / f.name)
-        if (world_dir / "scenes").is_dir():
-            shutil.copytree(world_dir / "scenes", bakdir / "scenes")
-        print(f"当前状态已备份到: _before_{bak_ts}")
+        # 加载前备份当前状态（默认开启；--no-backup 跳过——用户显式承担不可恢复风险）
+        if no_backup:
+            print("[SKIP] 已跳过载入前备份（--no-backup）——当前状态将被覆盖且不可恢复")
+        else:
+            bak_ts = str(int(datetime.now().timestamp()))
+            bakdir = snap_dir / f"_before_{bak_ts}"
+            bakdir.mkdir(parents=True)
+            for f in _states_files(world_dir / "states"):
+                shutil.copy2(f, bakdir / f.name)
+            if (world_dir / "scenes").is_dir():
+                shutil.copytree(world_dir / "scenes", bakdir / "scenes")
+            print(f"当前状态已备份到: _before_{bak_ts}")
 
         restored = 0
         snap_states = _states_files(srcdir)

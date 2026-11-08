@@ -14,7 +14,7 @@
 
 | 优先级 | 通道 | 命令 | 说明 |
 |--------|------|------|------|
-| 1 | 快照恢复 | `python3 scripts/snap.py <世界> load <快照名>` | 最可靠。snap.py save 是**主动存档**（关键节点/剧情转折/重置前手动执行·自动命名带 r<轮次> 前缀便于识别），不是每轮自动。load 为破坏性操作（覆盖当前状态·自动备份 _before_）——交互提示确认 / 非交互加 `--force` |
+| 1 | 快照恢复 | `python3 scripts/snap.py <世界> load <快照名> [--no-backup]` | 最可靠。snap.py save 是**主动存档**（关键节点/剧情转折/重置前手动执行·自动命名带 r<轮次> 前缀便于识别），不是每轮自动。load 为破坏性操作（覆盖当前状态·默认自动备份 _before_；`--no-backup` 跳过备份=不可恢复）——交互提示确认 / 非交互加 `--force`；文件数多时耗时可达分钟级（慢盘尤甚）——非交互执行放宽超时或后台运行 |
 | 2 | 场景级重置 | `python3 scripts/reset_scene.py <世界> [<场景ID>] [--force]` | 重置场景到 start_snapshot 开场（世界时间/轮次回退至场景开场·CHAR_state 记忆保留）。破坏性操作——交互提示确认 / 非交互加 `--force` |
 | 3 | 手工重建 | 见下方「降级路径」 | 无快照时从历史痕迹反推目标状态（不保证完整） |
 
@@ -46,7 +46,7 @@
    - 场景ID：`S06`、新场景名
    - 台词/设定：被撤销的台词关键词（如「演了这么多年」「回收借口」）
 6. **回退后必跑 validate**——`python3 scripts/worldctl.py <世界> validate` 全部文件通过才算完成。历史 ASCII 引号污染会让 yaml 解析静默失败（worldctl 容错返回空）——validate 是唯一防线。
-7. **修改前自动备份**——snap.py load / reset_scene.py 内置 `_before_` 备份；手工文件级回退前先 `snap.py save`。
+7. **修改前自动备份**——snap.py load / reset_scene.py 默认内置 `_before_` 备份（snap.py load 可用 `--no-backup` 跳过·不建议）；手工文件级回退前先 `snap.py save`。
 
 ## 手工文件级回退的兜底顺序（快照缺失时）
 

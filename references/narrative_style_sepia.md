@@ -1,10 +1,10 @@
 # 通用叙事风格参考（sepia 原文搬运）
 
-> 适用范围：通用——⑥作家各轮通用参考，按需查阅。
+> 适用范围：通用——⑥作家**去 AI 腔校准表**（写完自查用·见 gates.md W6）。它量的是「读起来像不像机器」，不定义「写得好」。
 > 来源：skills/sepia（sepia v0.7.0）原文搬运（悬空引用已删）。
 > 裁决：与 phase_writer.md或 SKILL.md 通用约束冲突处，以 worldsim 为准（POV 过滤/数据忠诚/卡里记的事不得增减·怎么讲全归作家/gate 不变）。
 > 不在本文：professional-pass.md（含 domains/）、agents/、model-fingerprints.md、voices/ 正文——默认不加载；voice 叠加仅 opt-in（用户明示才用）。
-> 用法：按需查。
+> 用法：按需查——**动笔前不作底本**（技法目标是「写得好」，与「不像机器」不是同一目标，常反向）。
 
 ---
 

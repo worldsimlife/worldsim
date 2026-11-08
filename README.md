@@ -165,7 +165,7 @@ WorldSim 支持导入 **SillyTavern 兼容的角色卡**（`.png` 内嵌 JSON �
 | 成为某个角色，用 TA 的眼睛活 | 「切换到 Dolores 视角」 |
 | 切换 / 新建场景 | `/scene <ID>` · `/scene new <名>` |
 | 场记同步（告诉引擎最新变化） | `/sync` |
-| 存档 / 读档（⚠ 读档覆盖当前状态——自动备份 _before_，可回滚） | `/save [名]` · `/load <名>` |
+| 存档 / 读档（⚠ 读档覆盖当前状态——默认自动备份 _before_（`--no-backup` 可跳过），可回滚） | `/save [名]` · `/load <名>` |
 | 重开一场戏 | `/reset-scene [场景ID]` |
 | 让世界重新开始 | `/reset` |
 | 导入现成的角色卡 | `/import-card <角色卡.png...>` |

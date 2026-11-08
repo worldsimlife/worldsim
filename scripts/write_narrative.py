@@ -248,6 +248,14 @@ def main():
         _rotate_and_write(scene2_dir, seg2, world_dir)
         print(f"[OK] 叙事已写入: {world} / {scene_id}（旧场景段）+ {scene2}（新场景段）")
 
+    # --file 叙事草稿用后即删：落盘成功才清理（失败路径已在上方 exit·重提仍可取用原文件）
+    if content_file:
+        try:
+            Path(content_file).unlink()
+            print(f"[OK] 叙事草稿已清理: {content_file}")
+        except OSError as e:
+            print(f"[WARN] 叙事草稿清理失败（不影响落盘结果）: {content_file}（{e}）", file=sys.stderr)
+
 
 if __name__ == "__main__":
     main()
